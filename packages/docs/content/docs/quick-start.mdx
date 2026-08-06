@@ -235,6 +235,11 @@ pnpm build
 **成功后**：`lib/` 里能看到 `template-registry.js`、`mock-registry.js`、`style.css` 和 `apps/*.js`。发布后的插件不需要 `template/` 源码目录也能渲染。
 
 <Callout type="info">
+  产物目录不是写死的：`outDir` 改成什么名字都可以，渲染器会按 `package.json` 的 `main` 字段自动发现（极端布局可用 `bundledDir`
+  选项显式指定）。
+</Callout>
+
+<Callout type="info">
   第一次接入时，建议直接复制下面这份完整的构建配置（`tsdown.config.ts`），它包含扁平入口收集、注册表打包和 Tailwind CSS 插件：
 </Callout>
 

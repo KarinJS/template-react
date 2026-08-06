@@ -12,6 +12,8 @@ import { resolveTemplateStyle } from './style'
 export interface TemplateRendererOptions {
   /** 透传给 createRenderer 的覆盖项（如 outputDir、extraStylePaths、plugins、htmlFileName），在约定默认值之上合并。 */
   renderer?: Partial<RendererOptions>
+  /** 生产打包产物所在目录（相对包根或绝对路径），默认按 main 字段和根目录扫描自动发现。 */
+  bundledDir?: string
 }
 
 /**
@@ -71,7 +73,7 @@ export const createTemplateRenderer = (callerUrl: string, options?: TemplateRend
   const initRenderer = () => {
     rendererPromise ??= (async () => {
       const config = await resolveConfig({ cwd: root })
-      const templates = await loadTemplateRegistry({ root })
+      const templates = await loadTemplateRegistry(options?.bundledDir ? { root, bundledDir: options.bundledDir } : { root })
       return createRenderer(templates, {
         // resolveTemplateStyle 的默认路径是 cwd 相对的，宿主进程 cwd 不一定是插件目录，必须显式按包根定位；
         // 生产 CSS 由 tsdown 编译进 lib/style.css，开发缓存仍在 node_modules/.cache/ktr。

@@ -32,7 +32,7 @@ metadata:
 - 框架不注入默认主题色；深色判断用 `ctx.theme.mode`。
 - 胶水层：`createTemplateRenderer(import.meta.url, ...)` 装配 + `renderImage(route, data, options?)` 出图。
 - 命令：`ktr sync` / `ktr dev` / `ktr build`；面板默认 `http://localhost:5180/__ktr/panel/`。
-- 构建：`ktr sync && tsdown`；`.ktr` 注册表要打进 `lib/`；react/react-dom、core 运行时、组件库全部随产物打包（同一份产物内只有一份 React 副本，hooks 才正常——切勿只打包组件却外部引用 core 运行时）；只有 `node-karin` 由宿主提供。
+- 构建：`ktr sync && tsdown`；`.ktr` 注册表要打进产物目录（默认 `lib/`，可自定义 outDir——加载器按 `bundledDir` 选项 → package.json `main` 目录 → 根目录扫描自动发现）；react/react-dom、core 运行时、组件库全部随产物打包（同一份产物内只有一份 React 副本，hooks 才正常——切勿只打包组件却外部引用 core 运行时）；只有 `node-karin` 由宿主提供。
 
 ## 典型任务流程
 

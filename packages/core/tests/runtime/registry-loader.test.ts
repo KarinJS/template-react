@@ -46,7 +46,7 @@ describe('registry loader', () => {
     await expect(loadMockRegistry({ root })).rejects.toThrow('ktr sync')
   })
 
-  it('prefers the bundled lib registry in production and the fresher .ktr source in dev', async () => {
+  it('prefers the .ktr source when present and falls back to the bundled lib registry', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-registry-'))
     writeRegistries(path.join(root, '.ktr'))
     // 模拟生产构建产物：打包进 lib/ 的注册表（内容可区分）。
@@ -57,15 +57,37 @@ describe('registry loader', () => {
       'utf-8'
     )
 
-    // lib 更新时（生产只有 lib）加载打包产物。
+    // 即使 lib 更新，开发态也必须用 .ktr 源文件（否则包内 React 与外部渲染器双副本）。
     const bundledTime = new Date('2030-01-02')
     fs.utimesSync(path.join(root, 'lib', 'template-registry.js'), bundledTime, bundledTime)
-    await expect(loadTemplateRegistry({ root })).resolves.toEqual({ 'bundled/x': { name: '打包产物' } })
-
-    // .ktr 刷新后（开发态 sync）回到源码注册表。
-    const sourceTime = new Date('2030-01-03')
-    fs.utimesSync(path.join(root, '.ktr', 'template-registry.ts'), sourceTime, sourceTime)
     await expect(loadTemplateRegistry({ root })).resolves.toEqual({ 'hello/card': { name: '测试卡片' } })
+
+    // .ktr 缺失时（生产环境）回退到 lib 打包产物。
+    fs.rmSync(path.join(root, '.ktr', 'template-registry.ts'))
+    await expect(loadTemplateRegistry({ root })).resolves.toEqual({ 'bundled/x': { name: '打包产物' } })
+  })
+
+  it('discovers the bundled registry from package.json main and explicit bundledDir', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-registry-'))
+    // 下游自定义 outDir 为 build-output，main 指向其中的 index.js。
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'custom-out', main: 'build-output/index.js' }), 'utf-8')
+    fs.mkdirSync(path.join(root, 'build-output'), { recursive: true })
+    fs.writeFileSync(
+      path.join(root, 'build-output', 'template-registry.js'),
+      "export const templates = { 'via/main': { name: 'main 发现' } }\n",
+      'utf-8'
+    )
+    // 没有 .ktr：应通过 main 字段发现 build-output 下的注册表。
+    await expect(loadTemplateRegistry({ root })).resolves.toEqual({ 'via/main': { name: 'main 发现' } })
+
+    // 显式 bundledDir 覆盖一切发现逻辑。
+    fs.mkdirSync(path.join(root, 'anywhere'), { recursive: true })
+    fs.writeFileSync(
+      path.join(root, 'anywhere', 'template-registry.js'),
+      "export const templates = { 'via/option': { name: '显式指定' } }\n",
+      'utf-8'
+    )
+    await expect(loadTemplateRegistry({ root, bundledDir: 'anywhere' })).resolves.toEqual({ 'via/option': { name: '显式指定' } })
   })
 
   it('loads registries that import real JSX components and renders them', async () => {

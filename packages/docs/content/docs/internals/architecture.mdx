@@ -110,7 +110,8 @@ art-template 范式的痛点可以归纳为四类：
 
 - **入口**：`src` 插件逻辑（扁平输出，保持 karin 的 `lib/apps` 约定）+ `.ktr` 两个注册表 + `template/style.css`（Tailwind 由 `@bosh-code/tsdown-plugin-tailwindcss` 在 rolldown 管线内编译，不再需要单独的 vite 构建和 `dist/` 目录）；
 - **外部化边界**：只有 `node-karin`（宿主提供）保持外部；`react`/`react-dom`、`@karinjs/template-react` 运行时与组件库全部内联进产物——渲染器与组件共享产物内的同一份 React 副本，hooks 因此正常工作（双副本崩溃只在"组件进包而渲染器外部引用"的半包状态下发生）；下游 `dependencies` 因此可以为空，生产环境零安装；
-- **注册表候选**：`loadTemplateRegistry` 在 `.ktr` 源文件与 `lib/template-registry.js` 之间按 mtime 取新——开发态 sync 常新，生产环境只有 `lib/`，自然命中打包产物。
+- **注册表候选**：`loadTemplateRegistry` 在 `.ktr` 源文件存在时永远优先（开发态源码组件与外部渲染器共享 node_modules 里的同一份 React），`.ktr` 缺失时（生产只发布产物目录）回退到打包的注册表——产物目录不做硬性假设，依次按显式 `bundledDir` 选项 → `package.json` 的 `main` 字段所在目录 → 根目录一层扫描发现，下游可自由选择 outDir；不能按 mtime 取新，否则构建后的开发态会把包内 React 与外部渲染器混成双副本；
+- **主入口必须可摇**：core 的 `package.json` 声明 `sideEffects: false`。模板从主入口 `import { defineTemplate }`，而主入口还再导出依赖 Vite 的 `createDevServer`——没有这个声明时，打包会把 Vite 乃至 rolldown 原生绑定拖进运行时 bundle，jiti 一加载即崩；声明后未使用的再导出模块被整体摇掉，注册表产物里一行 Vite 代码都没有；
 
 ## 8. 取舍与展望
 

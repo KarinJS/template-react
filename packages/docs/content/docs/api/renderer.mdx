@@ -17,6 +17,7 @@ const createTemplateRenderer: (callerUrl: string, options?: TemplateRendererOpti
 
 interface TemplateRendererOptions {
   renderer?: Partial<RendererOptions> // 透传给 createRenderer 的覆盖项，在约定默认值之上合并
+  bundledDir?: string // 生产打包产物目录（相对包根或绝对路径），默认按 main 字段与目录扫描自动发现
 }
 
 type TemplateRenderFn = <K extends keyof LoadedRegistry & string>(
@@ -34,7 +35,7 @@ type TemplateRenderFn = <K extends keyof LoadedRegistry & string>(
 **约定行为**（什么都不配时自动做的事）：
 
 - **包根定位**：开发期 `src/`、生产期 `lib/` 向上都命中同一个 `package.json`。
-- **配置与注册表**：读取 `karin.template.ts`，加载约定注册表（开发态 `.ktr` 与生产 `lib/` 自动取新）。
+- **配置与注册表**：读取 `karin.template.ts`，加载约定注册表（开发态 `.ktr` 优先，缺失时回退生产产物 `lib/`）。
 - **CSS**：开发态用缓存 `node_modules/.cache/ktr/style.css`；生产态与 `lib/style.css` 取修改时间较新的一份。
 - **默认位置**：`outputDir` 默认 `<outDir>/html`；捕获目录默认 `templateDir`（真实数据写入 `template/<路由>/data/captured.json`，滚动覆盖，面板自动刷新选中）；HTML 外壳透传 `html` 配置（如 `headExtra`）。
 
@@ -83,15 +84,16 @@ const loadTemplateRegistry: (options?: LoadRegistryOptions) => Promise<LoadedReg
 const loadMockRegistry: <M extends Record<string, unknown> = Record<string, unknown>>(options?: LoadRegistryOptions) => Promise<M>
 ```
 
-按约定加载 `ktr sync` 生成的注册表，插件源码**不需要 import `.ktr` 目录**；用法示例见[在 Karin 插件中集成](/docs/guide/karin-integration)。`options`（`LoadRegistryOptions`）三项都可缺省：
+按约定加载 `ktr sync` 生成的注册表，插件源码**不需要 import `.ktr` 目录**；用法示例见[在 Karin 插件中集成](/docs/guide/karin-integration)。`options`（`LoadRegistryOptions`）全部可缺省：
 
-| 选项         | 说明                                                |
-| ------------ | --------------------------------------------------- |
-| `root`       | 项目根目录，默认取当前工作目录。                    |
-| `cacheDir`   | 约定缓存目录（相对 root 或绝对路径），默认 `.ktr`。 |
-| `configFile` | 显式指定 karin.template 配置文件路径。              |
+| 选项         | 说明                                                                       |
+| ------------ | -------------------------------------------------------------------------- |
+| `root`       | 项目根目录，默认取当前工作目录。                                           |
+| `cacheDir`   | 约定缓存目录（相对 root 或绝对路径），默认 `.ktr`。                        |
+| `configFile` | 显式指定 karin.template 配置文件路径。                                     |
+| `bundledDir` | 生产打包产物目录（相对 root 或绝对路径），默认按 main 字段与目录扫描发现。 |
 
-- **取新规则**：开发态源码（`.ktr/*.ts`）与生产产物（`lib/*.js`）同时存在时取较新的一份；都不存在时抛错提示先运行 `ktr sync`。
+- **取新规则**：`.ktr` 源文件存在时永远优先（开发态），缺失时回退到打包产物（生产态）。产物目录不做硬性假设——依次按：显式 `bundledDir` 选项 → `package.json` 的 `main` 字段所在目录 → 根目录一层扫描来发现，下游随便改 outDir 都能命中；都不存在时抛错提示先运行 `ktr sync`。
 - **返回值**：`loadTemplateRegistry` 返回「路由 → 模板定义」映射表（类型 `LoadedRegistry`：模块增强生效时逐路由精确，否则退化为 `AnyRegistry`）；`loadMockRegistry` 返回 mock 命名空间：各 `mock.ts` 具名导出 + `mockDataFiles` 清单（路由 → `data/*.json` 文件名）。
 
 ## 渲染上下文与主题类型
