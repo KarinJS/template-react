@@ -41,7 +41,7 @@ export const PlatformSelector = ({ templates, selectedPath, onSelect }: Platform
 
   return (
     <Card className="w-full border border-border shadow-none" variant="default">
-      <Card.Content className="space-y-4 px-4 pb-4">
+      <Card.Content className="space-y-4">
         {groupEntries.length > 0 ? (
           <Tabs selectedKey={activeGroup} variant="primary" onSelectionChange={handleGroupChange}>
             <Tabs.ListContainer>

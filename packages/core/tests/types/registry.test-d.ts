@@ -1,7 +1,7 @@
 import { expectTypeOf, test } from 'vitest'
 
 import { defineMock } from '../../src'
-import { createRenderer, type DataOf, type RenderContext, type RenderContextInput, type TemplateProps } from '../../src/runtime'
+import { createRenderer, type DataOf, type RenderContextInput, type TemplateProps } from '../../src/runtime'
 import { templates } from '../fixtures/mini-project/templates'
 
 const renderTemplate = createRenderer(templates, {
@@ -31,7 +31,6 @@ test('registry drives template path and data types', async () => {
   expectTypeOf<keyof typeof templates>().toEqualTypeOf<'hello/card' | 'hello/broken'>()
   expectTypeOf<NonNullable<TemplateProps<{ ok: boolean }>['ctx']['theme']>['mode']>().toEqualTypeOf<'light' | 'dark' | undefined>()
   expectTypeOf<NonNullable<TemplateProps<{ ok: boolean }>['ctx']['theme']>['accent']>().toEqualTypeOf<string | undefined>()
-  expectTypeOf<TemplateProps<{ ok: boolean }>['ctx']['version']>().toEqualTypeOf<RenderContext['version']>()
   expectTypeOf<RenderContextInput>().toMatchTypeOf<{ theme?: { accent?: string } }>()
 
   const cardMock = defineMock<DataOf<(typeof templates)['hello/card']>>({ title: 'typed mock', items: [] })

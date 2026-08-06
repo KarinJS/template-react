@@ -159,9 +159,8 @@ export default defineTemplate({
 
 组件还能从第二个参数 `ctx` 拿到框架注入的运行时信息（类型 `RenderContext`）：
 
-- `ctx.theme`（可选）：调用方显式提供的主题变量，类型是 `Partial<ThemeContext>`（每个字段都可能有也可能没有）。包含 `mode`（`'light'` 或 `'dark'`）和 `accent`、`background` 等颜色。**框架不发明默认主题色**，面板里选了"模板主题色"才会下发 accent 系列。
+- `ctx.theme`（可选）：调用方显式提供的主题变量，类型是 `Partial<ThemeContext>`（每个字段都可能有也可能没有）。包含 `mode`（`'light'` 或 `'dark'`）和 `accent`、`background` 等颜色。**框架不发明默认主题色**，面板"模板主题"弹窗里显式选择后才会下发。
 - `ctx.scale`：渲染比例，截图模板通常为 `1`，不用理会。
-- `ctx.version`（可选）：版本信息（插件名、版本号等），适合展示水印或来源。
 
 ```tsx
 const HelloCard = ({ data, ctx }: TemplateProps<HelloCardData>) => {

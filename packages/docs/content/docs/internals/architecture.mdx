@@ -104,6 +104,8 @@ art-template 范式的痛点可以归纳为四类：
 
 数据同步基于文件系统事件：开发服务器监听 mock 目录的 `data/*.json` 变更，按模板路由 100ms 去抖后经 Vite 的 HMR WebSocket 广播 `ktr:data-files-changed`；面板以 `vite-hmr` 子协议直连该端点（断线自动重连），收到事件后刷新数据列表——若变更文件是 `captured.json` 则自动选中并重渲染沙盒。由此实现"机器人发一次指令，面板立即呈现这次真实数据"的闭环。
 
+开发效率通道：dev server 的插件链挂载 `code-inspector-plugin`，编译期给用户组件 JSX 注入 `data-insp-path`（文件：行：列），沙盒内 `Shift+Alt+点击` 即请求插件自带的本地服务打开 IDE 定位源码（仅 dev 生效）；面板自身开发（`vite.panel.config.ts`）同样挂载。
+
 ## 7. 生产构建策略
 
 下游构建统一为 `ktr sync && tsdown`：

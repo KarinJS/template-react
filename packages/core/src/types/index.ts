@@ -5,24 +5,6 @@ import type { UserConfig as ViteUserConfig } from 'vite'
 // 这样下游 .ktr/registry-types.d.ts 的模块增强才能顺着同一个模块 ID 合并进来。
 import type { ProjectRegistry } from '@karinjs/template-react/registry-types'
 
-/** 模板水印或页脚中可以展示的版本信息。 */
-export interface VersionInfo {
-  /** 插件短名，通常用于生成资源路径。 */
-  plugin?: string
-  /** 插件展示名称。 */
-  pluginName?: string
-  /** 插件版本号。 */
-  pluginVersion?: string
-  /** 发布类型，用于区分稳定版和预览版。 */
-  releaseType?: 'Stable' | 'Preview'
-  /** 框架或工具署名文案。 */
-  poweredBy?: string
-  /** 当前模板运行时或框架版本。 */
-  frameworkVersion?: string
-  /** 是否存在可提示用户的更新。 */
-  hasUpdate?: boolean
-}
-
 /** 面板传入用户模板的主题变量。 */
 export interface ThemeContext {
   /** 当前明暗模式。 */
@@ -53,8 +35,6 @@ export interface RenderContext {
   scale: number
   /** 调用方显式提供的主题变量；框架不发明默认值，缺省时组件库自身主题生效。 */
   theme?: Partial<ThemeContext>
-  /** 可选版本信息，适合模板自行展示水印或来源。 */
-  version?: VersionInfo
 }
 
 /** 允许调用方只覆盖部分运行时上下文的输入类型。 */

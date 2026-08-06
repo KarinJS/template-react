@@ -21,8 +21,7 @@ export type {
   ResolveConfigOptions,
   TemplateDef,
   TemplateProps,
-  ThemeContext,
-  VersionInfo
+  ThemeContext
 } from './client'
 
 export { buildTemplates } from './build'

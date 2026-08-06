@@ -1,5 +1,5 @@
-import { Breadcrumbs, Button, ButtonGroup, ScrollShadow, Toolbar } from '@heroui/react'
-import { Camera, ExternalLink, Maximize2, Palette, RefreshCw } from 'lucide-react'
+import { Breadcrumbs, Button, ButtonGroup, ScrollShadow, Toast, Toolbar, toast } from '@heroui/react'
+import { Brush, Camera, ExternalLink, Maximize2, Palette, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -10,12 +10,15 @@ import { PanelThemeControls } from './components/PanelThemeControls'
 import { PlatformSelector } from './components/PlatformSelector'
 import { PreviewPanel, type PreviewPanelRef } from './components/PreviewPanel'
 import { ScreenshotPreviewModal } from './components/ScreenshotPreviewModal'
+import { TemplateThemeControls } from './components/TemplateThemeControls'
 import type { DataEntry, SandboxMessage, TemplateMeta } from './types'
 import { useDataFileSync } from './useDataFileSync'
 
 const panelSource = 'ktr-panel'
 const panelAccentStorageKey = 'ktr-panel-accent'
 const panelDarkStorageKey = 'ktr-panel-dark'
+const templateAccentStorageKey = 'ktr-template-accent'
+const templateDarkStorageKey = 'ktr-template-dark'
 
 /** 捕获数据文件名，与 src/runtime/capture.ts 的 capturedDataFileName 保持一致（面板走浏览器包，不能直接 import node 侧源码）。 */
 const capturedDataFileName = 'captured.json'
@@ -164,13 +167,21 @@ const App = () => {
   const [readonly, setReadonly] = useState(false)
   const [panelDark, setPanelDark] = useStoredBoolean(panelDarkStorageKey, false)
   const [panelAccentOverride, setPanelAccentOverride] = useStoredString(panelAccentStorageKey)
+  // 模板主题与面板主题完全独立：模板明暗和模板主色各自持久化，互不影响面板外壳。
+  const [templateDark, setTemplateDark] = useStoredBoolean(templateDarkStorageKey, false)
+  const [templateAccentOverride, setTemplateAccentOverride] = useStoredString(templateAccentStorageKey)
   const [scale, setScale] = useState(1)
   const [fitRequest, setFitRequest] = useState(0)
   const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 })
   const [status, setStatus] = useState('Ready')
   const [editorOpen, setEditorOpen] = useState(false)
-  const [themeOpen, setThemeOpen] = useState(false)
+  const [panelThemeOpen, setPanelThemeOpen] = useState(false)
+  const [templateThemeOpen, setTemplateThemeOpen] = useState(false)
   const [screenshotUrl, setScreenshotUrl] = useState<string>()
+  /** 截图弹窗的独立开关：关闭只翻标志位、不销毁截图内容，退出动画才能完整播放。 */
+  const [screenshotOpen, setScreenshotOpen] = useState(false)
+  /** 当前截图内容的明暗主题，决定弹窗里水印文字深浅和重截开关初始位置。 */
+  const [screenshotTheme, setScreenshotTheme] = useState<TemplateThemeMode>('light')
   const shouldAutoFitRef = useRef(false)
   const routeRequestRef = useRef(0)
   // WebSocket 回调里通过 ref 读取最新模板路由，避免闭包捕获旧的 selectedPath。
@@ -249,18 +260,18 @@ const App = () => {
     ]
   )
 
-  // 用户组件通过 ctx.theme 和 CSS 变量消费这些 token；只有显式选择主题色时才下发 accent 系列，
-  // 未选择时不下发任何颜色，组件库自身主题生效，框架不发明默认色。
+  // 用户组件通过 ctx.theme 和 CSS 变量消费这些 token；模板主题与面板外壳主题完全独立：
+  // 只有显式选择模板主题色时才下发 accent 系列，未选择时不下发任何颜色，组件库自身主题生效。
   const templateTheme = useMemo<TemplateTheme>(() => {
-    const theme: TemplateTheme = { mode: shellTheme }
-    if (panelAccentOverride) {
-      theme.accent = resolvedPanelAccent
-      theme.accentForeground = resolvedPanelAccentForeground
-      theme.accentSoft = resolvedPanelAccentSoft
-      theme.accentSoftForeground = resolvedPanelAccent
+    const theme: TemplateTheme = { mode: templateDark ? 'dark' : 'light' }
+    if (templateAccentOverride) {
+      theme.accent = templateAccentOverride
+      theme.accentForeground = getContrastTextColor(templateAccentOverride)
+      theme.accentSoft = `color-mix(in oklab, ${templateAccentOverride} 14%, transparent)`
+      theme.accentSoftForeground = templateAccentOverride
     }
     return theme
-  }, [shellTheme, panelAccentOverride, resolvedPanelAccent, resolvedPanelAccentForeground, resolvedPanelAccentSoft])
+  }, [templateDark, templateAccentOverride])
 
   /** 向 iframe 沙盒发送渲染指令或主题数据。 */
   const postSandbox = useCallback((type: string, payload: unknown) => {
@@ -460,6 +471,29 @@ const App = () => {
     body.style.colorScheme = nextTheme
   }, [panelDark])
 
+  // 全局屏蔽空格键：捕获阶段拦截，防止画布聚焦时误触按钮切换；
+  // 输入框、Monaco 编辑器和 contentEditable 区域正常放行。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' && event.key !== ' ') {
+        return
+      }
+
+      const target = event.target as HTMLElement | null
+      const isEditable =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        Boolean(target?.isContentEditable) ||
+        Boolean(target?.closest('.monaco-editor'))
+      if (!isEditable) {
+        event.preventDefault()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [])
+
   useEffect(() => {
     // sandbox ready 和面板主题变化时都同步一次，保证用户组件库主题色即时生效。
     postSandbox('ktr:theme', { theme: templateTheme })
@@ -506,6 +540,7 @@ const App = () => {
     if (response.ok) {
       setJsonText(pretty(data))
       setStatus(`${name} saved`)
+      toast.success('保存成功', { description: `${name} 已写回数据文件` })
       // 数据内容变化可能改变组件尺寸，标记下次渲染完成后自动适应画布。
       shouldAutoFitRef.current = true
       postSandbox('ktr:data', { path: selectedPath, data })
@@ -513,6 +548,7 @@ const App = () => {
       navigatePanel(selectedPath, name, true)
     } else {
       setStatus(`Save ${response.status}`)
+      toast.danger('保存失败', { description: `接口返回 ${response.status}，请检查开发服务器` })
     }
   }
 
@@ -550,14 +586,77 @@ const App = () => {
 
   /** 截取预览画布中的用户模板，生成 Object URL 后打开截图预览弹窗。 */
   const captureScreenshot = async () => {
-    const blob = await previewPanelRef.current?.captureScreenshot()
-    if (blob) {
-      setScreenshotUrl(URL.createObjectURL(blob))
+    try {
+      const blob = await previewPanelRef.current?.captureScreenshot()
+      if (blob) {
+        // 替换前回收上一张截图的 Object URL，避免多次截图后内存堆积。
+        if (screenshotUrl) {
+          URL.revokeObjectURL(screenshotUrl)
+        }
+        setScreenshotTheme(templateTheme.mode)
+        setScreenshotUrl(URL.createObjectURL(blob))
+        setScreenshotOpen(true)
+      }
+    } catch (error) {
+      console.error('截图失败:', error)
+      toast.danger('截图失败', { description: '请重试或检查浏览器控制台', timeout: 3000 })
     }
   }
 
+  /**
+   * 用指定主题重新截图：先把沙盒主题临时切成目标模式，等渲染完成后截图，再恢复原主题。
+   * @param theme 目标明暗模式。
+   * @returns 截图和主题恢复完成后 resolve。
+   */
+  const onRecaptureWithTheme = useCallback(
+    async (theme: TemplateThemeMode) => {
+      if (!iframeRef.current?.contentWindow) {
+        return
+      }
+
+      // 等沙盒下一次 ktr:rendered 再截图；400ms 兜底，消息丢失时也不会卡住弹窗。
+      const waitRendered = new Promise<void>((resolve) => {
+        let timer = 0
+        const cleanup = () => {
+          window.clearTimeout(timer)
+          window.removeEventListener('message', onMessage)
+          resolve()
+        }
+        const onMessage = (event: MessageEvent<SandboxMessage>) => {
+          if (event.origin !== window.location.origin || event.data?.source !== 'ktr-sandbox') {
+            return
+          }
+          if (event.data.type === 'ktr:rendered') {
+            cleanup()
+          }
+        }
+        window.addEventListener('message', onMessage)
+        timer = window.setTimeout(cleanup, 400)
+      })
+
+      // 只临时替换 mode，其余主题 token 沿用当前模板主题设置。
+      postSandbox('ktr:theme', { theme: { ...templateTheme, mode: theme } })
+      await waitRendered
+
+      const blob = await previewPanelRef.current?.captureScreenshot()
+      if (blob) {
+        if (screenshotUrl) {
+          URL.revokeObjectURL(screenshotUrl)
+        }
+        setScreenshotTheme(theme)
+        setScreenshotUrl(URL.createObjectURL(blob))
+      }
+
+      // 截图完成后恢复模板当前主题，画布回到用户实际选择的外观。
+      postSandbox('ktr:theme', { theme: templateTheme })
+    },
+    [postSandbox, templateTheme, screenshotUrl]
+  )
+
   return (
     <div className={shellTheme} data-theme={shellTheme} style={panelThemeStyle}>
+      {/* Toast 挂在根布局 div 上，跟随面板主题换肤；从顶部向下弹出。 */}
+      <Toast.Provider placement="top" />
       <div className="h-screen overflow-hidden bg-background text-foreground transition-colors duration-300">
         <Group className="h-full w-full" orientation="horizontal">
           <Panel defaultSize="18%" id="sidebar" maxSize="28%" minSize="16%">
@@ -627,7 +726,8 @@ const App = () => {
                     </div>
                     <div className="mt-1 truncate text-[11px] leading-tight text-muted">
                       {selectedTemplate?.description ?? status} · 数据：{selectedDataName || 'none'} · 面板：
-                      {shellTheme === 'dark' ? '深色' : '浅色'} · 模板主题：{templateTheme.accent?.toUpperCase() ?? '组件库默认'}
+                      {shellTheme === 'dark' ? '深色' : '浅色'} · 模板：{templateDark ? '深色' : '浅色'} · 模板主题：
+                      {templateAccentOverride?.toUpperCase() ?? '组件库默认'}
                     </div>
                   </div>
 
@@ -649,14 +749,14 @@ const App = () => {
                       </Button>
                     </ButtonGroup>
 
-                    <Button onPress={() => setThemeOpen(true)} size="sm" variant="secondary">
+                    <Button onPress={() => setPanelThemeOpen(true)} size="sm" variant="secondary">
                       <Palette size={16} />
                       面板主题
                     </Button>
 
-                    <Button onPress={() => setThemeOpen(true)} size="sm" variant="primary">
-                      <Palette size={16} />
-                      模板主题色
+                    <Button onPress={() => setTemplateThemeOpen(true)} size="sm" variant="primary">
+                      <Brush size={16} />
+                      模板主题
                     </Button>
                   </Toolbar>
                 </div>
@@ -682,14 +782,27 @@ const App = () => {
       <PanelThemeControls
         isDarkMode={panelDark}
         isMonochromeAccent={!panelAccentOverride}
-        isOpen={themeOpen}
+        isOpen={panelThemeOpen}
         panelAccent={resolvedPanelAccent}
         panelTheme={shellTheme}
         panelThemeStyle={panelThemeStyle}
         onAccentChange={(hex) => setPanelAccentOverride(normalizeHexColor(hex))}
-        onOpenChange={setThemeOpen}
+        onOpenChange={setPanelThemeOpen}
         onResetAccent={() => setPanelAccentOverride(undefined)}
         onThemeModeChange={setPanelDark}
+      />
+
+      <TemplateThemeControls
+        accent={templateAccentOverride ?? '#0a72ef'}
+        isDarkMode={templateDark}
+        isDefaultAccent={!templateAccentOverride}
+        isOpen={templateThemeOpen}
+        panelTheme={shellTheme}
+        panelThemeStyle={panelThemeStyle}
+        onAccentChange={(hex) => setTemplateAccentOverride(normalizeHexColor(hex))}
+        onOpenChange={setTemplateThemeOpen}
+        onResetAccent={() => setTemplateAccentOverride(undefined)}
+        onThemeModeChange={setTemplateDark}
       />
 
       <MockDataEditorModal
@@ -705,11 +818,13 @@ const App = () => {
       />
 
       <ScreenshotPreviewModal
+        contentTheme={screenshotTheme}
         imageUrl={screenshotUrl}
-        open={Boolean(screenshotUrl)}
+        open={screenshotOpen}
         panelTheme={shellTheme}
         panelThemeStyle={panelThemeStyle}
-        onClose={() => setScreenshotUrl(undefined)}
+        onClose={() => setScreenshotOpen(false)}
+        onRecaptureWithTheme={onRecaptureWithTheme}
       />
     </div>
   )

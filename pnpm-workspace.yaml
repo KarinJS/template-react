@@ -1,7 +1,9 @@
 packages:
   - packages/*
+  - packages/core/examples
 allowBuilds:
   esbuild: true
+  node-pty: false
   sharp: true
 minimumReleaseAgeExclude:
   - '@oxfmt/binding-android-arm-eabi@0.62.0'

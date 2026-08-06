@@ -126,7 +126,7 @@ interface TemplateProps<D> {
 }
 ```
 
-每个模板组件都会收到的 props。`ctx` 里：`scale` 是渲染比例（通常为 `1`）；`theme` 是调用方显式提供的主题变量——**框架不发明默认主题色**，没传就是 `undefined`，深色模式读 `ctx.theme?.mode`；`version` 适合展示水印。大多数模板像上面的 `HelloList` 一样只解构 `data`。
+每个模板组件都会收到的 props。`ctx` 里：`scale` 是渲染比例（通常为 `1`）；`theme` 是调用方显式提供的主题变量——**框架不发明默认主题色**，没传就是 `undefined`，深色模式读 `ctx.theme?.mode`。大多数模板像上面的 `HelloList` 一样只解构 `data`。
 
 ## TemplateDef
 

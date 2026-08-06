@@ -44,6 +44,5 @@ export type {
   ResolveConfigOptions,
   TemplateDef,
   TemplateProps,
-  ThemeContext,
-  VersionInfo
+  ThemeContext
 } from './types'

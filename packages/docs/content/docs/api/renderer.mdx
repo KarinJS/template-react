@@ -106,12 +106,10 @@ interface RenderContext {
   scale: number
   /** 调用方显式提供的主题变量；框架不发明默认值。 */
   theme?: Partial<ThemeContext>
-  /** 可选版本信息，适合模板自行展示水印或来源。 */
-  version?: VersionInfo
 }
 ```
 
-第三个参数 `ctx` 的类型是 `RenderContextInput`：所有字段可选，`theme` 只注入显式提供的字段，缺省时组件库自身主题生效；面板里选了「模板主题色」才会下发 `accent` 系列。
+第三个参数 `ctx` 的类型是 `RenderContextInput`：所有字段可选，`theme` 只注入显式提供的字段，缺省时组件库自身主题生效；面板「模板主题」弹窗里显式选择后才会下发。
 
 ### ThemeContext
 
@@ -127,18 +125,6 @@ interface RenderContext {
 | `surface`              | 卡片、面板等表面色。                 |
 | `muted`                | 次要文字颜色。                       |
 | `border`               | 边框、分割线颜色。                   |
-
-### VersionInfo
-
-| 字段               | 说明                                |
-| ------------------ | ----------------------------------- |
-| `plugin`           | 插件短名（生成资源路径用）。        |
-| `pluginName`       | 插件展示名称。                      |
-| `pluginVersion`    | 插件版本号。                        |
-| `releaseType`      | 发布类型：`'Stable' \| 'Preview'`。 |
-| `poweredBy`        | 署名文案。                          |
-| `frameworkVersion` | 模板运行时或框架版本。              |
-| `hasUpdate`        | 是否有可提示的更新。                |
 
 ### RenderPlugin / PluginContext
 

@@ -102,8 +102,11 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
       setIsCapturing(true)
       try {
         const { snapdom } = await import('@zumer/snapdom')
-        const result = await snapdom(target as HTMLElement)
-        return result.toBlob()
+        // embedFonts 内联字体、placeholders 为空元素补占位，fast 关闭保证取全量样式。
+        const result = await snapdom(target as HTMLElement, { embedFonts: true, fast: false, placeholders: true })
+        // toBlob 默认导出 SVG blob：剪贴板按 PNG 解码会报 DataError，canvas 水印也画不出来，
+        // 必须显式指定栅格 PNG。
+        return result.toBlob({ type: 'png' })
       } finally {
         setIsCapturing(false)
       }
@@ -358,7 +361,7 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
               <div
                 className="pointer-events-none absolute inset-0 z-[9999]"
                 style={{
-                  cursor: 'text',
+                  cursor: 'default',
                   userSelect: 'text',
                   WebkitUserSelect: 'text'
                 }}
@@ -392,7 +395,7 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
                   className={panelTheme}
                   data-theme={panelTheme}
                   style={{
-                    cursor: isCtrlPressed ? 'text' : isPanning ? 'grabbing' : 'grab',
+                    cursor: isCtrlPressed ? 'default' : isPanning ? 'grabbing' : 'grab',
                     pointerEvents: hasTemplate ? 'auto' : 'none',
                     userSelect: isCtrlPressed ? 'text' : 'none',
                     WebkitUserSelect: isCtrlPressed ? 'text' : 'none'

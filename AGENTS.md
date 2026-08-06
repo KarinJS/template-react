@@ -44,6 +44,7 @@
 - `pnpm --filter @karinjs/template-react run typecheck`：检查 core 类型。
 - `pnpm --filter @karinjs/template-react run test`：运行 core 单元测试和类型测试。
 - `pnpm --filter @karinjs/template-react run build`：构建 runtime/CLI 和 panel 静态产物。
+- `pnpm --filter @karinjs/template-react run demo`：启动 `packages/core/examples`（7 个示例模板）的开发面板，供面板/约定改动联调。
 - `pnpm --filter template-react-docs run build`：构建文档站静态产物（`out/`）。
 - `pnpm lint` / `pnpm format:check`：全仓 oxlint / oxfmt 检查。
 

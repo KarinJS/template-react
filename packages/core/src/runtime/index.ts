@@ -23,6 +23,5 @@ export type {
   RenderResult,
   TemplateDef,
   TemplateProps,
-  ThemeContext,
-  VersionInfo
+  ThemeContext
 } from '../types'

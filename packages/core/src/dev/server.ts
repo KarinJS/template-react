@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { codeInspectorPlugin } from 'code-inspector-plugin'
 import { createServer, mergeConfig, type UserConfig } from 'vite'
 
 import { resolveKtrViteConfig } from '../config/vite'
@@ -25,8 +26,15 @@ export const createDevServer = async (config: ResolvedKtrConfig): Promise<DevSer
     root: config.root,
     appType: 'custom',
     clearScreen: false,
-    // 内部插件分工：React JSX 编译、Tailwind v4 编译、iframe 沙盒虚拟模块。
-    plugins: [react(), tailwindcss(), sandboxPlugin(config)],
+    // 内部插件分工：code-inspector 源码定位、React JSX 编译、Tailwind v4 编译、iframe 沙盒虚拟模块。
+    plugins: [
+      // code-inspector 必须放在最前（在 react 之前）：它为 JSX 注入 data-insp-path 源码定位属性，
+      // 在 sandbox/面板里 Shift+Alt+点击组件即可跳转 IDE 对应源码；showSwitch 在页面角落显示功能开关。
+      codeInspectorPlugin({ bundler: 'vite', showSwitch: true, hotKeys: ['shiftKey', 'altKey'] }),
+      react(),
+      tailwindcss(),
+      sandboxPlugin(config)
+    ],
     resolve: {
       alias: [tailwindCssAlias]
     },

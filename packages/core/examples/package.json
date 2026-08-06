@@ -1,0 +1,17 @@
+{
+  "name": "ktr-examples",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "ktr sync && ktr dev",
+    "sync": "ktr sync"
+  },
+  "devDependencies": {
+    "@heroui/react": "^3.2.3",
+    "@heroui/styles": "3.2.3",
+    "@karinjs/template-react": "workspace:*",
+    "lucide-react": "^1.28.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}

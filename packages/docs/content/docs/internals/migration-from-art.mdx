@@ -291,7 +291,7 @@ pnpm dev:panel   # 即 ktr sync && ktr dev；pnpm dev 会同时起面板和 kari
 </Accordion>
 <Accordion title="我的模板样式会和开发面板的样式冲突吗？">
 
-不会。模板在 **iframe 沙盒**里渲染（页面里嵌的独立小窗口，里外 CSS 互不影响），面板样式进不来，你的 CSS 也出不去。主题色也走明确通道：框架不发明默认主题色，`ctx.theme` 可选——面板里选了"模板主题色"才下发 accent 系列变量，否则组件库自身主题生效；深色模式读 `ctx.theme.mode`。
+不会。模板在 **iframe 沙盒**里渲染（页面里嵌的独立小窗口，里外 CSS 互不影响），面板样式进不来，你的 CSS 也出不去。主题也走明确通道且与面板外壳完全独立：框架不发明默认主题色，`ctx.theme` 可选——面板"模板主题"弹窗里显式选择后才下发，否则组件库自身主题生效；深色模式读 `ctx.theme.mode`。
 
 </Accordion>
 <Accordion title="旧模板根元素上的 id=“container” 还要保留吗？">
