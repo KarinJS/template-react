@@ -313,6 +313,64 @@ window.addEventListener('message', (event) => {
       renderCurrent()
     }
   }
+  if (type === 'ktr:inspect') {
+    // 面板桥接过来的检查模式开关：直接拨 code-inspector 客户端的持久检查态，
+    // 沙盒内无需再按修饰键（iframe 焦点场景下修饰键事件不一定落在本文档）。
+    const inspector = document.querySelector('code-inspector-component')
+    if (inspector) {
+      inspector.open = Boolean(payload.enabled)
+      if (payload.enabled) {
+        // v1 客户端点选成功后会 autoToggle 自动退出（open 翻 false），但没有对外事件可监听，
+        // 只能轮询同步给面板，避免「客户端已退出、面板还开着」的状态脱节。
+        if (inspectPollTimer === null) {
+          inspectPollTimer = window.setInterval(() => {
+            if (!inspector.open) {
+              window.clearInterval(inspectPollTimer)
+              inspectPollTimer = null
+              inspectHeld = false
+              post('ktr:inspect-hold', { held: false })
+            }
+          }, 250)
+        }
+      } else {
+        if (inspectPollTimer !== null) {
+          window.clearInterval(inspectPollTimer)
+          inspectPollTimer = null
+        }
+        if (typeof inspector.removeCover === 'function') {
+          inspector.removeCover()
+        }
+      }
+    }
+  }
+})
+
+// 沙盒侧也跟踪 Shift+Alt：键盘焦点落在 iframe 内时面板顶层监听收不到按键，
+// 由这里把按住/松开状态上行同步给面板，保证热键路径在两个文档下都可用。
+let inspectHeld = false
+/** 检查模式开启期间轮询客户端 open 态的定时器（autoToggle 退出同步用）。 */
+let inspectPollTimer = null
+const postInspectHeld = (held) => {
+  if (held !== inspectHeld) {
+    inspectHeld = held
+    post('ktr:inspect-hold', { held })
+  }
+}
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    // Esc 总是上行一次退出信号：面板侧无论是按住还是常驻检查模式都应退出。
+    inspectHeld = false
+    post('ktr:inspect-hold', { held: false })
+    return
+  }
+  if (event.shiftKey && event.altKey) {
+    postInspectHeld(true)
+  }
+})
+window.addEventListener('keyup', (event) => {
+  if (event.key === 'Shift' || event.key === 'Alt') {
+    postInspectHeld(false)
+  }
 })
 
 post('ktr:ready', { templates: metadata() })

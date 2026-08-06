@@ -21,6 +21,8 @@ interface PreviewPanelProps {
   contentSize: { width: number; height: number }
   /** 外部触发适应画布的递增信号。 */
   fitRequest: number
+  /** 检查模式（code-inspector 源码定位）：开启时 iframe 接收鼠标事件，沙盒内可点选元素。 */
+  inspectMode: boolean
   /** 面板外壳主题，用于画布提示层，不直接决定用户组件样式。 */
   panelDark: boolean
   /** 同步缩放比例给顶部状态和快捷提示。 */
@@ -29,7 +31,7 @@ interface PreviewPanelProps {
 
 /** 预览画布：承载渲染用户模板的 iframe 沙盒，提供滚轮缩放、拖拽、双击适应和截图能力。 */
 export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
-  ({ iframeRef, scale, hasTemplate, contentSize, fitRequest, panelDark, onScaleChange }, ref) => {
+  ({ iframeRef, scale, hasTemplate, contentSize, fitRequest, inspectMode, panelDark, onScaleChange }, ref) => {
     const previewContentRef = useRef<HTMLDivElement | null>(null)
     const transformWrapperRef = useRef<ReactZoomPanPinchRef | null>(null)
     const containerRef = useRef<HTMLDivElement | null>(null)
@@ -368,6 +370,12 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
               />
             )}
 
+            {inspectMode && (
+              <div className="pointer-events-none absolute top-3 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-border bg-surface px-3 py-1.5 text-[11px] font-medium whitespace-nowrap text-foreground shadow-sm">
+                检查模式：移动选择元素，点击跳转 IDE 源码 · Esc 退出
+              </div>
+            )}
+
             <TransformWrapper
               ref={transformWrapperRef}
               disablePadding
@@ -395,7 +403,7 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
                   className={panelTheme}
                   data-theme={panelTheme}
                   style={{
-                    cursor: isCtrlPressed ? 'default' : isPanning ? 'grabbing' : 'grab',
+                    cursor: isCtrlPressed || inspectMode ? 'default' : isPanning ? 'grabbing' : 'grab',
                     pointerEvents: hasTemplate ? 'auto' : 'none',
                     userSelect: isCtrlPressed ? 'text' : 'none',
                     WebkitUserSelect: isCtrlPressed ? 'text' : 'none'
@@ -408,7 +416,7 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
                     src="/__ktr/sandbox"
                     style={{
                       height: `${contentSize.height}px`,
-                      pointerEvents: isCtrlPressed ? 'auto' : 'none',
+                      pointerEvents: isCtrlPressed || inspectMode ? 'auto' : 'none',
                       width: `${contentSize.width}px`
                     }}
                   />

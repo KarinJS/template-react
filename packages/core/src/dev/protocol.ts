@@ -35,6 +35,7 @@ export type SandboxMessage =
   | { source: 'ktr-sandbox'; type: 'ktr:rendered'; payload: { path: string; elapsed: number; size?: { width: number; height: number } } }
   | { source: 'ktr-sandbox'; type: 'ktr:error'; payload: { path?: string; message: string; stack?: string } }
   | { source: 'ktr-sandbox'; type: 'ktr:hmr'; payload: { path: string } }
+  | { source: 'ktr-sandbox'; type: 'ktr:inspect-hold'; payload: { held: boolean } }
 
 /**
  * 判断任意消息是否来自开发面板。

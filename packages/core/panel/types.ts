@@ -52,3 +52,11 @@ export type SandboxMessage =
       /** 发生热更新的模板路由。 */
       payload: { path: string }
     }
+  | {
+      /** 固定来源标记，面板据此过滤非沙盒消息。 */
+      source: 'ktr-sandbox'
+      /** 沙盒内按住/松开 Shift+Alt 的上行同步（焦点在 iframe 内时顶层监听不到按键）。 */
+      type: 'ktr:inspect-hold'
+      /** held 为 true 表示检查热键正在按住。 */
+      payload: { held: boolean }
+    }

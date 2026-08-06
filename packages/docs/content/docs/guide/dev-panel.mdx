@@ -65,7 +65,12 @@ export default defineConfig({
 
 ### 点击模板跳转 IDE 源码
 
-按住 **Shift+Alt 再点击画布里的组件**，会自动打开你的编辑器（VS Code 等）并定位到该组件在 `template/` 里的源码行号。这是 [code-inspector-plugin](https://github.com/zhangyu1818/code-inspector-plugin) 提供的检查器，只在你本地开发时生效；画布上还有一个悬浮开关可以关闭它。
+模板跑在 iframe 沙盒里，检查器（[code-inspector-plugin](https://github.com/zh-lx/code-inspector)）注入在沙盒内部，因此需要一个"检查模式"桥接来放行鼠标事件。两种进入方式：
+
+- **工具栏「定位」按钮**（常驻开关）：点一下进入检查模式，画布顶部出现提示条；移动鼠标选择元素（显示高亮描边和组件信息），**点击即打开编辑器并定位到源码行号**，点选成功后自动退出。
+- **按住 Shift+Alt**（临时模式）：按住不放即是检查模式，松开任意键退出。
+
+随时可按 **Esc** 退出。只在你本地开发时生效，生产构建不包含检查器。
 
 ### 顶部：工具栏
 

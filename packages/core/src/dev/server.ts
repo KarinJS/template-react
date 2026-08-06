@@ -28,9 +28,11 @@ export const createDevServer = async (config: ResolvedKtrConfig): Promise<DevSer
     clearScreen: false,
     // 内部插件分工：code-inspector 源码定位、React JSX 编译、Tailwind v4 编译、iframe 沙盒虚拟模块。
     plugins: [
-      // code-inspector 必须放在最前（在 react 之前）：它为 JSX 注入 data-insp-path 源码定位属性，
-      // 在 sandbox/面板里 Shift+Alt+点击组件即可跳转 IDE 对应源码；showSwitch 在页面角落显示功能开关。
-      codeInspectorPlugin({ bundler: 'vite', showSwitch: true, hotKeys: ['shiftKey', 'altKey'] }),
+      // code-inspector 必须放在最前（在 react 之前）：它为 JSX 注入 data-insp-path 源码定位属性。
+      // showSwitch 关闭页面角落的悬浮图标——下游统一走面板工具栏的「定位」开关进入检查模式；
+      // hideConsole 关掉它打印的热键提示（热键由面板桥接接管，原提示会误导）。
+      // 注意：面板自身开发（vite.panel.config.ts）仍保留悬浮图标，方便直接点选面板组件。
+      codeInspectorPlugin({ bundler: 'vite', showSwitch: false, hideConsole: true, hotKeys: ['shiftKey', 'altKey'] }),
       react(),
       tailwindcss(),
       sandboxPlugin(config)

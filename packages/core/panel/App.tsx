@@ -1,5 +1,5 @@
 import { Breadcrumbs, Button, ButtonGroup, ScrollShadow, Toast, Toolbar, toast } from '@heroui/react'
-import { Brush, Camera, ExternalLink, Maximize2, Palette, RefreshCw } from 'lucide-react'
+import { Brush, Camera, Crosshair, ExternalLink, Maximize2, Palette, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -182,6 +182,10 @@ const App = () => {
   const [screenshotOpen, setScreenshotOpen] = useState(false)
   /** 当前截图内容的明暗主题，决定弹窗里水印文字深浅和重截开关初始位置。 */
   const [screenshotTheme, setScreenshotTheme] = useState<TemplateThemeMode>('light')
+  // 检查模式（code-inspector 源码定位）：sticky 来自工具栏开关，hold 来自 Shift+Alt 按住。
+  const [inspectSticky, setInspectSticky] = useState(false)
+  const [inspectHold, setInspectHold] = useState(false)
+  const inspectMode = inspectSticky || inspectHold
   const shouldAutoFitRef = useRef(false)
   const routeRequestRef = useRef(0)
   // WebSocket 回调里通过 ref 读取最新模板路由，避免闭包捕获旧的 selectedPath。
@@ -391,6 +395,17 @@ const App = () => {
         setStatus(`${event.data.payload.path} updated`)
         shouldAutoFitRef.current = true
       }
+
+      if (event.data.type === 'ktr:inspect-hold') {
+        // 沙盒上行的检查状态同步：held 为 true 表示沙盒内按住了 Shift+Alt；
+        // 为 false（松开热键 / Esc / 点选成功）时两个来源一起退出，保证面板和客户端不脱节。
+        if (event.data.payload.held) {
+          setInspectHold(true)
+        } else {
+          setInspectHold(false)
+          setInspectSticky(false)
+        }
+      }
     }
 
     window.addEventListener('message', onMessage)
@@ -498,6 +513,41 @@ const App = () => {
     // sandbox ready 和面板主题变化时都同步一次，保证用户组件库主题色即时生效。
     postSandbox('ktr:theme', { theme: templateTheme })
   }, [postSandbox, sandboxReadyTick, templateTheme])
+
+  useEffect(() => {
+    // 检查模式开关同步给沙盒，由沙盒拨 code-inspector 客户端的持久检查态。
+    postSandbox('ktr:inspect', { enabled: inspectMode })
+  }, [postSandbox, sandboxReadyTick, inspectMode])
+
+  // 顶层的 Shift+Alt 按住跟踪：按住即进入检查模式，松开任意键或 Esc 退出；
+  // 焦点在 iframe 内时由沙盒上行的 ktr:inspect-hold 接管同一份 inspectHold 状态。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setInspectHold(false)
+        setInspectSticky(false)
+        return
+      }
+      if (event.shiftKey && event.altKey) {
+        setInspectHold(true)
+      }
+    }
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Shift' || event.key === 'Alt') {
+        setInspectHold(false)
+      }
+    }
+    const onBlur = () => setInspectHold(false)
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
 
   /** 侧边栏选择模板：只写路由，由路由副作用统一驱动切换。 */
   const selectTemplate = (path: string) => {
@@ -749,6 +799,11 @@ const App = () => {
                       </Button>
                     </ButtonGroup>
 
+                    <Button onPress={() => setInspectSticky((sticky) => !sticky)} size="sm" variant={inspectMode ? 'primary' : 'secondary'}>
+                      <Crosshair size={16} />
+                      定位
+                    </Button>
+
                     <Button onPress={() => setPanelThemeOpen(true)} size="sm" variant="secondary">
                       <Palette size={16} />
                       面板主题
@@ -769,6 +824,7 @@ const App = () => {
                   fitRequest={fitRequest}
                   hasTemplate={Boolean(selectedPath)}
                   iframeRef={iframeRef}
+                  inspectMode={inspectMode}
                   panelDark={panelDark}
                   scale={scale}
                   onScaleChange={setScale}
