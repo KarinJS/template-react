@@ -2,6 +2,8 @@
 node_modules/
 dist/
 lib/
+# 但 packages/docs/src/lib 是 Fumadocs 的源码目录（@/lib/* 别名），不是 karin 构建产物。
+!packages/docs/src/lib/
 .next/
 out/
 .ktr/
