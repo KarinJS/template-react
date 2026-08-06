@@ -28,7 +28,7 @@ export default defineTemplate({ name: '问候卡片', component: Card })
 ```ts title="src/utils/render.ts —— karin 胶水层"
 import path from 'node:path'
 import { karinPathHtml, render, segment } from 'node-karin'
-import { createTemplateRenderer } from '@karinjs/template-react/runtime'
+import { createTemplateRenderer } from '@karinjs/template-react'
 
 const renderTemplate = createTemplateRenderer(import.meta.url, {
   renderer: { outputDir: path.join(karinPathHtml, 'my-plugin') }
@@ -56,6 +56,6 @@ export const renderImage = async (templatePath, data, options) => {
 - 子组件与逻辑文件放同目录 `components/`（不参与路由）；TS mock 固定为 `mock.ts`；JSON mock 放 `data/` 子目录。
 - 组件根元素不要写 `id="container"`（截图边界由框架提供）；圆角用根元素 `rounded-*` 类（裁剪配 `overflow-hidden`）。
 - 框架不注入默认主题色；深色模式读 `ctx.theme.mode`。
-- 不要手动 import `.ktr/`——用 `@karinjs/template-react/runtime` 的 `loadTemplateRegistry()` / `loadMockRegistry()` 按约定加载。
+- 不要手动 import `.ktr/`——用 `@karinjs/template-react` 的 `loadTemplateRegistry()` / `loadMockRegistry()` 按约定加载。
 
 更多内容（mock 数据、开发面板、API 参考、art-template 迁移）：**https://karinjs.github.io/template-react/**

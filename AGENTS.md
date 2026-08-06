@@ -37,7 +37,7 @@
 - `.ktr/mock-registry.ts`：TS mock 导出和 JSON 文件清单。
 - `.ktr/registry-types.d.ts`：模块增强声明，把逐路由精确类型注入 `@karinjs/template-react/registry-types`，下游无需 import `.ktr` 即可获得 `renderImage` 的严格类型。
 
-`.ktr/` 类似 Next.js 的 `.next/`，属于框架产物，不要手动编辑，也不要提交。下游源码不要直接 import `.ktr`：运行时注册表用 `@karinjs/template-react/runtime` 的 `loadTemplateRegistry()`/`loadMockRegistry()` 按约定加载，类型由 `registry-types.d.ts` 的模块增强自动提供。
+`.ktr/` 类似 Next.js 的 `.next/`，属于框架产物，不要手动编辑，也不要提交。下游源码不要直接 import `.ktr`：运行时注册表用 `@karinjs/template-react` 的 `loadTemplateRegistry()`/`loadMockRegistry()` 按约定加载，类型由 `registry-types.d.ts` 的模块增强自动提供。
 
 ## 常用命令
 

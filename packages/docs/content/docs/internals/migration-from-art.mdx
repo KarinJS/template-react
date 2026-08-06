@@ -206,7 +206,7 @@ await e.reply(segment.image(`base64://${img}`))
 ```ts title="src/utils/render.ts"
 import path from 'node:path'
 import { karinPathHtml, render, segment, type ImageElement } from 'node-karin'
-import { createTemplateRenderer, type DataOf, type LoadedRegistry } from '@karinjs/template-react/runtime'
+import { createTemplateRenderer, type DataOf, type LoadedRegistry } from '@karinjs/template-react'
 import { dir } from '../dir'
 
 const renderTemplate = createTemplateRenderer(import.meta.url, {

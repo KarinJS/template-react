@@ -114,6 +114,7 @@ art-template 范式的痛点可以归纳为四类：
 - **外部化边界**：只有 `node-karin`（宿主提供）保持外部；`react`/`react-dom`、`@karinjs/template-react` 运行时与组件库全部内联进产物——渲染器与组件共享产物内的同一份 React 副本，hooks 因此正常工作（双副本崩溃只在"组件进包而渲染器外部引用"的半包状态下发生）；下游 `dependencies` 因此可以为空，生产环境零安装；
 - **注册表候选**：`loadTemplateRegistry` 在 `.ktr` 源文件存在时永远优先（开发态源码组件与外部渲染器共享 node_modules 里的同一份 React），`.ktr` 缺失时（生产只发布产物目录）回退到打包的注册表——产物目录不做硬性假设，依次按显式 `bundledDir` 选项 → `package.json` 的 `main` 字段所在目录 → 根目录一层扫描发现，下游可自由选择 outDir；不能按 mtime 取新，否则构建后的开发态会把包内 React 与外部渲染器混成双副本；
 - **主入口保持纯净**：core 的主入口只再导出模板定义（client）和 SSR 运行时（runtime），`createDevServer`/`buildTemplates` 等依赖 Vite 的能力**刻意不进主入口**（CLI 内部走相对路径引用），否则下游 tsdown 打包模板组件时会把 Vite 的动态导入子树发成死 chunk 落进产物目录。配合 `sideEffects: false`，下游产物里一行 Vite 代码都没有；面板则是预构建静态文件（`panel/dist` 随包发布），只被 dev server 从磁盘读取，从不进入 JS 模块图；
+- **发布包依赖极简**：core 自己的 `dependencies` 只留运行引擎——`vite`、`@tailwindcss/vite`（含 `tailwindcss`，Tailwind 编译必须在下游项目内执行）和 `code-inspector-plugin`（它在模块加载时 `readFileSync` 自己包里的客户端脚本，无法内联）；`jiti`/`fast-glob`/`defu`/`consola`/`cac`/`chokidar` 这类纯 JS 小工具在 tsdown 构建时全部内联进 `dist`（只挂在 devDependencies），下游安装时完全不出现；面板的 HeroUI/snapdom 等一堆 UI 库只在 `devDependencies`（面板是预构建静态产物），`react`/`react-dom` 以 `peerDependencies` 表达共享约束；
 
 ## 8. 取舍与展望
 

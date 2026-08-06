@@ -19,14 +19,6 @@
       "browser": "./dist/client.mjs",
       "import": "./dist/index.mjs"
     },
-    "./client": {
-      "types": "./dist/client.d.mts",
-      "import": "./dist/client.mjs"
-    },
-    "./runtime": {
-      "types": "./dist/runtime.d.mts",
-      "import": "./dist/runtime.mjs"
-    },
     "./registry-types": {
       "types": "./dist/registry-types.d.mts",
       "import": "./dist/registry-types.mjs"
@@ -49,13 +41,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "cac": "^7.0.0",
-    "chokidar": "^5.0.0",
     "code-inspector-plugin": "^1.6.6",
-    "consola": "^3.4.2",
-    "defu": "^6.1.7",
-    "fast-glob": "^3.3.3",
-    "jiti": "^2.7.0",
     "tailwindcss": "^4.3.3",
     "vite": "^8.2.0"
   },
@@ -67,7 +53,13 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "@zumer/snapdom": "^2.23.2",
+    "cac": "^7.0.0",
+    "chokidar": "^5.0.0",
     "clsx": "^2.1.1",
+    "consola": "^3.4.2",
+    "defu": "^6.1.7",
+    "fast-glob": "^3.3.3",
+    "jiti": "^2.7.0",
     "lucide-react": "^1.28.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

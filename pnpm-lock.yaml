@@ -228,27 +228,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
-      cac:
-        specifier: ^7.0.0
-        version: 7.0.0
-      chokidar:
-        specifier: ^5.0.0
-        version: 5.0.0
       code-inspector-plugin:
         specifier: ^1.6.6
         version: 1.6.6(supports-color@8.1.1)
-      consola:
-        specifier: ^3.4.2
-        version: 3.4.2
-      defu:
-        specifier: ^6.1.7
-        version: 6.1.7
-      fast-glob:
-        specifier: ^3.3.3
-        version: 3.3.3
-      jiti:
-        specifier: ^2.7.0
-        version: 2.7.0
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -277,9 +259,27 @@ importers:
       '@zumer/snapdom':
         specifier: ^2.23.2
         version: 2.23.2
+      cac:
+        specifier: ^7.0.0
+        version: 7.0.0
+      chokidar:
+        specifier: ^5.0.0
+        version: 5.0.0
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      consola:
+        specifier: ^3.4.2
+        version: 3.4.2
+      defu:
+        specifier: ^6.1.7
+        version: 6.1.7
+      fast-glob:
+        specifier: ^3.3.3
+        version: 3.3.3
+      jiti:
+        specifier: ^2.7.0
+        version: 2.7.0
       lucide-react:
         specifier: ^1.28.0
         version: 1.28.0(react@19.2.8)
