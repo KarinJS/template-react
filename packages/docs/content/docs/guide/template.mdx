@@ -50,7 +50,19 @@ description: 用一个完整示例学会 defineTemplate、目录约定和模板�
 
 `index.tsx` 只放总装逻辑；拆出去的子组件、格式化函数、数据加工等都收进 `components/`：
 
-```tsx title="template/hello/card/index.tsx"
+```tsx title="template/hello/card/index.tsx" twoslash
+// @filename: ./components/badge.tsx
+/** 示例徽标子组件。 */
+export default function Badge({ label }: { label: string }) {
+  return <span>{label}</span>
+}
+// @filename: ./components/format.ts
+/** 示例分数格式化函数。 */
+export function formatScore(score: number): string {
+  return score.toFixed(1)
+}
+// @filename: ./index.tsx
+// ---cut---
 import Badge from './components/badge'
 import { formatScore } from './components/format'
 ```
@@ -61,7 +73,7 @@ import { formatScore } from './components/format'
 
 ### 第一步：定义数据结构
 
-```tsx title="template/hello/card/index.tsx"
+```tsx title="template/hello/card/index.tsx" twoslash
 /** Hello 卡片模板的数据结构，适合固定宽度的信息摘要截图。 */
 type HelloCardData = {
   /** 主标题。 */
@@ -77,7 +89,17 @@ type HelloCardData = {
 
 ### 第二步：写组件
 
-```tsx title="template/hello/card/index.tsx"
+```tsx title="template/hello/card/index.tsx" twoslash
+/** Hello 卡片模板的数据结构，适合固定宽度的信息摘要截图。 */
+type HelloCardData = {
+  /** 主标题。 */
+  title: string
+  /** 可选副标题。 */
+  subtitle?: string
+  /** 展示在卡片内容区的键值对。 */
+  items: Array<{ label: string; value: string }>
+}
+// ---cut---
 import { Card, Chip } from '@heroui/react'
 import { Braces, Layers3, Sparkles } from 'lucide-react'
 
@@ -124,7 +146,22 @@ const HelloCard = ({ data }: TemplateProps<HelloCardData>) => (
 
 ### 第三步：用 defineTemplate 导出
 
-```tsx title="template/hello/card/index.tsx"
+```tsx title="template/hello/card/index.tsx" twoslash
+import { defineTemplate } from '@karinjs/template-react'
+import type { FC } from 'react'
+import type { TemplateProps } from '@karinjs/template-react'
+
+/** Hello 卡片模板的数据结构，适合固定宽度的信息摘要截图。 */
+type HelloCardData = {
+  /** 主标题。 */
+  title: string
+  /** 可选副标题。 */
+  subtitle?: string
+  /** 展示在卡片内容区的键值对。 */
+  items: Array<{ label: string; value: string }>
+}
+declare const HelloCard: FC<TemplateProps<HelloCardData>>
+// ---cut---
 export default defineTemplate({
   name: '问候卡片',
   description: 'HeroUI + lucide-react 截图卡片',
@@ -138,7 +175,18 @@ export default defineTemplate({
 - `component`：上一步写的组件。
 - `validate`（可选）：运行时数据校验函数。数据来源不可靠（用户输入、动态路由）时，SSR 渲染前先调用它检查，校验失败直接报错而不是渲染出坏图：
 
-```tsx title="template/mobile/story/index.tsx"
+```tsx title="template/mobile/story/index.tsx" twoslash
+import { defineTemplate } from '@karinjs/template-react'
+import type { FC } from 'react'
+import type { TemplateProps } from '@karinjs/template-react'
+
+/** 竖屏故事图的数据结构。 */
+interface MobileStoryData {
+  title: string
+  bullets: string[]
+}
+declare const MobileStory: FC<TemplateProps<MobileStoryData>>
+// ---cut---
 export default defineTemplate({
   name: '竖屏故事图',
   description: '1080x1920 竖屏手机故事图',
@@ -162,7 +210,19 @@ export default defineTemplate({
 - `ctx.theme`（可选）：调用方显式提供的主题变量，类型是 `Partial<ThemeContext>`（每个字段都可能有也可能没有）。包含 `mode`（`'light'` 或 `'dark'`）和 `accent`、`background` 等颜色。**框架不发明默认主题色**，面板"模板主题"弹窗里显式选择后才会下发。
 - `ctx.scale`：渲染比例，截图模板通常为 `1`，不用理会。
 
-```tsx
+```tsx twoslash
+import type { TemplateProps } from '@karinjs/template-react'
+
+/** Hello 卡片模板的数据结构，适合固定宽度的信息摘要截图。 */
+type HelloCardData = {
+  /** 主标题。 */
+  title: string
+  /** 可选副标题。 */
+  subtitle?: string
+  /** 展示在卡片内容区的键值对。 */
+  items: Array<{ label: string; value: string }>
+}
+// ---cut---
 const HelloCard = ({ data, ctx }: TemplateProps<HelloCardData>) => {
   // theme 可能整个不存在，必须用可选链；isDark 为 true 时可调整深色下表现不好的元素
   const isDark = ctx.theme?.mode === 'dark'

@@ -7,7 +7,7 @@ description: karin.template.ts 的全部配置项，以及 ktr sync / dev / buil
 
 `karin.template.ts` 放在项目根目录，只配置工具链自身行为；模板、mock、JSON 数据按 `template/` 约定自动发现，**不要**手写模板清单。启动时按 `.ts` → `.mts` → `.js` → `.mjs` 顺序查找 `karin.template` 配置，取第一个存在的。用 `defineConfig` 包裹获得类型提示：
 
-```ts title="karin.template.ts"
+```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
 
 export default defineConfig({
@@ -43,7 +43,9 @@ export default defineConfig({
 <Tabs items={['对象形式', '函数形式']}>
 <Tab value="对象形式">
 
-```ts
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
 export default defineConfig({
   vite: {
     resolve: { alias: { '@': '/src' } }
@@ -56,7 +58,9 @@ export default defineConfig({
 </Tab>
 <Tab value="函数形式">
 
-```ts
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
 export default defineConfig({
   vite: ({ command, mode, config }) => ({
     define: { __DEV__: command === 'serve' }
@@ -105,6 +109,6 @@ pnpm ktr build --outDir dist/template
 构建模板 CSS：先再次 `sync`，再把 `cssEntry` 编译为 `<outDir>/style.css`（引用资源进 `<outDir>/assets`）。**成功后你会看到**：终端输出构建统计，`<outDir>/style.css` 已生成。
 
 <Callout>
-  用 tsdown 打包的项目（`pnpm build` = `ktr sync && tsdown`）不用单独跑 `ktr build`：CSS 由 `@bosh-code/tsdown-plugin-tailwindcss` 在 tsdown
-  管线里编译为 `lib/style.css` 随包发布。
+  用 Vite 打包的项目需要这一步编译 CSS（Node 库模式的 Vite 不产 CSS），产物 `lib/style.css` 正好是渲染器约定位置；用 tsdown
+  打包的项目不用单独跑——CSS 由 tailwind 插件在管线内编译。两种方式见 [构建与打包](/docs/guide/building)。
 </Callout>

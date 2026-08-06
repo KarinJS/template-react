@@ -21,7 +21,12 @@ description: 把模板渲染接进 Karin 机器人——装配渲染器、封装
 
 `src/utils/render.ts` 的前半部分：
 
-```ts title="src/utils/render.ts"
+```ts title="src/utils/render.ts" twoslash
+// @filename: ./src/dir.ts
+/** 插件目录常量，见 src/dir.ts。 */
+export const dir = { pluginName: 'karin-plugin-example' }
+// @filename: ./src/utils/render.ts
+// ---cut---
 import path from 'node:path'
 
 import { karinPathHtml, render, segment, type ImageElement } from 'node-karin'
@@ -46,7 +51,15 @@ const renderTemplate = createTemplateRenderer(import.meta.url, {
 
 同一个文件的后半部分，把「渲染 + 截图 + 消息封装」收成一个函数：
 
-```ts title="src/utils/render.ts"
+```ts title="src/utils/render.ts" twoslash
+import { render, segment, type ImageElement } from 'node-karin'
+import { createTemplateRenderer, type DataOf, type LoadedRegistry } from '@karinjs/template-react'
+
+/** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
+type Registry = LoadedRegistry
+declare const dir: { pluginName: string }
+declare const renderTemplate: ReturnType<typeof createTemplateRenderer>
+// ---cut---
 export const renderImage = async <K extends keyof Registry & string>(
   templatePath: K,
   data: DataOf<Registry[K]>,
@@ -92,7 +105,12 @@ export const renderImage = async <K extends keyof Registry & string>(
 
 ### 指令一：`#模板列表`
 
-```ts title="src/apps/template.ts"
+```ts title="src/apps/template.ts" twoslash
+import { karin } from 'node-karin'
+import { type LoadedRegistry } from '@karinjs/template-react'
+
+declare const templatesPromise: Promise<LoadedRegistry>
+// ---cut---
 export const templateList = karin.command('^(#)?模板列表$', async (event) => {
   const templates = await templatesPromise
   const lines = Object.keys(templates).map((route) => {
@@ -108,7 +126,18 @@ export const templateList = karin.command('^(#)?模板列表$', async (event) =>
 
 ### 指令二：测试模板（静态类型安全示例）
 
-```ts title="src/apps/template.ts"
+```ts title="src/apps/template.ts" twoslash
+import { karin, type ImageElement } from 'node-karin'
+import { type DataOf, type LoadedRegistry } from '@karinjs/template-react'
+
+/** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
+type Registry = LoadedRegistry
+declare const renderImage: <K extends keyof Registry & string>(
+  templatePath: K,
+  data: DataOf<Registry[K]>,
+  options?: Record<string, unknown>
+) => Promise<ImageElement[]>
+// ---cut---
 export const templateTest = karin.command('测试模板hello/card', async (event) => {
   const images = await renderImage('hello/card', {
     title: 'Karin Template React',
@@ -130,7 +159,16 @@ export const templateTest = karin.command('测试模板hello/card', async (event
 
 ### 指令三：`#渲染模板 <路由>`（动态路由示例）
 
-```ts title="src/apps/template.ts"
+```ts title="src/apps/template.ts" twoslash
+import { karin, type ImageElement } from 'node-karin'
+import { type DataOf, type LoadedRegistry } from '@karinjs/template-react'
+
+/** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
+type Registry = LoadedRegistry
+declare const templatesPromise: Promise<LoadedRegistry>
+declare function resolveSampleData(route: string): unknown
+declare const renderImage: <K extends keyof Registry & string>(templatePath: K, data: DataOf<Registry[K]>) => Promise<ImageElement[]>
+// ---cut---
 export const templateRender = karin.command('^(#)?渲染模板', async (event) => {
   const route = event.msg.replace(/^(#)?渲染模板/, '').trim()
   const templates = await templatesPromise
@@ -159,8 +197,8 @@ export const templateRender = karin.command('^(#)?渲染模板', async (event) =
 ## 依赖放在哪里
 
 <Callout type="error">
-  **全部放进 `devDependencies`，由 tsdown 整体打进 `lib/`**——包括 `react`/`react-dom` 和 `@karinjs/template-react` 运行时。 React 的 hooks
+  **全部放进 `devDependencies`，构建时整体打进 `lib/`**——包括 `react`/`react-dom` 和 `@karinjs/template-react` 运行时。 React 的 hooks
   依赖全局唯一的 dispatcher（「调度总台」），整包后渲染器和组件共用产物内的同一份 React，SSR 才能正常工作。
   真正会崩的是**只包一半**：组件打进了包、渲染器却外部引用（或反过来），两份 React 并存，hooks 一执行就是 `Invalid hook call`。
-  唯一永远外部化的是 `node-karin`（宿主 karin 提供）。
+  保持外部的只有两个：`node-karin`（宿主 karin 提供）和 `jiti`（它按相对路径读自己包里的文件，打进包里必崩）。
 </Callout>

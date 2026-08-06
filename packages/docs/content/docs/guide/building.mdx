@@ -1,0 +1,152 @@
+---
+title: 构建与打包
+description: 把含 JSX/TS/CSS 的插件项目打包成 karin 生产可用的纯 JS 产物：推荐 Vite，备选 tsdown，附完整实测配置。
+---
+
+# 构建与打包
+
+开发时你写的是 TypeScript 和 JSX（`.tsx` 组件），还有一份 Tailwind CSS——这些**浏览器侧的写法，Node 直接跑不了**。karin 生产环境只加载纯 JS，所以发布前必须构建一次。
+
+构建要产出三样东西：
+
+| 产物          | 来源                                | 去向            |
+| ------------- | ----------------------------------- | --------------- |
+| 插件逻辑 JS   | `src/**/*.ts`                       | `lib/`          |
+| 模板注册表 JS | `.ktr/*.ts`（先跑 `ktr sync` 生成） | `lib/`          |
+| 模板样式 CSS  | `template/style.css`                | `lib/style.css` |
+
+<Callout type="warn">
+  **顺序很重要**：先 `ktr sync` 生成 `.ktr` 注册表，再打包。注册表是打包入口的一部分，漏了它构建出来的包找不到任何模板。
+</Callout>
+
+## 方式一：Vite（推荐）
+
+<Callout type="info">
+  **为什么推荐 Vite**：`ktr dev` 的开发服务器就是 Vite——JSX 编译、Tailwind 编译、沙盒全跑在它上面。用 Vite
+  打包，生产和开发是**同一条管线**，不会出现"开发时好好的、换个打包器就炸"的差异。而且安装 `@karinjs/template-react` 时 `vite` 和
+  `@tailwindcss/vite` 已经作为依赖装好了，**不用再装任何打包器**。
+</Callout>
+
+新建 `vite.config.ts`：
+
+```ts title="vite.config.ts" twoslash
+import tailwindcss from '@tailwindcss/vite'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  // 整包模式：除 node-karin（宿主提供）和 jiti 外全部内联，生产环境零安装。
+  // jiti 必须外部化——它按相对路径读自己包里的文件，打进包里必崩。
+  ssr: {
+    noExternal: true,
+    external: ['node-karin', 'jiti']
+  },
+  build: {
+    // 产物跑在 karin 宿主（Node），不是浏览器
+    ssr: true,
+    target: 'node18',
+    outDir: 'lib',
+    lib: {
+      entry: {
+        // 你的插件入口，按需增删（karin 约定 lib/apps 结构）
+        'apps/template': 'src/apps/template.ts',
+        // .ktr 注册表是固定入口，先跑 ktr sync 生成
+        'template-registry': '.ktr/template-registry.ts',
+        'mock-registry': '.ktr/mock-registry.ts'
+      },
+      formats: ['es']
+    },
+    rollupOptions: {
+      external: [/^node:/, 'node-karin']
+    }
+  }
+})
+```
+
+构建命令（写进 `package.json` 的 scripts）：
+
+```bash
+ktr sync && vite build && ktr build --outDir lib
+```
+
+<Callout>
+  **为什么 CSS 单独一步**：Vite 的 Node 库模式（`ssr: true`）不产出 CSS 文件，所以样式交给 `ktr build` 编译（它内部也是 Vite
+  管线，不算换工具）。产物正好是渲染器约定查找的 `lib/style.css`。
+</Callout>
+
+## 方式二：tsdown（备选）
+
+tsdown 基于 rolldown，速度快，**一条命令**搞定 JS 和 CSS。代价是多装两个开发依赖，并且多一套和开发期不同的管线。
+
+```bash
+pnpm add -D tsdown @bosh-code/tsdown-plugin-tailwindcss
+```
+
+新建 `tsdown.config.ts`：
+
+```ts title="tsdown.config.ts" twoslash
+import { tailwindPlugin } from '@bosh-code/tsdown-plugin-tailwindcss'
+import { defineConfig } from 'tsdown'
+
+export default defineConfig({
+  entry: {
+    // 注意：入口路径必须带 ./ 前缀，否则会被当成 npm 包名解析
+    'apps/template': './src/apps/template.ts',
+    'template-registry': './.ktr/template-registry.ts',
+    'mock-registry': './.ktr/mock-registry.ts',
+    // CSS 通过一个 JS 入口引入（框架会把编译结果输出为 lib/style.css）
+    'template/style': './src/style.ts'
+  },
+  plugins: [tailwindPlugin()],
+  format: ['esm'],
+  platform: 'node',
+  target: 'node18',
+  outDir: 'lib',
+  // 注册表发现约定按 .js 文件名查找，ESM 产物也要固定为 .js，不要用默认的 .mjs
+  outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+  deps: {
+    // 只有 node-karin（宿主提供）和 jiti（同上，不能内联）保持外部
+    neverBundle: ['node-karin', 'jiti']
+  }
+})
+```
+
+上面的样式入口 `src/style.ts` 只有一行：
+
+```ts title="src/style.ts" twoslash
+// @filename: globals.d.ts
+declare module '*.css'
+// ---cut---
+import '../template/style.css'
+```
+
+构建命令：
+
+```bash
+ktr sync && tsdown
+```
+
+## 验证构建结果
+
+构建完成后，在 karin 里触发一次你的模板渲染命令，能正常出图就说明链路完整。
+
+<Callout type="warn">
+  **三个最常见的坑**：① 忘了先 `ktr sync`，包里一个模板都没有；② 把 `node-karin` 打进产物——它必须由 karin 宿主提供，打进去会冲突；③ 把
+  `jiti` 打进产物——它按相对路径读自己包里的文件，打包后路径失效必崩。两套配置里都已经替你处理好了。
+</Callout>
+
+## 渲染器怎么找到这些产物
+
+`createTemplateRenderer` 按约定自动发现，不需要你配置：
+
+- **注册表**：开发态永远优先 `.ktr` 源文件（配合 dev server 实时刷新）；`.ktr` 不存在时（生产），按 `bundledDir` 选项 → `package.json` 的 `main` 所在目录 → 根目录一层扫描来发现打包产物。
+- **样式**：开发态读 `node_modules/.cache/ktr/style.css`（dev server 实时编译），生产读 `lib/style.css`。
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+// 产物目录叫别的名字时，用 bundledDir 显式告诉它
+const renderTemplate = createTemplateRenderer(import.meta.url, { bundledDir: 'lib' })
+//    ^?
+```

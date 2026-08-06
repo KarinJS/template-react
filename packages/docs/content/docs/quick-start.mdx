@@ -30,24 +30,40 @@ description: 10 分钟，从 Karin 官方 TS 插件模板到用 React 模板发�
 在你的插件项目根目录执行（全部装为开发依赖，构建时会一并打进产物）：
 
 ```bash
-pnpm add -D @karinjs/template-react react react-dom @types/react @types/react-dom tsdown @tsdown/css @bosh-code/tsdown-plugin-tailwindcss
+pnpm add -D @karinjs/template-react react react-dom @types/react @types/react-dom @vitejs/plugin-react
 ```
 
 - `react` / `react-dom`：模板组件的运行时（SSR 渲染要用）。
-- `@karinjs/template-react`：本工具链，提供 `ktr` 命令和渲染器。
-- 其余是构建和类型需要的开发依赖。
+- `@karinjs/template-react`：本工具链，提供 `ktr` 命令和渲染器；打包用的 Vite 和 Tailwind 插件已经随它装好。
+- `@vitejs/plugin-react`：构建时编译 JSX 用（开发期的 `ktr dev` 用不到你项目里的它）。
 
 <Callout type="warn">
-  **所有依赖都放 `devDependencies`**——tsdown 会把它们全部打进 `lib/`（含 react 和本工具包的运行时），发布后生产环境零安装。关键前提：core 的运行时和模板组件必须在**同一份产物**里，这样包内只有一份 React 副本，hooks 才能正常工作；反过来说，如果你把 `@karinjs/template-react` 改成外部引用，那 react/react-dom 就必须跟着外部化（放 `dependencies`），两半各一份 React 会直接崩。
+  **所有依赖都放 `devDependencies`**——构建会把它们全部打进 `lib/`（含 react 和本工具包的运行时），发布后生产环境零安装。关键前提：core 的运行时和模板组件必须在**同一份产物**里，这样包内只有一份 React 副本，hooks 才能正常工作；反过来说，如果你把 `@karinjs/template-react` 改成外部引用，那 react/react-dom 就必须跟着外部化（放 `dependencies`），两半各一份 React 会直接崩。
 </Callout>
 </Step>
 
 <Step>
-### 第 2 步：创建配置文件
+### 第 2 步：配置 tsconfig 和 karin.template.ts
 
-在项目根目录新建 `karin.template.ts`：
+先打开项目里已有的 `tsconfig.json`，在 `compilerOptions` 里加上 `jsx`：
 
-```ts title="karin.template.ts"
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  }
+}
+```
+
+<Callout type="error">
+  **`jsx: "react-jsx"` 是写 `.tsx` 模板的前提**，少了它编辑器里 JSX 全是红线。这个模式是"自动运行时"，组件里不需要 `import
+  React`。另外：如果你的 `tsconfig.json` 写了 `include`，确认它覆盖 `src`、`template`、`.ktr` 三个目录——`renderImage` 的逐路由精确类型来自
+  `.ktr/registry-types.d.ts` 的模块增强，不被 include 就失效了；没写 `include` 则默认全包含，不用动。
+</Callout>
+
+然后在项目根目录新建 `karin.template.ts`：
+
+```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
 
 // 这里只保留 @karinjs/template-react 自身配置；模板、mock 和 JSON 数据全部按 template/ 约定自动发现。
@@ -60,7 +76,7 @@ export default defineConfig({
 })
 ```
 
-**成功后**：项目里多了一个配置文件。暂时没有任何输出，这是正常的。
+**成功后**：`tsconfig.json` 里多了 `jsx` 一项，项目根目录多了 `karin.template.ts`。暂时没有任何可见效果，这是正常的。
 
 </Step>
 
@@ -69,7 +85,7 @@ export default defineConfig({
 
 创建文件 `template/hello/card/index.tsx`（注意目录层级，一个都不能错）：
 
-```tsx title="template/hello/card/index.tsx"
+```tsx title="template/hello/card/index.tsx" twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
 /** 卡片模板的数据结构。 */
@@ -152,7 +168,12 @@ npx ktr dev
 
 创建 `src/utils/render.ts`（胶水层，把模板渲染和 Karin 截图接起来）：
 
-```ts title="src/utils/render.ts"
+```ts title="src/utils/render.ts" twoslash
+// @filename: ./src/dir.ts
+/** 插件目录常量，见 src/dir.ts。 */
+export const dir = { pluginName: 'karin-plugin-example' }
+// @filename: ./src/utils/render.ts
+// ---cut---
 import path from 'node:path'
 
 import { karinPathHtml, render, segment, type ImageElement } from 'node-karin'
@@ -198,7 +219,25 @@ export const renderImage = async <K extends keyof Registry & string>(
 
 再创建一个机器人指令 `src/apps/template.ts`：
 
-```ts title="src/apps/template.ts"
+```ts title="src/apps/template.ts" twoslash
+// @filename: ./src/utils/render.ts
+import type { ImageElement } from 'node-karin'
+
+/** renderImage 桩：与 src/utils/render.ts 的真实签名一致（hello/card 的数据结构）。 */
+export declare const renderImage: (
+  templatePath: 'hello/card',
+  data: {
+    /** 主标题。 */
+    title: string
+    /** 副标题。 */
+    subtitle?: string
+    /** 键值对列表。 */
+    items: Array<{ label: string; value: string }>
+  },
+  options?: Record<string, unknown>
+) => Promise<ImageElement[]>
+// @filename: ./src/apps/template.ts
+// ---cut---
 import { karin } from 'node-karin'
 
 import { renderImage } from '../utils/render'
@@ -227,71 +266,18 @@ export const templateTest = karin.command('^(#)?测试模板$', async (event) =>
 ### 第 7 步：生产构建
 
 ```bash
-pnpm build
+ktr sync && vite build && ktr build --outDir lib
 ```
 
-`build` 会依次执行 `ktr sync`（刷新注册表）和 `tsdown`（把插件逻辑、模板组件、注册表、Tailwind CSS 全部打进 `lib/`）。
+- `ktr sync`：刷新 `.ktr` 注册表（打包入口的一部分，别忘了）。
+- `vite build`：把插件逻辑、模板组件、注册表全部打进 `lib/`。
+- `ktr build --outDir lib`：编译 Tailwind CSS 到 `lib/style.css`（渲染器按约定找它）。
 
-**成功后**：`lib/` 里能看到 `template-registry.js`、`mock-registry.js`、`style.css` 和 `apps/*.js`。发布后的插件不需要 `template/` 源码目录也能渲染。
-
-<Callout type="info">
-  产物目录不是写死的：`outDir` 改成什么名字都可以，渲染器会按 `package.json` 的 `main` 字段自动发现（极端布局可用 `bundledDir`
-  选项显式指定）。
-</Callout>
+**成功后**：`lib/` 里能看到 `apps/*.js`、`template-registry.js`、`mock-registry.js`、`style.css`。发布后的插件不需要 `template/` 源码目录也能渲染。
 
 <Callout type="info">
-  第一次接入时，建议直接复制下面这份完整的构建配置（`tsdown.config.ts`），它包含扁平入口收集、注册表打包和 Tailwind CSS 插件：
+  `vite.config.ts` 还没配过？去 [构建与打包](/docs/guide/building) 复制完整配置（含逐段注释），那里也有 tsdown 备选方案和最常见的三个坑。
 </Callout>
-
-```ts title="tsdown.config.ts"
-import fs from 'node:fs'
-import path from 'node:path'
-import { builtinModules } from 'node:module'
-
-import { tailwindPlugin } from '@bosh-code/tsdown-plugin-tailwindcss'
-import { defineConfig } from 'tsdown'
-
-/** 收集某个目录下的 .ts 文件为 tsdown 入口（保持 lib 输出扁平结构）。 */
-const collectEntries = (dir: string, prefix = ''): Record<string, string> => {
-  if (!fs.existsSync(dir)) {
-    return {}
-  }
-
-  const entries: Record<string, string> = {}
-  for (const file of fs.readdirSync(dir)) {
-    if (file.endsWith('.ts')) {
-      entries[path.join(prefix, file.replace(/\.ts$/, ''))] = path.join(dir, file)
-    }
-  }
-  return entries
-}
-
-const entry = {
-  ...collectEntries('src'),
-  ...collectEntries('src/apps', 'apps'),
-  // 隐藏目录用绝对路径，rolldown 对点开头目录的相对路径解析不到。
-  'template-registry': path.resolve('.ktr/template-registry.ts'),
-  'mock-registry': path.resolve('.ktr/mock-registry.ts'),
-  // 模板 Tailwind CSS 一并交给 tsdown 编译，产物 lib/style.css 随包发布。
-  style: path.resolve('template/style.css')
-}
-
-export default defineConfig({
-  entry,
-  plugins: [tailwindPlugin()],
-  target: 'node18',
-  outDir: 'lib',
-  // 输出统一使用 .js 扩展名，保持 package.json main 与注册表加载约定（lib/*.js）不变。
-  outExtensions: () => ({ js: '.js' }),
-  dts: false,
-  deps: {
-    // 只有 node-karin 由宿主 karin 应用提供，永远外部化；
-    // 其余全部打进 lib——包括 react/react-dom 和 @karinjs/template-react 运行时，
-    // 渲染器与组件在同一份产物内共享同一个 React 副本，SSR hooks 才能正常工作。
-    neverBundle: [...builtinModules, ...builtinModules.map((mod) => `node:${mod}`), /^node-karin/]
-  }
-})
-```
 
 </Step>
 </Steps>

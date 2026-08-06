@@ -17,7 +17,14 @@ description: 三类数据源（TS mock、JSON mock、真实渲染捕获）的区
 
 ## TS mock：mock.ts
 
-```ts title="template/hello/list/mock.ts"
+```ts title="template/hello/list/mock.ts" twoslash
+// @filename: ./index.ts
+export interface HelloListData {
+  title: string
+  users: Array<{ name: string; role: string; score: number }>
+}
+// @filename: ./mock.ts
+// ---cut---
 import type { HelloListData } from './index'
 
 /** 列表示例的 TS mock，适合在插件代码里直接复用类型安全的数据。 */

@@ -33,7 +33,7 @@ pnpm add -D @karinjs/template-react react react-dom @types/react @types/react-do
 ```
 
 <Callout type="warn">
-  全部放 `devDependencies`：tsdown 会把它们（含 react 和本工具包运行时）整体打进产物，生产环境零安装。
+  全部放 `devDependencies`：构建会把它们（含 react 和本工具包运行时）整体打进产物，生产环境零安装。
   关键是渲染器和组件必须同在一份产物里（包内只有一份 React 副本，hooks 才正常）；把 core 改成外部引用时，react/react-dom 才需要跟着放进
   `dependencies`。
 </Callout>
@@ -45,9 +45,11 @@ pnpm add -D @karinjs/template-react react react-dom @types/react @types/react-do
 
 ### 新建 karin.template.ts
 
-在项目根目录新建 `karin.template.ts`。它只配置工具链自身行为，模板清单不用手写——模板、mock、JSON 数据全部按 `template/` 目录约定自动发现：
+先在 `tsconfig.json` 的 `compilerOptions` 里补一项 `"jsx": "react-jsx"`（写 `.tsx` 组件的前提，自动运行时，组件里不需要 `import React`）；如果配置了 `include`，确认它覆盖 `src`、`template`、`.ktr` 三个目录。
 
-```ts title="karin.template.ts"
+然后在项目根目录新建 `karin.template.ts`。它只配置工具链自身行为，模板清单不用手写——模板、mock、JSON 数据全部按 `template/` 目录约定自动发现：
+
+```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
 
 export default defineConfig({
@@ -89,7 +91,7 @@ export default defineConfig({
 </Tab>
 <Tab value="JSX 组件（新写法）">
 
-```tsx title="template/hello/card/index.tsx"
+```tsx title="template/hello/card/index.tsx" twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
 /** 卡片模板的数据结构。 */
@@ -152,7 +154,14 @@ art 语法和 JSX 的对照表，改写时照着查：
 
 - **TS mock**：固定文件名 `mock.ts`，具名导出，可在插件代码里 import 复用；面板中只读。
 
-```ts title="template/hello/list/mock.ts"
+```ts title="template/hello/list/mock.ts" twoslash
+// @filename: ./index.ts
+export interface HelloListData {
+  title: string
+  users: Array<{ name: string; role: string; score: number }>
+}
+// @filename: ./mock.ts
+// ---cut---
 import type { HelloListData } from './index'
 
 export const team = {
@@ -188,7 +197,11 @@ export const team = {
 
 旧写法是 `render.render` 直接吃模板文件加 data，art-template 在内部做文本替换：
 
-```ts
+```ts twoslash
+import { render, segment } from 'node-karin'
+
+declare const e: { reply: (content: unknown) => Promise<unknown> }
+// ---cut---
 // 旧写法：file 指向 .html/.art 模板，data 由 art-template 注入
 const img = await render.render({
   name: 'my-plugin/hello-card',
@@ -203,7 +216,12 @@ await e.reply(segment.image(`base64://${img}`))
 
 新写法先在工具文件里用 `createTemplateRenderer` 一行装配（包根定位、配置解析、注册表加载、CSS 定位、捕获目录全部自动），只需指定 karin 领域的输出目录：
 
-```ts title="src/utils/render.ts"
+```ts title="src/utils/render.ts" twoslash
+// @filename: ./src/dir.ts
+/** 插件目录常量，见 src/dir.ts。 */
+export const dir = { pluginName: 'karin-plugin-example' }
+// @filename: ./src/utils/render.ts
+// ---cut---
 import path from 'node:path'
 import { karinPathHtml, render, segment, type ImageElement } from 'node-karin'
 import { createTemplateRenderer, type DataOf, type LoadedRegistry } from '@karinjs/template-react'
@@ -243,7 +261,18 @@ export const renderImage = async <K extends keyof Registry & string>(
 
 指令代码里就是一行调用（类型闭环：路由参数有字面量补全，`data` 类型自动跟着对应模板的 `defineTemplate` 走，写错保存时就报错）：
 
-```ts title="src/apps/template.ts"
+```ts title="src/apps/template.ts" twoslash
+import { karin, type ImageElement } from 'node-karin'
+import { type DataOf, type LoadedRegistry } from '@karinjs/template-react'
+
+/** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
+type Registry = LoadedRegistry
+declare const renderImage: <K extends keyof Registry & string>(
+  templatePath: K,
+  data: DataOf<Registry[K]>,
+  options?: Record<string, unknown>
+) => Promise<ImageElement[]>
+// ---cut---
 export const templateTest = karin.command('测试模板hello/card', async (event) => {
   const images = await renderImage('hello/card', {
     title: 'Karin Template React',
@@ -299,13 +328,13 @@ pnpm dev:panel   # 即 ktr sync && ktr dev；pnpm dev 会同时起面板和 kari
 删掉。新方案里截图边界由框架的 HtmlWrapper 统一提供（同样是 `id="container"` 的 div，`renderImage` 的 `selector` 指的仍是它），你再写一个就成了嵌套边界，截图范围可能不对。圆角截图给根元素加 `rounded-*`（需要裁剪时配合 `overflow-hidden`）即可。
 
 </Accordion>
-<Accordion title="生产构建（pnpm build）和旧方案有什么不同？">
+<Accordion title="生产构建和旧方案有什么不同？">
 
 旧方案的 `.html` 原样发布即可；新方案的模板是 TS 组件，发布前要编译。要点有三个：
 
-1. **`.ktr` 注册表必须一并打包**。`pnpm build` 就是 `ktr sync && tsdown`：先生成 `.ktr` 两个注册表，再把它们作为入口打进 `lib/`——生产环境的 SSR 直接加载 `lib/` 下的注册表，不再依赖源码目录。
-2. **整包进 `lib/`，包括 react 和本工具包运行时**：`tsdown.config.ts` 里 `neverBundle` 只留 `node-karin`（宿主提供）和 node 内建模块；渲染器和组件同在一份产物中，包内只有一份 React 副本，hooks 才正常。切记不要"只包一半"（组件进包而渲染器外部引用），那才会出现双 React 崩溃。
-3. **CSS 在 tsdown 管线内编译**：`template/style.css` 由 `@bosh-code/tsdown-plugin-tailwindcss` 编译成 `lib/style.css` 随包发布，不再单独跑 vite，也没有 `dist/` 目录。产物是扁平的 `lib/` 目录，`main` 指向 `lib/index.js`。
+1. **`.ktr` 注册表必须一并打包**。先 `ktr sync` 生成 `.ktr` 两个注册表，再把它们作为入口打进 `lib/`——生产环境的 SSR 直接加载 `lib/` 下的注册表，不再依赖源码目录。
+2. **整包进 `lib/`，包括 react 和本工具包运行时**：只有 `node-karin`（宿主提供）和 `jiti` 保持外部；渲染器和组件同在一份产物中，包内只有一份 React 副本，hooks 才正常。切记不要"只包一半"（组件进包而渲染器外部引用），那才会出现双 React 崩溃。
+3. **CSS 编成 `lib/style.css` 随包发布**：推荐用 Vite 打包 JS（和 `ktr dev` 同一条管线），样式由 `ktr build --outDir lib` 编译；完整配置和 tsdown 备选方案见 [构建与打包](/docs/guide/building)。
 
 想理解面板、沙盒和注册表如何协作，接着读[整体架构](/docs/internals/architecture)。
 

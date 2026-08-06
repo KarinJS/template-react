@@ -5,13 +5,16 @@ description: defineTemplate、defineMock、TemplateProps、TemplateDef、DataOf 
 
 写模板时直接 import 的 API，全部来自 `@karinjs/template-react` 主入口：
 
-```ts
+```ts twoslash
 import { defineMock, defineTemplate, type DataOf, type TemplateDef, type TemplateProps } from '@karinjs/template-react'
 ```
 
 ## defineTemplate
 
-```ts
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+// @errors: 1155
+// ---cut---
 const defineTemplate: <D>(def: Omit<TemplateDef<D>, '__data'>) => TemplateDef<D>
 ```
 
@@ -28,7 +31,7 @@ const defineTemplate: <D>(def: Omit<TemplateDef<D>, '__data'>) => TemplateDef<D>
 
 **示例一：常规写法（泛型自动推断）**，`template/hello/list/index.tsx`：
 
-```tsx title="template/hello/list/index.tsx"
+```tsx title="template/hello/list/index.tsx" twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
 /** Hello 列表模板的数据结构。 */
@@ -55,7 +58,16 @@ export default defineTemplate({
 
 **示例二：带运行时校验**，`template/receipt/tall/index.tsx`：
 
-```tsx title="template/receipt/tall/index.tsx"
+```tsx title="template/receipt/tall/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+/** 长条小票模板的数据结构。 */
+interface ReceiptTallData {
+  shop: string
+  rows: Array<{ name: string; price: number }>
+}
+declare const ReceiptTall: React.FC<TemplateProps<ReceiptTallData>>
+// ---cut---
 export default defineTemplate({
   name: '长条小票',
   description: '窄长小票版式的长截图',
@@ -72,7 +84,9 @@ export default defineTemplate({
 
 ## defineMock
 
-```ts
+```ts twoslash
+// @errors: 1155
+// ---cut---
 const defineMock: <D>(data: D) => D
 ```
 
@@ -81,7 +95,14 @@ const defineMock: <D>(data: D) => D
 <Tabs items={['satisfies 写法', 'defineMock 写法']}>
 <Tab value="satisfies 写法">
 
-```ts title="template/hello/list/mock.ts"
+```ts title="template/hello/list/mock.ts" twoslash
+// @filename: ./index.ts
+export interface HelloListData {
+  title: string
+  users: Array<{ name: string; role: string; score: number }>
+}
+// @filename: ./mock.ts
+// ---cut---
 import type { HelloListData } from './index'
 
 export const team = {
@@ -99,7 +120,12 @@ export const team = {
 </Tab>
 <Tab value="defineMock 写法">
 
-```ts title="template/hello/list/mock.ts"
+```ts title="template/hello/list/mock.ts" twoslash
+interface HelloListData {
+  title: string
+  users: Array<{ name: string; role: string; score: number }>
+}
+// ---cut---
 import { defineMock } from '@karinjs/template-react'
 
 export const team = defineMock<HelloListData>({
@@ -117,7 +143,9 @@ TS mock 可以被插件代码直接 import 复用（见[在 Karin 插件中集�
 
 ## TemplateProps
 
-```ts
+```ts twoslash
+import type { RenderContext } from '@karinjs/template-react'
+// ---cut---
 interface TemplateProps<D> {
   /** 当前模板使用的数据，类型由 defineTemplate 的泛型决定。 */
   data: D
@@ -134,13 +162,27 @@ interface TemplateProps<D> {
 
 ## DataOf
 
-```ts
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+// ---cut---
 type DataOf<T> = T extends TemplateDef<infer D> ? D : never
 ```
 
 从模板定义类型里把数据类型 `D`「挖」出来。最典型的用法在渲染封装（`src/utils/render.ts`）：
 
-```ts title="src/utils/render.ts"
+```ts title="src/utils/render.ts" twoslash
+import type { DataOf, TemplateDef } from '@karinjs/template-react'
+
+/** 模板注册表：路由到模板定义，逐路由精确类型由 .ktr 模块增强注入。 */
+type Registry = Record<string, TemplateDef<any>>
+/** node-karin 消息段中的图片元素。 */
+interface ImageElement {
+  type: 'image'
+  /** 图片 url、路径或者 base64。 */
+  file: string
+}
+// @errors: 2355
+// ---cut---
 const renderImage = async <K extends keyof Registry & string>(
   templatePath: K,
   data: DataOf<Registry[K]>,

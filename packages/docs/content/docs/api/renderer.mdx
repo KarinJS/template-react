@@ -5,6 +5,13 @@ description: createTemplateRenderer、createRenderer、注册表加载函数与�
 
 用在插件 Node 侧胶水层的 API：`createRenderer`、`createTemplateRenderer`、`loadMockRegistry`、`loadTemplateRegistry`，全部从主入口 `@karinjs/template-react` 导入。
 
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+const renderTemplate = createTemplateRenderer(import.meta.url)
+//    ^?
+```
+
 <Callout>
   **选型建议**：绝大多数插件只用 `createTemplateRenderer`（约定事项全自动）；`createRenderer`
   是底层能力，需要完全自定义来源或输出目录时才用。
@@ -12,7 +19,10 @@ description: createTemplateRenderer、createRenderer、注册表加载函数与�
 
 ## createTemplateRenderer
 
-```ts
+```ts twoslash
+import type { DataOf, LoadedRegistry, RenderContextInput, RendererOptions, RenderResult } from '@karinjs/template-react'
+// @noErrors: 1155
+// ---cut---
 const createTemplateRenderer: (callerUrl: string, options?: TemplateRendererOptions) => TemplateRenderFn
 
 interface TemplateRendererOptions {
@@ -43,7 +53,14 @@ type TemplateRenderFn = <K extends keyof LoadedRegistry & string>(
 
 示例（`src/utils/render.ts`）：
 
-```ts title="src/utils/render.ts"
+```ts title="src/utils/render.ts" twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+declare const path: { join: (...parts: string[]) => string }
+declare const karinPathHtml: string
+declare const dir: { pluginName: string }
+// @noErrors: 1109
+// ---cut---
 const renderTemplate = createTemplateRenderer(import.meta.url, {
   renderer: { outputDir: path.join(karinPathHtml, dir.pluginName) }
 })
@@ -54,7 +71,10 @@ const { success, htmlPath, error } = await renderTemplate('hello/card', { title:
 
 ## createRenderer
 
-```ts
+```ts twoslash
+import type { DataOf, RenderContextInput, RenderResult, RendererOptions, TemplateDef } from '@karinjs/template-react'
+// @noErrors: 1155
+// ---cut---
 const createRenderer: <R extends Record<keyof R, TemplateDef<any>>>(
   templates: R,
   options: RendererOptions
@@ -79,7 +99,22 @@ const createRenderer: <R extends Record<keyof R, TemplateDef<any>>>(
 
 ## loadTemplateRegistry / loadMockRegistry
 
-```ts
+```ts twoslash
+import type { LoadedRegistry } from '@karinjs/template-react'
+
+/** 约定注册表的加载选项。 */
+interface LoadRegistryOptions {
+  /** 项目根目录，默认取当前工作目录。 */
+  root?: string
+  /** 约定缓存目录（相对 root 或绝对路径），默认 .ktr。 */
+  cacheDir?: string
+  /** 显式指定 karin.template 配置文件路径。 */
+  configFile?: string
+  /** 生产打包产物所在目录（相对 root 或绝对路径），默认按 main 字段和根目录扫描自动发现。 */
+  bundledDir?: string
+}
+// @noErrors: 1155
+// ---cut---
 const loadTemplateRegistry: (options?: LoadRegistryOptions) => Promise<LoadedRegistry>
 const loadMockRegistry: <M extends Record<string, unknown> = Record<string, unknown>>(options?: LoadRegistryOptions) => Promise<M>
 ```
@@ -100,7 +135,9 @@ const loadMockRegistry: <M extends Record<string, unknown> = Record<string, unkn
 
 ### RenderContext / RenderContextInput
 
-```ts
+```ts twoslash
+import type { ThemeContext } from '@karinjs/template-react'
+// ---cut---
 interface RenderContext {
   /** 当前渲染比例，截图模板通常保持为 1。 */
   scale: number
@@ -130,7 +167,9 @@ interface RenderContext {
 
 SSR 渲染阶段的可插拔扩展：
 
-```ts
+```ts twoslash
+import type { PluginContext } from '@karinjs/template-react'
+// ---cut---
 interface RenderPlugin {
   name: string // 插件名称
   enforce?: 'pre' | 'normal' | 'post' // 执行顺序，pre 先执行
