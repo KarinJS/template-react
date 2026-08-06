@@ -1,0 +1,50 @@
+---
+title: 介绍
+description: 用 React + Tailwind CSS + TypeScript 为 Karin 插件编写"数据到图片"的截图模板，替代 art-template 的现代方案
+---
+
+# Karin Template React
+
+`@karinjs/template-react` 是给 Karin 插件开发者的**截图模板工具链**：用 React 组件 + Tailwind CSS 描述"数据长什么样"，框架负责渲染成 HTML、交给 Karin 截图发出图片。它用来替代 Karin 传统的 art-template（字符串拼接 HTML）开发方式。
+
+## 为什么换掉 art-template
+
+| 维度     | art-template（旧）                | @karinjs/template-react（新）                              |
+| -------- | --------------------------------- | ---------------------------------------------------------- |
+| 写法     | 字符串模板里插值、拼 HTML         | React 组件（JSX），可拆分、可复用                          |
+| 类型安全 | 没有，数据字段全靠记忆            | `defineTemplate` 全链路类型：路由补全、data 写错编译期报错 |
+| 样式     | 手写 CSS，容易和面板/宿主互相污染 | Tailwind token 类 + iframe 沙盒结构性隔离                  |
+| 调试     | 改完发消息才能看到效果            | 开发面板实时预览、HMR 秒级更新                             |
+| 数据     | 没有管理                          | TS mock + JSON mock + 真实渲染自动捕获，面板内切换/编辑    |
+
+## 它做了什么
+
+<Steps>
+  <Step>
+    **约定扫描**：`ktr sync` 扫描 `template/` 目录（目录即路由），在隐藏的 `.ktr/` 里生成注册表和类型增强声明——你只管写组件，不用手动注册。
+  </Step>
+  <Step>
+    **开发面板**：`ktr dev` 启动面板，模板在 iframe 沙盒中渲染（样式零污染），可切换模板、切换/编辑 mock 数据、调主题色、缩放、截图预览。
+  </Step>
+  <Step>
+    **SSR 渲染**：插件里调用 `renderImage('板块/模板', data)`，React 服务端渲染生成自带样式的 HTML，交给 Karin 的 Puppeteer 截图。
+  </Step>
+  <Step>
+    **数据闭环**：真实渲染的数据自动捕获为 `data/captured.json`，面板收到推送自动刷新并选中——你看到的就是机器人发出去的那张图的数据。
+  </Step>
+</Steps>
+
+## 从这里开始
+
+<Cards>
+  <Card title="快速开始" href="/docs/quick-start" description="10 分钟：从官方插件模板到发出第一张图片，适合零基础" />
+  <Card title="AI 技能包" href="/docs/ai-skill" description="一条命令让 AI 助手掌握最新文档，接入/迁移全程兜底" />
+  <Card title="使用指南" href="/docs/guide/template" description="写模板、mock 数据、开发面板、样式与主题" />
+  <Card title="API 参考" href="/docs/api/define-template" description="defineTemplate、createRenderer、配置项与 CLI" />
+  <Card title="内部原理" href="/docs/internals/architecture" description="实现原理长文：类型系统、SSR 管线、面板隔离、构建策略" />
+</Cards>
+
+<Callout type="info">
+  还不会 React 或 Tailwind？先看 [React 中文官方教程](https://zh-hans.react.dev/learn) 和 [Tailwind CSS
+  文档](https://tailwindcss.com/docs)，再回来开工。
+</Callout>

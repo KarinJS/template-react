@@ -1,0 +1,166 @@
+---
+title: 在 Karin 插件中集成
+description: 把模板渲染接进 Karin 机器人——装配渲染器、封装 renderImage、编写指令，让用户发消息就能收到截图。
+---
+
+<Callout type="info">
+  还不会 React？先看 [React 中文官方教程](https://zh-hans.react.dev/learn)；不熟 TypeScript？看 [TypeScript
+  官方文档](https://www.typescriptlang.org/docs/)。
+</Callout>
+
+前面几页讲「怎么写模板」，这一页讲「怎么让机器人把模板发出去」：用户发 `#渲染模板 hello/card`，机器人渲染、截图、回复一张图片。只涉及 `src/utils/render.ts`（渲染封装）和 `src/apps/template.ts`（指令入口）两个文件。
+
+## 整体流程
+
+1. **SSR 渲染**：`@karinjs/template-react` 把 React 组件在 Node 里直接渲染成 HTML 文件（SSR = 服务端渲染：不开浏览器，在服务器上把组件「算」成 HTML）。
+2. **截图**：node-karin 的 `render.render` 用无头浏览器打开 HTML，对着 `#container` 截 PNG。
+3. **封装**：截图以 base64 字符串（图片的文本编码）返回，包成 karin 图片消息元素。
+4. **回复**：`event.reply` 发出图片。胶水代码只有两件事：告诉 ktr 把 HTML 放哪，以及把第 1 步的结果接到第 2~4 步。
+
+## 装配渲染器
+
+`src/utils/render.ts` 的前半部分：
+
+```ts title="src/utils/render.ts"
+import path from 'node:path'
+
+import { karinPathHtml, render, segment, type ImageElement } from 'node-karin'
+import { createTemplateRenderer, type DataOf, type LoadedRegistry } from '@karinjs/template-react/runtime'
+
+import { dir } from '../dir'
+
+// ktr 侧按约定装配（包根定位、配置解析、注册表加载、CSS 定位、捕获目录）；
+// outputDir 是 karin 领域的位置，由插件显式指定。
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: { outputDir: path.join(karinPathHtml, dir.pluginName) }
+})
+```
+
+- **`import.meta.url`**：当前模块的文件地址，ktr 用它向上找最近的 `package.json` 定位插件包根——开发期跑 `src/`、生产期跑 `lib/` 都能命中同一个包根，必须原样传。
+- **约定自动完成**：拿到包根后，配置解析（`karin.template.ts`）、`.ktr` 注册表加载、CSS 定位、捕获目录全部自动处理。
+- **`renderer.outputDir`**：唯一要插件指定的位置——SSR 生成的 HTML 放哪。karin 截图服务从 karin 数据目录读文件，所以放到 `karinPathHtml/<插件名>`（node-karin 提供的 `@karinjs/temp/html` 目录；`dir.pluginName` 是插件目录名，见 `src/dir.ts`）。
+
+`createTemplateRenderer` 是惰性初始化的：第一次渲染时才解析配置、加载注册表，此前只做纯路径运算。返回函数签名是 `(路由, data, ctx?) => Promise<RenderResult>`，路由补全和 `data` 类型由 `.ktr/registry-types.d.ts` 模块增强提供，不需要 import 任何 `.ktr` 文件。
+
+## 封装 renderImage
+
+同一个文件的后半部分，把「渲染 + 截图 + 消息封装」收成一个函数：
+
+```ts title="src/utils/render.ts"
+export const renderImage = async <K extends keyof Registry & string>(
+  templatePath: K,
+  data: DataOf<Registry[K]>,
+  options?: Record<string, unknown>
+): Promise<ImageElement[]> => {
+  const { success, htmlPath, error } = await renderTemplate(templatePath, data)
+  if (!success) {
+    throw new Error(`模板渲染失败 ${templatePath}：${error}`)
+  }
+
+  // @karinjs/template-react 只负责生成 HTML；截图仍交给 node-karin 的 render.render。
+  const result = await render.render({
+    name: `${dir.pluginName}/${templatePath}`,
+    file: htmlPath,
+    selector: '#container',
+    type: 'png',
+    omitBackground: true,
+    ...options
+  })
+
+  const list = Array.isArray(result) ? result : [result]
+  // Karin 的图片消息要求 base64:// 前缀，这里统一封装掉。
+  return list.map((img) => segment.image(`base64://${img}`))
+}
+```
+
+- **泛型 `<K extends keyof Registry & string>`**：`K` 是路由字面量，`DataOf<Registry[K]>` 把 `data` 绑定到该模板声明的数据类型——字段写错编译期直接报错。
+- **SSR 不抛异常**：成败看 `success`，失败时 `error` 有原因（如没过 `validate`），转成 `throw` 进 karin 日志。`render.render` 常用参数：
+
+| 参数                                   | 作用                                                                                |
+| -------------------------------------- | ----------------------------------------------------------------------------------- |
+| `name`                                 | 截图任务名，用 `<插件名>/<路由>` 拼，避免不同插件互相覆盖。                         |
+| `file`                                 | 上一步生成的 HTML 文件路径。                                                        |
+| `selector: '#container'`               | 只截 `#container` 的范围；它由框架统一提供，模板根元素不要自己写 `id="container"`。 |
+| `type: 'png'` + `omitBackground: true` | 透明背景 PNG，根元素加 `rounded-*` 时截出来才是真圆角。                             |
+| `...options`                           | 调用方的额外截图参数原样透传（如 `setViewport`、`pageGotoParams`）。                |
+
+- **返回值**：统一成数组后逐张包成 `segment.image('base64://...')`，可直接传给 `event.reply`。
+
+## 编写机器人指令
+
+`src/apps/template.ts` 演示了三个指令。文件开头的公共准备：`loadTemplateRegistry()` 加载注册表并缓存成共享 Promise（回调里统一 `await`）；`tsMockByRoute` 把路由映射到对应 `mock.ts` 的导出。示例数据的解析顺序：**TS mock 优先，其次 `template/<路由>/data/default.json`**；`captured.json` 是真实渲染的捕获产物，不作示例数据。
+
+### 指令一：`#模板列表`
+
+```ts title="src/apps/template.ts"
+export const templateList = karin.command('^(#)?模板列表$', async (event) => {
+  const templates = await templatesPromise
+  const lines = Object.keys(templates).map((route) => {
+    const name = templates[route as keyof typeof templates].name
+    return name ? `${route}（${name}）` : route
+  })
+  await event.reply(['当前可用模板：', ...lines, '', '发送 #渲染模板 路由 查看对应模板，例如 #渲染模板 hello/card'].join('\n'))
+  return true
+})
+```
+
+**成功后你会看到**：机器人回复全部模板路由和展示名，如 `hello/card（问候卡片）`。
+
+### 指令二：测试模板（静态类型安全示例）
+
+```ts title="src/apps/template.ts"
+export const templateTest = karin.command('测试模板hello/card', async (event) => {
+  const images = await renderImage('hello/card', {
+    title: 'Karin Template React',
+    subtitle: 'React + Tailwind CSS + TypeScript',
+    items: [
+      { label: '渲染方式', value: 'SSR HTML' },
+      { label: '预览', value: 'Iframe 沙盒' },
+      { label: '类型', value: '注册表驱动' }
+    ]
+  })
+  await event.reply(images)
+  return true
+})
+```
+
+路由 `'hello/card'` 是编译期确定的字面量，`title` 拼错都会立刻报红——最推荐的用法。匹配串 `测试模板hello/card` 没加 `^$` 锚点，消息里**包含**这段文字就会触发，发 `#测试模板hello/card` 即可。
+
+**成功后你会看到**：机器人回复一张 `hello/card` 模板的截图。
+
+### 指令三：`#渲染模板 <路由>`（动态路由示例）
+
+```ts title="src/apps/template.ts"
+export const templateRender = karin.command('^(#)?渲染模板', async (event) => {
+  const route = event.msg.replace(/^(#)?渲染模板/, '').trim()
+  const templates = await templatesPromise
+
+  if (!(route in templates)) {
+    await event.reply(`未找到模板：${route || '(未填写路由)'}\n发送 #模板列表 查看全部可用路由`)
+    return true
+  }
+
+  const data = resolveSampleData(route)
+  if (data === undefined) {
+    await event.reply(`模板 ${route} 没有可用的示例数据（TS mock 或 default.json）`)
+    return true
+  }
+
+  const images = await renderImage(route as keyof Registry & string, data as DataOf<Registry[keyof Registry & string]>)
+  await event.reply(images)
+  return true
+})
+```
+
+路由是用户发消息时才确定的字符串，TypeScript 无法在编译期把它和 `data` 静态绑定，所以代码显式放宽为「全部模板数据的联合类型」。原则：**路由能写死就写死（静态类型最安全）；必须由用户输入时，靠模板里的 `validate` 做运行时兜底**。
+
+**成功后你会看到**：发 `#渲染模板 hello/list` 用 `mock.ts` 的 `team` 数据出图；发 `#渲染模板 hello/card` 自动回落到 `data/default.json`；路由不存在时提示查看 `#模板列表`。
+
+## 依赖放在哪里
+
+<Callout type="error">
+  **全部放进 `devDependencies`，由 tsdown 整体打进 `lib/`**——包括 `react`/`react-dom` 和 `@karinjs/template-react` 运行时。 React 的 hooks
+  依赖全局唯一的 dispatcher（「调度总台」），整包后渲染器和组件共用产物内的同一份 React，SSR 才能正常工作。
+  真正会崩的是**只包一半**：组件打进了包、渲染器却外部引用（或反过来），两份 React 并存，hooks 一执行就是 `Invalid hook call`。
+  唯一永远外部化的是 `node-karin`（宿主 karin 提供）。
+</Callout>

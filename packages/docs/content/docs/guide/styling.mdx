@@ -1,0 +1,81 @@
+---
+title: 样式与主题
+description: template/style.css 的结构、可用的 token 类名、深色模式与主题变量下发机制
+---
+
+模板用 Tailwind CSS v4 写样式。这一页讲清样式入口每一行的作用、哪些颜色类名可以直接用，以及主题变量什么时候会（不会）被注入。
+
+<Callout type="info">
+  不熟 Tailwind 的"类名即样式"写法？先翻翻 [Tailwind CSS 文档](https://tailwindcss.com/docs)，学会查类名就够了。
+</Callout>
+
+## 样式入口：template/style.css
+
+所有模板共用一份样式入口：
+
+```css title="template/style.css"
+@import 'tailwindcss';
+@import '@heroui/styles';
+@source "./**/*.{ts,tsx}";
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-foreground: var(--accent-soft-foreground);
+}
+
+body {
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+```
+
+- `@import 'tailwindcss'` / `@import '@heroui/styles'`：引入 Tailwind v4 本体和 HeroUI 组件库样式。
+- `@source "./**/*.{ts,tsx}"`：让 Tailwind 扫描 `template/` 下所有 TS/TSX 文件的类名（v4 按需生成，只产出用到的类）。
+- `@theme { ... }`：关键的一段，做映射（token 即"设计令牌"，给颜色起统一名字）：把 `--color-background` 这类 Tailwind 变量指向运行时注入的 `--background` 等 CSS 变量。写 `bg-background`，规则就是"背景色等于当前 `--background` 的值"。
+- `body { font-family: ... }`：截图全局字体，按目标平台调整。
+
+## 可用的 token 颜色类
+
+| 类名                          | 作用                                   |
+| ----------------------------- | -------------------------------------- |
+| `bg-background`               | 模板根背景色                           |
+| `text-foreground`             | 主要文字颜色                           |
+| `bg-surface`                  | 卡片、面板等承载内容的表面色           |
+| `text-muted`                  | 次要文字、弱信息颜色                   |
+| `border-border`               | 边框和分割线颜色                       |
+| `bg-accent` / `text-accent`   | 主强调色（按钮、徽标、重点数字）       |
+| `text-accent-foreground`      | 主色背景上的文字颜色                   |
+| `bg-accent-soft`              | 主色的浅色背景（图标底色、弱强调区域） |
+| `text-accent-soft-foreground` | 浅色主色背景上的文字颜色               |
+
+优先用这些语义化类而不是 `bg-white`、`text-gray-500` 这类写死的颜色，模板才能跟随主题变化。
+
+## 深色模式
+
+- **读 `ctx.theme.mode`**：值是 `'light'` 或 `'dark'`，在组件里写条件逻辑（如深色下换图、去投影）：`const isDark = ctx.theme?.mode === 'dark'`。
+- **用 `dark:` 变体**：`dark:bg-xxx` 在深色模式下自动生效，适合纯样式差异。
+
+## 主题变量什么时候注入
+
+<Callout type="error">
+  **框架不发明默认主题色。** `ctx.theme` 是可选的 `Partial`——只注入调用方显式提供的字段，没有兜底默认值。没人显式设置时，SSR
+  和面板沙盒都**不注入任何颜色变量**，组件库（HeroUI 等）按自身默认主题渲染。框架永远不会偷偷塞一套颜色进来劫持你的设计。
+</Callout>
+
+主题色的下发路径有两条，同时生效：
+
+- **面板调试时**：主题弹窗里选了"模板主题色"，面板把 accent 系列颜色通过 `ctx.theme` 传给沙盒组件，同时把对应 CSS 变量写到预览页面上；没选过就是"组件库默认"。
+- **SSR 真实渲染时**：调用方在渲染选项里显式传了 `theme` 字段，框架把变量同时写到输出 HTML 的 `html` 和 `body` 上——`:root` 层级的变量有了值，`@theme` 那段映射才能生效，token 类名在真实截图里才会跟随主题。
+
+`ctx.theme` 每个字段都可能不存在，消费时始终用可选链（`ctx.theme?.mode`），`undefined` 时交给组件库默认主题即可。
+
+<Cards>
+  <Card title="开发面板导览" href="./dev-panel" description="主题弹窗在面板里的位置和效果" />
+  <Card title="编写模板" href="./template" description="模板组件的完整写法" />
+</Cards>

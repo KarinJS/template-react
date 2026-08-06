@@ -1,0 +1,85 @@
+{
+  "name": "@karinjs/template-react",
+  "version": "0.0.0",
+  "description": "React + Tailwind CSS screenshot template kit for Karin plugins.",
+  "bin": {
+    "ktr": "./bin/ktr.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "panel/dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "browser": "./dist/client.mjs",
+      "import": "./dist/index.mjs"
+    },
+    "./client": {
+      "types": "./dist/client.d.mts",
+      "import": "./dist/client.mjs"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.mts",
+      "import": "./dist/runtime.mjs"
+    },
+    "./registry-types": {
+      "types": "./dist/registry-types.d.mts",
+      "import": "./dist/registry-types.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "scripts": {
+    "dev": "tsdown --watch",
+    "panel": "vite --config vite.panel.config.ts",
+    "build": "pnpm build:runtime && pnpm build:panel",
+    "build:runtime": "tsdown",
+    "build:panel": "vite build --config vite.panel.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --typecheck",
+    "prepublishOnly": "pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "cac": "^6.7.14",
+    "chokidar": "^5.0.0",
+    "consola": "^3.4.2",
+    "defu": "^6.1.4",
+    "fast-glob": "^3.3.3",
+    "jiti": "^2.6.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.0.0"
+  },
+  "devDependencies": {
+    "@heroui/react": "^3.2.3",
+    "@heroui/styles": "3.2.2",
+    "@monaco-editor/react": "^4.7.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "@zumer/snapdom": "^2.23.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.28.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-resizable-panels": "^4.12.2",
+    "react-router-dom": "^6.30.4",
+    "react-zoom-pan-pinch": "^4.0.3",
+    "tsdown": "latest",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

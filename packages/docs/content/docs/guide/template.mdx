@@ -1,0 +1,186 @@
+---
+title: 编写模板
+description: 用一个完整示例学会 defineTemplate、目录约定和模板组件的写法
+---
+
+模板就是一个 React 组件：你给它数据（标题、列表等），它返回一段界面，框架负责渲染成 HTML 再截图。SSR（服务器渲染，即在后台把组件转成 HTML 字符串）由框架包办，你只写"数据长什么样、界面长什么样"。
+
+<Callout type="info">
+  本页假设你大致看得懂 React 组件。如果还不会，先花半小时过一遍 [React 中文官方教程](https://zh-hans.react.dev/learn)，再回来会顺畅得多。
+</Callout>
+
+## 强约定目录结构
+
+框架"约定大于配置"：目录结构固定，模板按约定自动发现，不需要登记。
+
+<Files>
+  <Folder name="template" defaultOpen>
+    <Folder name="hello" defaultOpen>
+      <Folder name="card" defaultOpen>
+        <File name="index.tsx" />
+        <Folder name="components">
+          <File name="badge.tsx" />
+          <File name="format.ts" />
+        </Folder>
+        <Folder name="data">
+          <File name="default.json" />
+          <File name="captured.json" />
+        </Folder>
+      </Folder>
+      <Folder name="list">
+        <File name="index.tsx" />
+        <File name="mock.ts" />
+      </Folder>
+    </Folder>
+    <File name="style.css" />
+  </Folder>
+</Files>
+
+- `template/<板块>/<模板>/index.tsx`：模板组件文件。板块（如 `hello`）是分组，模板（如 `card`）是具体模板，拼起来就是路由 `hello/card`。
+- `template/<板块>/<模板>/components/`：模板的内部组件和普通 ts 逻辑文件的固定存放目录（可选），**不会**被注册成路由——复杂模板把拆出来的子组件和工具函数放这里，`index.tsx` 只做总装。
+- `template/<板块>/<模板>/mock.ts`：TypeScript 写的 mock 数据（固定文件名），详见 [mock 数据](./data)。
+- `template/<板块>/<模板>/data/*.json`：JSON mock 数据，必须放在 `data/` 子目录。
+- `template/style.css`：所有模板共用的样式入口，详见 [样式与主题](./styling)。
+
+<Callout type="warn">
+组件必须写在 `template/<板块>/<模板>/index.tsx` 才会被注册。直接裸写一个 `.tsx`（比如 `template/hello/card.tsx`）不会被当成模板。
+</Callout>
+
+## 模板变复杂了怎么办
+
+`index.tsx` 只放总装逻辑；拆出去的子组件、格式化函数、数据加工等都收进 `components/`：
+
+```tsx title="template/hello/card/index.tsx"
+import Badge from './components/badge'
+import { formatScore } from './components/format'
+```
+
+`components/` 里放什么都不会注册成路由（即使里面出现 `index.tsx` 也不会），所以可以放心按自己的习惯继续分层。
+
+## 完整示例逐段讲解
+
+### 第一步：定义数据结构
+
+```tsx title="template/hello/card/index.tsx"
+/** Hello 卡片模板的数据结构，适合固定宽度的信息摘要截图。 */
+type HelloCardData = {
+  /** 主标题。 */
+  title: string
+  /** 可选副标题。 */
+  subtitle?: string
+  /** 展示在卡片内容区的键值对。 */
+  items: Array<{ label: string; value: string }>
+}
+```
+
+`title: string` 是必填文字，`?` 表示可选，`items` 是键值对数组。有了这个类型，写错字段名编辑器立刻报错。
+
+### 第二步：写组件
+
+```tsx title="template/hello/card/index.tsx"
+import { Card, Chip } from '@heroui/react'
+import { Braces, Layers3, Sparkles } from 'lucide-react'
+
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+const HelloCard = ({ data }: TemplateProps<HelloCardData>) => (
+  <div className="bg-success">
+    <Card className="w-155 gap-0 overflow-hidden rounded-3xl border border-border bg-background p-0 text-foreground">
+      <Card.Header className="flex-row items-start justify-between gap-4 border-b border-border px-8 py-7">
+        <div className="min-w-0">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
+            <Sparkles size={16} />
+            Karin 模板示例
+          </div>
+          <Card.Title className="text-3xl font-bold tracking-normal">{data.title}</Card.Title>
+          {data.subtitle && <Card.Description className="mt-2 text-sm text-accent">{data.subtitle}</Card.Description>}
+        </div>
+
+        <Chip className="bg-accent text-accent-foreground" size="md" variant="tertiary">
+          <Layers3 size={14} />
+          HeroUI
+        </Chip>
+      </Card.Header>
+
+      <Card.Content className="grid gap-3 px-8 py-7">
+        {data.items.map((item, index) => (
+          <div key={item.label} className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface px-4 py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent-soft text-accent">
+                {index === 0 ? <Braces size={16} /> : <Layers3 size={16} />}
+              </span>
+              <span className="truncate text-sm text-muted">{item.label}</span>
+            </div>
+            <strong className="text-base">{item.value}</strong>
+          </div>
+        ))}
+      </Card.Content>
+    </Card>
+  </div>
+)
+```
+
+这就是普通的 React 函数组件：参数 `{ data }: TemplateProps<HelloCardData>` 声明"`data` 是第一步定义的类型"（`TemplateProps` 还包含 `ctx`，见下文）；界面用 [HeroUI](https://www.heroui.com/) 组件、[lucide-react](https://lucide.dev/) 图标和 Tailwind 类名拼出来；`data.items.map(...)` 把数组每一项渲染成一行。`bg-background`、`text-accent` 这类颜色类来自主题 token，见 [样式与主题](./styling)。
+
+### 第三步：用 defineTemplate 导出
+
+```tsx title="template/hello/card/index.tsx"
+export default defineTemplate({
+  name: '问候卡片',
+  description: 'HeroUI + lucide-react 截图卡片',
+  component: HelloCard
+})
+```
+
+`defineTemplate` 把组件包装成框架认识的"模板定义"，必须**默认导出**（`export default`），只有这个固定写法会被注册。各字段：
+
+- `name` / `description`：模板在开发面板显示的名字和描述。
+- `component`：上一步写的组件。
+- `validate`（可选）：运行时数据校验函数。数据来源不可靠（用户输入、动态路由）时，SSR 渲染前先调用它检查，校验失败直接报错而不是渲染出坏图：
+
+```tsx title="template/mobile/story/index.tsx"
+export default defineTemplate({
+  name: '竖屏故事图',
+  description: '1080x1920 竖屏手机故事图',
+  component: MobileStory,
+  validate: (data): data is MobileStoryData =>
+    typeof data === 'object' &&
+    data !== null &&
+    typeof (data as MobileStoryData).title === 'string' &&
+    Array.isArray((data as MobileStoryData).bullets)
+})
+```
+
+`data is MobileStoryData` 是 TypeScript 类型谓词：函数返回 true 时，TypeScript 就把 data 当作 `MobileStoryData`。
+
+**泛型可以省略。** 其他资料里可能有 `defineTemplate<HelloCardData>({...})` 这种显式传泛型的写法（泛型即"把类型当参数传进去"），本框架**不需要**：`component` 用 `TemplateProps<HelloCardData>` 标注后，`defineTemplate` 会自动推断数据类型，改数据结构只需改一处。
+
+## 运行时上下文 ctx
+
+组件还能从第二个参数 `ctx` 拿到框架注入的运行时信息（类型 `RenderContext`）：
+
+- `ctx.theme`（可选）：调用方显式提供的主题变量，类型是 `Partial<ThemeContext>`（每个字段都可能有也可能没有）。包含 `mode`（`'light'` 或 `'dark'`）和 `accent`、`background` 等颜色。**框架不发明默认主题色**，面板里选了"模板主题色"才会下发 accent 系列。
+- `ctx.scale`：渲染比例，截图模板通常为 `1`，不用理会。
+- `ctx.version`（可选）：版本信息（插件名、版本号等），适合展示水印或来源。
+
+```tsx
+const HelloCard = ({ data, ctx }: TemplateProps<HelloCardData>) => {
+  // theme 可能整个不存在，必须用可选链；isDark 为 true 时可调整深色下表现不好的元素
+  const isDark = ctx.theme?.mode === 'dark'
+  // ...
+}
+```
+
+<Callout type="error">
+**不要给组件根元素写 `id="container"`。** 截图边界由框架的 HtmlWrapper 统一提供（一个被动的 `<div id="container">` 包在组件外面），截图工具靠它定位范围；自己再写一个会造成 id 冲突。
+
+想要圆角截图时，给根元素加 Tailwind 的 `rounded-*` 类，内容需要随圆角裁剪时再加 `overflow-hidden`（上面示例的 `overflow-hidden rounded-3xl` 就是这个组合）。框架不会强加也不会剥离任何外观，圆角、阴影、背景完全由你的类名决定。
+
+</Callout>
+
+保存文件后框架自动热更新，开发面板里选中 `hello/card` 即可预览（见 [开发面板导览](./dev-panel)）。机器人侧调用 `renderImage('hello/card', {...})` 时，TypeScript 会按模板定义检查数据，写错字段编译期就报错。
+
+<Cards>
+  <Card title="mock 数据" href="./data" description="给模板准备三种来源的预览数据" />
+  <Card title="开发面板导览" href="./dev-panel" description="在浏览器里实时预览和调试模板" />
+</Cards>

@@ -1,0 +1,42 @@
+{
+  "name": "@karinjs/template-react-root",
+  "version": "0.1.0",
+  "private": true,
+  "description": "React + Tailwind CSS template rendering kit for Karin plugins.",
+  "keywords": [
+    "karin",
+    "react",
+    "screenshot",
+    "tailwindcss",
+    "template"
+  ],
+  "license": "MIT",
+  "author": "ikenxuan",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @karinjs/template-react run dev",
+    "panel": "pnpm --filter @karinjs/template-react run panel",
+    "docs": "pnpm --filter template-react-docs run dev",
+    "build": "pnpm -r run build",
+    "lint": "oxlint .",
+    "format": "oxfmt --write .github package.json pnpm-workspace.yaml tsconfig.base.json tsconfig.json oxfmt.config.ts oxlint.config.ts vitest.config.ts packages",
+    "format:check": "oxfmt --check .github package.json pnpm-workspace.yaml tsconfig.base.json tsconfig.json oxfmt.config.ts oxlint.config.ts vitest.config.ts packages",
+    "test": "vitest run --typecheck",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.14",
+    "oxfmt": "^0.62.0",
+    "oxlint": "^1.77.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.20.0",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@11.20.0"
+}

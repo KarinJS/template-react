@@ -1,0 +1,110 @@
+---
+title: 配置与 CLI
+description: karin.template.ts 的全部配置项，以及 ktr sync / dev / build 三个命令的用法。
+---
+
+## 配置文件 karin.template.ts
+
+`karin.template.ts` 放在项目根目录，只配置工具链自身行为；模板、mock、JSON 数据按 `template/` 约定自动发现，**不要**手写模板清单。启动时按 `.ts` → `.mts` → `.js` → `.mjs` 顺序查找 `karin.template` 配置，取第一个存在的。用 `defineConfig` 包裹获得类型提示：
+
+```ts title="karin.template.ts"
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  dev: {
+    port: 5180,
+    host: 'localhost',
+    open: false
+  }
+})
+```
+
+合并优先级：**CLI 命令行覆盖 > `karin.template.ts` > 内置默认值**。
+
+## 配置项一览
+
+| 配置项            | 类型       | 默认值             | 说明                                                                                 |
+| ----------------- | ---------- | ------------------ | ------------------------------------------------------------------------------------ |
+| `templateDir`     | `string`   | `'template'`       | 模板根目录，组件、mock、JSON 数据和 `style.css` 都放在这里。                         |
+| `cacheDir`        | `string`   | `'.ktr'`           | 框架产物缓存目录，不要手动编辑、不要提交。                                           |
+| `mockDataDir`     | `string`   | 等于 `templateDir` | mock 数据目录，扫描 `mock.ts` 和 `data/*.json` 的位置。                              |
+| `assetsDir`       | `string`   | `'resources'`      | 静态资源目录，`ktr build` 时复制到 `<outDir>/assets`。                               |
+| `outDir`          | `string`   | `'dist/template'`  | 构建输出目录；SSR HTML 默认写到 `<outDir>/html`。                                    |
+| `cssEntry`        | `string`   | 自动探测           | Tailwind 入口；默认优先 `template/style.css`，否则取 `templateDir` 下第一个 `.css`。 |
+| `extraStylePaths` | `string[]` | `[]`               | 额外注入 SSR HTML 的样式文件。                                                       |
+| `dev.port`        | `number`   | `5180`             | `ktr dev` 监听端口。                                                                 |
+| `dev.host`        | `string`   | `'localhost'`      | `ktr dev` 监听主机。                                                                 |
+| `dev.open`        | `boolean`  | `true`             | 启动后是否自动打开浏览器。                                                           |
+| `html.headExtra`  | `string`   | `''`               | 追加到 SSR HTML `<head>` 的原始 HTML。                                               |
+| `vite`            | 对象或函数 | 无                 | 合并到内部 Vite dev/build 配置，见下。                                               |
+
+### vite 扩展配置
+
+<Tabs items={['对象形式', '函数形式']}>
+<Tab value="对象形式">
+
+```ts
+export default defineConfig({
+  vite: {
+    resolve: { alias: { '@': '/src' } }
+  }
+})
+```
+
+普通的 Vite 配置对象，直接合并。
+
+</Tab>
+<Tab value="函数形式">
+
+```ts
+export default defineConfig({
+  vite: ({ command, mode, config }) => ({
+    define: { __DEV__: command === 'serve' }
+  })
+})
+```
+
+接收 `{ command, mode, config }`，返回配置对象或 Promise——按环境区分配置时用。
+
+</Tab>
+</Tabs>
+
+## CLI 命令
+
+安装 `@karinjs/template-react` 后通过 `pnpm ktr <命令>` 调用。
+
+### ktr sync
+
+```bash
+pnpm ktr sync
+```
+
+扫描 `template/`，生成（或刷新）`.ktr/` 三个产物：`template-registry.ts`（路由注册表）、`mock-registry.ts`（TS mock 导出 + JSON 清单）、`registry-types.d.ts`（逐路由类型的模块增强）。**成功后你会看到**：终端输出 `Template registry ready: N templates -> <注册表路径>`。
+
+**什么时候要跑**：新增、删除、移动模板或 mock 之后，以及 `typecheck`、`build` 之前。
+
+### ktr dev
+
+```bash
+pnpm ktr dev --port 5180 --host localhost --open
+```
+
+启动模板开发面板（会先自动执行一次 `sync`）。选项：`--port`、`--host` 覆盖监听地址，`--open` / `--no-open` 控制是否打开浏览器。**成功后你会看到**：终端输出 `Template panel ready at http://localhost:5180/__ktr/panel/`，`open` 生效时自动打开浏览器。
+
+<Callout>
+  **`open` 的生效规则**：默认 `true`；配置文件里的 `open: false` 正常生效；CLI 只有**显式传** `--open` / `--no-open`
+  时才覆盖（解析器区分不了没传参和默认值，ktr 改为检查原始参数）。上面的示例写了 `open: false`，所以启动面板不会自动弹浏览器。
+</Callout>
+
+### ktr build
+
+```bash
+pnpm ktr build --outDir dist/template
+```
+
+构建模板 CSS：先再次 `sync`，再把 `cssEntry` 编译为 `<outDir>/style.css`（引用资源进 `<outDir>/assets`）。**成功后你会看到**：终端输出构建统计，`<outDir>/style.css` 已生成。
+
+<Callout>
+  用 tsdown 打包的项目（`pnpm build` = `ktr sync && tsdown`）不用单独跑 `ktr build`：CSS 由 `@bosh-code/tsdown-plugin-tailwindcss` 在 tsdown
+  管线里编译为 `lib/style.css` 随包发布。
+</Callout>

@@ -1,0 +1,38 @@
+---
+title: AI 技能包
+description: 一条命令把最新文档装进你的 AI 助手，接入、迁移、开发全程有官方约定兜底
+---
+
+# AI 技能包
+
+如果你的开发主要由 AI 助手（Kimi Code、Claude Code、Cursor 等）完成，推荐先装这个技能包。它会让 AI 在动手前先抓取本站的**最新文档**，按最新约定帮你接入、迁移或排查问题，而不是凭过时记忆瞎写。
+
+## 安装
+
+```bash
+npx skills add KarinJS/template-react@karin-template-react
+```
+
+装完后直接对 AI 说"帮我接入 @karinjs/template-react"或"把我的 art-template 模板迁移过来"即可，技能会被自动触发。
+
+## 它做了什么
+
+技能内置于本仓库（`skills/karin-template-react/SKILL.md`），内容是一份工作规程：
+
+<Steps>
+  <Step>**先取文档**：从本站拉取 `llms-full.txt`（全文打包）或按页拉取 `content.md`，永远以最新文档为准。</Step>
+  <Step>**再动手**：按文档约定完成接入、迁移或排错，产出代码后对照约定自查（路由是否注册、类型是否生效、面板是否正常）。</Step>
+  <Step>
+    **防呆清单**：内置高频错误清单——裸 `.tsx` 不注册、JSON 要放 `data/`、react 不能打包、不要 import `.ktr`、不要写 `id="container"`。
+  </Step>
+</Steps>
+
+<Callout type="info">技能会随仓库持续更新；用 `npx skills update` 可以获取最新版本。</Callout>
+
+## 不会 React / Tailwind / TypeScript？
+
+没关系，先把对应的基础教程丢给 AI 或自己过一遍，再回来装技能包开工：
+
+- [React 中文官方教程](https://zh-hans.react.dev/learn)
+- [Tailwind CSS 文档](https://tailwindcss.com/docs)
+- [TypeScript 官方文档](https://www.typescriptlang.org/docs/)

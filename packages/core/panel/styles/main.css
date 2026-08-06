@@ -1,0 +1,75 @@
+@import 'tailwindcss';
+@import '@heroui/styles';
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-secondary: var(--surface-secondary);
+  --color-overlay: var(--overlay);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-separator: var(--separator);
+  --color-default: var(--default);
+  --color-accent: var(--accent);
+}
+
+@source '../**/*.{js,ts,jsx,tsx,html}';
+
+@custom-variant dark {
+  &:is(
+    .dark,
+    .dark *:not(:is(.dark .light *, .dark [data-theme='light'] *)),
+    [data-theme='dark'],
+    [data-theme='dark'] *:not(:is([data-theme='dark'] .light *, [data-theme='dark'] [data-theme='light'] *))
+  ) {
+    @slot;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    &:not(:is(.light, .light *, [data-theme='light'], [data-theme='light'] *)) {
+      @slot;
+    }
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: Inter, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    line-height: 1.6;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer utilities {
+  .ktr-resize-handle {
+    position: relative;
+    width: 1px;
+    background: var(--separator);
+  }
+
+  .ktr-resize-handle::after {
+    position: absolute;
+    inset: 0 -3px;
+    content: '';
+  }
+
+  .ktr-resize-handle:hover {
+    background: var(--accent);
+  }
+}

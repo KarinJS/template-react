@@ -1,0 +1,124 @@
+---
+title: 实现原理（论文）
+description: '@karinjs/template-react 的设计与实现：约定扫描、模块增强类型系统、SSR 渲染管线、面板隔离与生产构建策略'
+---
+
+# 实现原理：一个面向 Karin 插件的 React 截图模板工具链
+
+> 本文以论文的方式完整讲述 `@karinjs/template-react` 的设计动机、架构选择与实现细节，包括途中踩掉的真实陷阱。适合想深入理解或参与改造的读者。
+
+## 摘要
+
+Karin 插件的传统截图模板基于 art-template：字符串拼接 HTML、无类型约束、无样式隔离、无数据管理。本文描述的工具链把这一流程重建为"React 组件 + Tailwind CSS + TypeScript"的现代形态，核心贡献是四点：**目录强约定驱动的自动注册**、**基于模块增强的零引用类型系统**、**预构建面板 + iframe 沙盒的样式物理隔离**，以及**开发态与生产态统一约定加载的构建策略**。
+
+## 1. 背景与问题
+
+art-template 范式的痛点可以归纳为四类：
+
+1. **写法**：HTML 以字符串形式存在，插值与循环依赖模板方言，无法组件化复用；
+2. **类型**：模板数据没有任何类型约束，字段写错只能在运行时发现；
+3. **样式**：手写 CSS，且模板与调试面板共享文档时双向污染；
+4. **数据**：mock 数据没有统一存放、编辑和回放机制，"机器人实际发出的数据"无法沉淀为可复现的样例。
+
+设计目标随之确定：模板即组件、类型全链路、样式结构性隔离、数据闭环，并且**下游接入成本趋近于零**。
+
+## 2. 总体架构：三条链路共享一份约定
+
+系统由三条链路组成，它们共享同一份 `template/` 目录约定：
+
+- **开发面板链路**：`ktr dev` 启动 Vite 开发服务器，托管预构建的静态面板 SPA；用户组件在 iframe 沙盒中经用户自己的 Vite 管道编译（HMR 保留），面板与沙盒之间用 postMessage 协议通信。
+- **Karin 开发链路**：karin 插件进程触发指令 → `renderImage` → SSR 生成 HTML → karin 的 Puppeteer 截图；同时真实数据被捕获回 `template/`。
+- **发布链路**：`tsdown` 把插件逻辑、模板组件、注册表和 Tailwind CSS 一次性打进 `lib/`。
+
+<Callout type="info">
+  关键决策：**面板是预构建的静态应用**，永远不参与用户项目的编译。用户组件只在 iframe 沙盒里运行，两个 document 之间的 CSS
+  隔离是结构性的，不依赖任何命名约定。
+</Callout>
+
+## 3. 约定扫描与 `.ktr` 生成
+
+### 3.1 强约定
+
+目录即路由，文件名固定：
+
+- `template/<板块>/<模板>/index.tsx`：模板组件（裸 `.tsx` 不注册）；
+- `template/<板块>/<模板>/mock.ts`：TS mock（固定文件名）；
+- `template/<板块>/<模板>/data/*.json`：JSON mock 与捕获数据；
+- `template/<板块>/<模板>/components/`：模板内部子组件与逻辑文件的固定存放目录（可选），不参与路由；
+- `template/**/_*`：下划线目录是内部辅助目录，永不成为路由。
+
+### 3.2 生成物
+
+`ktr sync`（dev/build 前置）扫描后写入 `.ktr/`：
+
+- `template-registry.ts`：运行时注册表（`templates` 映射 + 各模板具名导出透传）；
+- `mock-registry.ts`：TS mock 统一 re-export + JSON 文件清单；
+- `registry-types.d.ts`：类型增强（下一节）。
+
+生成文件带防伪头，被手动修改过的文件不会被覆盖。`.ktr` 的地位类似 Next.js 的 `.next/`——是产物而非源码。
+
+## 4. 类型系统：零引用的模块增强
+
+这是整条链路里坑最多的部分，值得完整记录。
+
+### 4.1 目标
+
+下游调用 `renderImage('hello/card', data)` 时，`data` 的类型必须与 `hello/card` 模板 `defineTemplate` 声明的 `D` 精确绑定，且下游源码**不允许 import `.ktr`**（显式引用框架产物既不优雅也耦合路径）。
+
+### 4.2 机制
+
+1. 模板侧 `export default defineTemplate({ component })`，`D` 从组件的 `TemplateProps<D>` 参数自动推断（无需显式泛型）；
+2. `.ktr/registry-types.d.ts` 以 `typeof import('../template/hello/card/index').default` 捕获每个 default 导出的 `TemplateDef<D>`，通过 `declare module '@karinjs/template-react/registry-types'` 注入 core 的空接口 `ProjectRegistry`；
+3. core 的 `LoadedRegistry = keyof ProjectRegistry extends never ? AnyRegistry : ProjectRegistry`——增强生效时精确，未 sync 时退化；
+4. `loadTemplateRegistry()` 返回 `LoadedRegistry`，类型沿调用链传播。
+
+### 4.3 三个真实陷阱
+
+<Accordions>
+  <Accordion title="泛型默认值在 ReturnType 下会按约束实例化">
+    最初 `loadTemplateRegistry<R extends AnyRegistry = LoadedRegistry>` 用泛型默认值表达返回类型，实测增强失效。最小复现证明：`ReturnType<typeof f>` 对泛型签名按**约束**而非默认值实例化。结论：公开 API 返回类型必须直接引用 `LoadedRegistry`，不经过泛型参数。
+  </Accordion>
+  <Accordion title="dts 打包器会把接口复制进共享 chunk，增强合并不进去">
+    tsdown/rolldown-dts 会把多入口共享的类型提升到 hash 命名的 chunk，各入口只保留再导出。对再导出模块做 `declare module` 增强时，合并发生在错误的目标上，chunk 里的原始声明纹丝不动。解法：core 内部一律通过包自身子路径 `@karinjs/template-react/registry-types` 引用该接口，并把它加入 `neverBundle` 保持外链——下游增强与 core 打包产物指向同一个模块 ID。
+  </Accordion>
+  <Accordion title="命名空间重导出会击溃 tree-shaking">
+    lucide-react 桶文件含 `export * as icons` 命名空间重导出，rolldown 当前无法证明其未被使用，导致 4000 个图标模块全量入包（653 kB）。Rollup（Vite 生产构建所用）能按命名空间成员粒度摇掉。最终决策：按用户决定整库打包，并保留该现象的记录——rolldown 追平该特性前，图标体积是已知代价。
+  </Accordion>
+</Accordions>
+
+## 5. SSR 渲染管线与 HtmlWrapper
+
+### 5.1 管线
+
+`createRenderer` 返回的渲染函数依次执行：注册表查模板 → 可选 `validate` 运行时校验 → 合并稀疏上下文 → 插件 `beforeRender` → `React.createElement(component, { data, ctx })` → `renderToReadableStream` 流式 SSR → 插件 `afterRender` 串行改写 → `HtmlWrapper` 包装为完整 HTML → 固定文件名覆盖写入（`htmlFileName` 默认 `fixed`，杜绝随机文件堆积）→ 开发态捕获本次数据。
+
+### 5.2 HtmlWrapper 的两条核心原则
+
+**被动的截图边界**：包装器统一提供 `<div id="container">` 包裹组件，它不做任何外观修饰；圆角、阴影、背景完全由用户组件根元素的 className 决定。`html, body { background: transparent !important }` 保证 `omitBackground` 截图时圆角外区域透明。
+
+**稀疏主题注入**：框架不发明任何默认主题色。`ctx.theme` 是可选的 `Partial<ThemeContext>`，只有调用方显式提供的字段才会被写成 CSS 变量；变量同时写在 `<html>` 和 `<body>` 上——因为 Tailwind v4 `@theme` 的 `--color-*: var(--*)` 映射在 `:root` 声明并解析，只写 `body` 时 `:root` 会回落到组件库默认色（早期版本 SSR 截图因此意外呈现 HeroUI 蓝）。
+
+## 6. 面板隔离与数据同步
+
+面板与沙盒通过 `source` 标记的 postMessage 协议通信（`ktr:select` / `ktr:data` / `ktr:theme` 下行，`ktr:ready` / `ktr:rendered` / `ktr:error` / `ktr:hmr` 上行），画布尺寸由沙盒渲染完成后回报的包围盒决定（滚轮缩放、双击适应由此驱动）。
+
+数据同步基于文件系统事件：开发服务器监听 mock 目录的 `data/*.json` 变更，按模板路由 100ms 去抖后经 Vite 的 HMR WebSocket 广播 `ktr:data-files-changed`；面板以 `vite-hmr` 子协议直连该端点（断线自动重连），收到事件后刷新数据列表——若变更文件是 `captured.json` 则自动选中并重渲染沙盒。由此实现"机器人发一次指令，面板立即呈现这次真实数据"的闭环。
+
+## 7. 生产构建策略
+
+下游构建统一为 `ktr sync && tsdown`：
+
+- **入口**：`src` 插件逻辑（扁平输出，保持 karin 的 `lib/apps` 约定）+ `.ktr` 两个注册表 + `template/style.css`（Tailwind 由 `@bosh-code/tsdown-plugin-tailwindcss` 在 rolldown 管线内编译，不再需要单独的 vite 构建和 `dist/` 目录）；
+- **外部化边界**：只有 `node-karin`（宿主提供）保持外部；`react`/`react-dom`、`@karinjs/template-react` 运行时与组件库全部内联进产物——渲染器与组件共享产物内的同一份 React 副本，hooks 因此正常工作（双副本崩溃只在"组件进包而渲染器外部引用"的半包状态下发生）；下游 `dependencies` 因此可以为空，生产环境零安装；
+- **注册表候选**：`loadTemplateRegistry` 在 `.ktr` 源文件与 `lib/template-registry.js` 之间按 mtime 取新——开发态 sync 常新，生产环境只有 `lib/`，自然命中打包产物。
+
+## 8. 取舍与展望
+
+明确放弃的：多框架支持（仅 React）、对 art-template 的向后兼容（未发布即清理全部迁移逻辑）、图标库体积（rolldown 命名空间树摇追平前的已知代价）。
+
+后续方向：面板的 AI mock 生成、code-inspector 深化、捕获数据的版本管理 UI。
+
+<Cards>
+  <Card title="从 art-template 迁移" href="/docs/internals/migration-from-art" description="范式对照与逐步迁移指南" />
+  <Card title="API 参考" href="/docs/api/renderer" description="createTemplateRenderer / createRenderer / 约定加载" />
+</Cards>

@@ -1,0 +1,51 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/docs/**'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/configure-pages@v6
+      - run: pnpm install --frozen-lockfile
+      - name: Build docs
+        run: pnpm --filter template-react-docs run build
+        env:
+          # GitHub 项目页部署在 /<仓库名>/ 子路径
+          DOCS_BASE_PATH: /${{ github.event.repository.name }}
+          DOCS_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: packages/docs/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

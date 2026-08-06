@@ -1,0 +1,301 @@
+---
+title: 快速开始
+description: 10 分钟，从 Karin 官方 TS 插件模板到用 React 模板发出第一张图片
+---
+
+# 快速开始
+
+这篇教程面向**几乎零基础**的开发者：你不需要懂 React 原理、不需要懂构建工具，跟着每一步复制粘贴即可。每一步都会告诉你"成功后你会看到什么"，没看到就停下来检查对应步骤。
+
+目标是：把 Karin 官方的 TypeScript 插件模板接入 `@karinjs/template-react`，用 React 组件写一个截图模板，并在群里发出第一张图片，**替代掉 art-template**。
+
+## 开始前你需要
+
+- 安装好 [Node.js](https://nodejs.org/)（建议 22 或更高版本）和 [pnpm](https://pnpm.io/)（`npm install -g pnpm`）；
+- 一个基于 Karin 官方 **TypeScript 插件模板**创建的插件项目（还没有的话，去 Karin 官方仓库复制插件模板作为起点）；
+- 一个能跑起来的 Karin 主程序（用来真正发图片）。
+
+<Callout type="info">
+  还不会 React / Tailwind / TypeScript？先把 [React 中文官方教程](https://zh-hans.react.dev/learn)、[Tailwind CSS
+  文档](https://tailwindcss.com/docs)、[TypeScript 官方文档](https://www.typescriptlang.org/docs/) 过一遍再开工。也可以直接装 [AI
+  技能包](/docs/ai-skill)，让 AI 按最新文档带你做。
+</Callout>
+
+## 正式开工
+
+<Steps>
+<Step>
+### 第 1 步：安装依赖
+
+在你的插件项目根目录执行（全部装为开发依赖，构建时会一并打进产物）：
+
+```bash
+pnpm add -D @karinjs/template-react react react-dom @types/react @types/react-dom tsdown @tsdown/css @bosh-code/tsdown-plugin-tailwindcss
+```
+
+- `react` / `react-dom`：模板组件的运行时（SSR 渲染要用）。
+- `@karinjs/template-react`：本工具链，提供 `ktr` 命令和渲染器。
+- 其余是构建和类型需要的开发依赖。
+
+<Callout type="warn">
+  **所有依赖都放 `devDependencies`**——tsdown 会把它们全部打进 `lib/`（含 react 和本工具包的运行时），发布后生产环境零安装。关键前提：core 的运行时和模板组件必须在**同一份产物**里，这样包内只有一份 React 副本，hooks 才能正常工作；反过来说，如果你把 `@karinjs/template-react` 改成外部引用，那 react/react-dom 就必须跟着外部化（放 `dependencies`），两半各一份 React 会直接崩。
+</Callout>
+</Step>
+
+<Step>
+### 第 2 步：创建配置文件
+
+在项目根目录新建 `karin.template.ts`：
+
+```ts title="karin.template.ts"
+import { defineConfig } from '@karinjs/template-react'
+
+// 这里只保留 @karinjs/template-react 自身配置；模板、mock 和 JSON 数据全部按 template/ 约定自动发现。
+export default defineConfig({
+  dev: {
+    port: 5180,
+    host: 'localhost',
+    open: true
+  }
+})
+```
+
+**成功后**：项目里多了一个配置文件。暂时没有任何输出，这是正常的。
+
+</Step>
+
+<Step>
+### 第 3 步：写你的第一个模板
+
+创建文件 `template/hello/card/index.tsx`（注意目录层级，一个都不能错）：
+
+```tsx title="template/hello/card/index.tsx"
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+/** 卡片模板的数据结构。 */
+export interface HelloCardData {
+  /** 主标题。 */
+  title: string
+  /** 副标题。 */
+  subtitle?: string
+  /** 键值对列表。 */
+  items: Array<{ label: string; value: string }>
+}
+
+const HelloCard = ({ data }: TemplateProps<HelloCardData>) => (
+  <div className="w-155 bg-white p-8 text-zinc-900">
+    <h1 className="text-3xl font-bold">{data.title}</h1>
+    {data.subtitle && <p className="mt-2 text-sm text-zinc-500">{data.subtitle}</p>}
+    <div className="mt-6 grid gap-3">
+      {data.items.map((item) => (
+        <div key={item.label} className="flex items-center justify-between rounded-lg border border-zinc-200 px-4 py-3">
+          <span className="text-sm text-zinc-500">{item.label}</span>
+          <strong>{item.value}</strong>
+        </div>
+      ))}
+    </div>
+  </div>
+)
+
+export default defineTemplate({
+  name: '问候卡片',
+  description: '我的第一个 React 截图模板',
+  component: HelloCard
+})
+```
+
+<Callout type="error">
+  **模板组件必须写在 `template/<板块>/<模板>/index.tsx`**——目录就是路由（这个模板的路由是 `hello/card`），文件名固定叫 `index.tsx`。直接写 `template/hello/card.tsx` 这种裸文件**不会**被注册。
+</Callout>
+
+**成功后**：文件保存后没有报错。这时模板还没注册，继续下一步。
+
+</Step>
+
+<Step>
+### 第 4 步：准备示例数据
+
+创建 `template/hello/card/data/default.json`：
+
+```json title="template/hello/card/data/default.json"
+{
+  "title": "我的第一张卡片",
+  "subtitle": "React + Tailwind CSS",
+  "items": [
+    { "label": "框架", "value": "@karinjs/template-react" },
+    { "label": "渲染", "value": "SSR HTML" }
+  ]
+}
+```
+
+<Callout type="info">
+  JSON 数据文件必须放在模板目录的 **`data/` 子目录**里（`hello/card/data/`），直接放在 `hello/card/` 根部不会被识别。
+</Callout>
+</Step>
+
+<Step>
+### 第 5 步：生成注册表并启动开发面板
+
+```bash
+npx ktr sync
+npx ktr dev
+```
+
+`ktr sync` 会扫描 `template/` 并在隐藏的 `.ktr/` 目录生成注册表和类型声明（框架产物，不要手动改、不要 import 它）。
+
+**成功后**：终端提示面板地址，浏览器自动打开 `http://localhost:5180/__ktr/panel/`，左侧能看到"问候卡片"，中间就是它的实时预览。改 `index.tsx` 或 `default.json` 保存，预览秒级更新——这就是你以后调样式的主战场。
+
+</Step>
+
+<Step>
+### 第 6 步：接上 Karin，发出第一张图
+
+创建 `src/utils/render.ts`（胶水层，把模板渲染和 Karin 截图接起来）：
+
+```ts title="src/utils/render.ts"
+import path from 'node:path'
+
+import { karinPathHtml, render, segment, type ImageElement } from 'node-karin'
+import { createTemplateRenderer, type DataOf, type LoadedRegistry } from '@karinjs/template-react/runtime'
+
+import { dir } from '../dir'
+
+// ktr 侧按约定装配（包根定位、配置解析、注册表加载、CSS 定位、捕获目录）；
+// outputDir 是 karin 领域的位置，由插件显式指定。
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: { outputDir: path.join(karinPathHtml, dir.pluginName) }
+})
+
+/** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
+type Registry = LoadedRegistry
+
+/**
+ * 渲染模板并交给 Karin Puppeteer 截图，返回可直接 reply 的图片消息元素。
+ */
+export const renderImage = async <K extends keyof Registry & string>(
+  templatePath: K,
+  data: DataOf<Registry[K]>,
+  options?: Record<string, unknown>
+): Promise<ImageElement[]> => {
+  const { success, htmlPath, error } = await renderTemplate(templatePath, data)
+  if (!success) {
+    throw new Error(`模板渲染失败 ${templatePath}：${error}`)
+  }
+
+  const result = await render.render({
+    name: `${dir.pluginName}/${templatePath}`,
+    file: htmlPath,
+    selector: '#container',
+    type: 'png',
+    omitBackground: true,
+    ...options
+  })
+
+  const list = Array.isArray(result) ? result : [result]
+  return list.map((img) => segment.image(`base64://${img}`))
+}
+```
+
+再创建一个机器人指令 `src/apps/template.ts`：
+
+```ts title="src/apps/template.ts"
+import { karin } from 'node-karin'
+
+import { renderImage } from '../utils/render'
+
+/** 触发指令：#测试模板 */
+export const templateTest = karin.command('^(#)?测试模板$', async (event) => {
+  const images = await renderImage('hello/card', {
+    title: '来自机器人的卡片',
+    items: [{ label: '状态', value: '渲染成功' }]
+  })
+  await event.reply(images)
+  return true
+})
+```
+
+<Callout type="warn">
+  注意 `renderImage('hello/card', ...)` 的第二个参数是有严格类型的：试着把 `title` 删掉或写成数字，`tsc`
+  会立刻报错。类型是从模板组件一路推导过来的，不需要你手动维护映射表。
+</Callout>
+
+**成功后**：`pnpm dev`（同时启动面板和 karin 开发进程），在群里发 `#测试模板`，机器人回复一张卡片图片。同时你会发现面板的数据下拉里自动出现了 `captured.json` 并被选中——那是这次真实渲染的数据，自动捕获的。
+
+</Step>
+
+<Step>
+### 第 7 步：生产构建
+
+```bash
+pnpm build
+```
+
+`build` 会依次执行 `ktr sync`（刷新注册表）和 `tsdown`（把插件逻辑、模板组件、注册表、Tailwind CSS 全部打进 `lib/`）。
+
+**成功后**：`lib/` 里能看到 `template-registry.js`、`mock-registry.js`、`style.css` 和 `apps/*.js`。发布后的插件不需要 `template/` 源码目录也能渲染。
+
+<Callout type="info">
+  第一次接入时，建议直接复制下面这份完整的构建配置（`tsdown.config.ts`），它包含扁平入口收集、注册表打包和 Tailwind CSS 插件：
+</Callout>
+
+```ts title="tsdown.config.ts"
+import fs from 'node:fs'
+import path from 'node:path'
+import { builtinModules } from 'node:module'
+
+import { tailwindPlugin } from '@bosh-code/tsdown-plugin-tailwindcss'
+import { defineConfig } from 'tsdown'
+
+/** 收集某个目录下的 .ts 文件为 tsdown 入口（保持 lib 输出扁平结构）。 */
+const collectEntries = (dir: string, prefix = ''): Record<string, string> => {
+  if (!fs.existsSync(dir)) {
+    return {}
+  }
+
+  const entries: Record<string, string> = {}
+  for (const file of fs.readdirSync(dir)) {
+    if (file.endsWith('.ts')) {
+      entries[path.join(prefix, file.replace(/\.ts$/, ''))] = path.join(dir, file)
+    }
+  }
+  return entries
+}
+
+const entry = {
+  ...collectEntries('src'),
+  ...collectEntries('src/apps', 'apps'),
+  // 隐藏目录用绝对路径，rolldown 对点开头目录的相对路径解析不到。
+  'template-registry': path.resolve('.ktr/template-registry.ts'),
+  'mock-registry': path.resolve('.ktr/mock-registry.ts'),
+  // 模板 Tailwind CSS 一并交给 tsdown 编译，产物 lib/style.css 随包发布。
+  style: path.resolve('template/style.css')
+}
+
+export default defineConfig({
+  entry,
+  plugins: [tailwindPlugin()],
+  target: 'node18',
+  outDir: 'lib',
+  // 输出统一使用 .js 扩展名，保持 package.json main 与注册表加载约定（lib/*.js）不变。
+  outExtensions: () => ({ js: '.js' }),
+  dts: false,
+  deps: {
+    // 只有 node-karin 由宿主 karin 应用提供，永远外部化；
+    // 其余全部打进 lib——包括 react/react-dom 和 @karinjs/template-react 运行时，
+    // 渲染器与组件在同一份产物内共享同一个 React 副本，SSR hooks 才能正常工作。
+    neverBundle: [...builtinModules, ...builtinModules.map((mod) => `node:${mod}`), /^node-karin/]
+  }
+})
+```
+
+</Step>
+</Steps>
+
+## 接下来读什么
+
+<Cards>
+  <Card title="编写模板" href="/docs/guide/template" description="defineTemplate 字段详解、ctx、圆角与外观控制" />
+  <Card title="mock 数据" href="/docs/guide/data" description="mock.ts、data/*.json、captured.json 捕获闭环" />
+  <Card title="开发面板导览" href="/docs/guide/dev-panel" description="切换模板/数据/主题、缩放、截图预览" />
+  <Card title="karin 集成" href="/docs/guide/karin-integration" description="renderImage 逐行讲解与截图参数" />
+</Cards>

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "paths": {
+      "@karinjs/template-react/registry-types": ["./src/registry-types.ts"]
+    },
+    "types": ["node", "vite/client", "vitest/importMeta"]
+  },
+  "include": ["src", "panel", "sandbox-entry", "tests", "tsdown.config.ts", "vite.panel.config.ts", "vitest.config.ts"]
+}

@@ -1,0 +1,21 @@
+# Generated build outputs are intentionally ignored.
+node_modules/
+dist/
+lib/
+.next/
+out/
+.ktr/
+panel/dist/
+coverage/
+.turbo/
+.vite/
+.vscode/
+.scaffold-*/
+Karin/
+.DS_Store
+*.log
+*.tsbuildinfo
+next-env.d.ts
+packages/*/node_modules/
+packages/karin-plugin-ts/@karinjs/
+packages/*/mock-data/**/versions.json
