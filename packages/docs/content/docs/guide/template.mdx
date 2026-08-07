@@ -237,6 +237,12 @@ const HelloCard = ({ data, ctx }: TemplateProps<HelloCardData>) => {
 
 </Callout>
 
+<Callout type="warn">
+  **避免使用视口单位（`100vh`、`min-h-screen`、`vw` 等）。** 截图边界是内容驱动的，生产截图的视口由宿主截图器决定（Karin 默认
+  800×600）；开发面板的 sandbox iframe 会被调整为内容尺寸，此时 `100vh` ≈ 内容高度，`min-h-screen` 这类约束会形成
+  布局反馈、面板预览与生产截图不一致。需要最小高度时写固定像素值（如 `min-h-[600px]`）。
+</Callout>
+
 保存文件后框架自动热更新，开发面板里选中 `hello/card` 即可预览（见 [开发面板导览](./dev-panel)）。机器人侧调用 `renderImage('hello/card', {...})` 时，TypeScript 会按模板定义检查数据，写错字段编译期就报错。
 
 <Cards>

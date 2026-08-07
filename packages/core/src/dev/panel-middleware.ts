@@ -101,6 +101,13 @@ export const registerPanelMiddleware = (server: ViteDevServer): void => {
     const filePath = path.resolve(distDir, relativePath)
     // 路径穿越防护 + SPA 兜底：越出 dist 或未命中静态文件时回退 index.html，交给前端路由。
     if (!filePath.startsWith(distDir) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+      // 非面板路径（如下游 publicDir 的 /image/* 静态资源）交还给 Vite 的静态中间件处理，
+      // 只有面板自身路径才回退 index.html。
+      if (!pathname.startsWith('/__ktr/panel')) {
+        next()
+        return
+      }
+
       const fallbackPath = path.join(distDir, 'index.html')
       if (fs.existsSync(fallbackPath)) {
         res.setHeader('Content-Type', 'text/html; charset=utf-8')

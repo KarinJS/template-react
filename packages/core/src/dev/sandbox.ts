@@ -273,15 +273,18 @@ const renderCurrent = () => {
 
   try {
     const onRendered = () => reportRendered(startedAt, currentToken)
+    // 与 SSR 外壳保持同一截图边界：包一层被动 #container，面板的测量与截图目标（#container ?? body）就和生产 HTML 一致。
     root.render(
       React.createElement(ErrorBoundary, { key: selectedPath + ':' + Date.now() },
-        React.createElement(TemplateHost, {
-          template,
-          data: selectedData,
-          ctx: selectedCtx,
-          renderId: startedAt,
-          onRendered
-        })
+        React.createElement('div', { id: 'container' },
+          React.createElement(TemplateHost, {
+            template,
+            data: selectedData,
+            ctx: selectedCtx,
+            renderId: startedAt,
+            onRendered
+          })
+        )
       )
     )
   } catch (error) {
