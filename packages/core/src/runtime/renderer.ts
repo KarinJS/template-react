@@ -133,7 +133,8 @@ class SSRRenderer<R extends Record<keyof R, TemplateDef<any>>> {
       // 捕获触发条件：显式配置了 captureDir，或开发环境下默认捕获到 template/ 目录。
       const captureDir = this.options.captureDir ?? (process.env.NODE_ENV === 'development' ? path.resolve('template') : undefined)
       if (shouldCapture(captureDir)) {
-        saveCapturedData(captureDir, templatePath, data)
+        // data 与 renderContext 都可能被 beforeRender 插件加工过，捕获的是加工后的完整快照。
+        saveCapturedData(captureDir, templatePath, data, renderContext)
       }
 
       return {

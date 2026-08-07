@@ -327,10 +327,11 @@ const App = () => {
         return
       }
 
-      const body = (await response.json()) as { data: unknown; readonly: boolean }
+      const body = (await response.json()) as { data: unknown; readonly: boolean; ctx?: Record<string, unknown> }
       setJsonText(pretty(body.data))
       setReadonly(body.readonly)
-      postSandbox('ktr:data', { path, data: body.data })
+      // 捕获快照（captured.json）会带 ctx：版本页脚、取色、缩放等运行时上下文一并回放。
+      postSandbox('ktr:data', { path, data: body.data, ...(body.ctx ? { ctx: body.ctx } : {}) })
     },
     [postSandbox]
   )

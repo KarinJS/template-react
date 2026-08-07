@@ -5,7 +5,17 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ViteDevServer } from 'vite'
 
 import { ensureTemplateRegistry, templateRegistryPath } from '../conventions/registry'
+import { capturedDataFileName } from '../runtime/capture'
 import type { ResolvedKtrConfig } from '../types'
+
+/**
+ * 判断 JSON 内容是否是 captured.json 的 { data, ctx } 完整快照形状。
+ * @param value 解析后的 JSON 内容。
+ * @returns 是捕获快照时返回 true。
+ */
+const isCaptureSnapshot = (value: unknown): value is { data: unknown; ctx: Record<string, unknown> } => {
+  return typeof value === 'object' && value !== null && 'data' in value && 'ctx' in value
+}
 
 /**
  * 统一输出 JSON 响应，避免每个分支重复设置响应头。
@@ -236,11 +246,17 @@ const handleMockApiRequest = async (
 
     if (method === 'GET') {
       if (hasJsonFile) {
+        const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+        // captured.json 是 { data, ctx } 完整渲染快照：解包下发，面板回放时连同 ctx 一起传给沙盒。
+        if (name === capturedDataFileName && isCaptureSnapshot(parsed)) {
+          json(res, 200, { name, source: 'json', readonly: false, data: parsed.data, ctx: parsed.ctx })
+          return
+        }
         json(res, 200, {
           name,
           source: 'json',
           readonly: false,
-          data: JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+          data: parsed
         })
         return
       }

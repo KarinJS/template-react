@@ -23,6 +23,19 @@ describe('capture data', () => {
     expect(fs.readFileSync(filePath, 'utf-8')).toBe(JSON.stringify({ message: '你好' }, null, 2))
   })
 
+  it('wraps data and ctx into a snapshot when ctx is provided', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-capture-'))
+
+    expect(saveCapturedData(dir, 'hello/card', { message: '你好' }, { scale: 1, version: { pluginVersion: '1.0.0' } })).toBe(true)
+
+    const filePath = path.join(dir, 'hello', 'card', 'data', capturedDataFileName)
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+    expect(parsed).toEqual({
+      data: { message: '你好' },
+      ctx: { scale: 1, version: { pluginVersion: '1.0.0' } }
+    })
+  })
+
   it('overwrites captured.json on subsequent captures without extra files', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-capture-'))
 

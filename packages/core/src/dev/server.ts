@@ -1,3 +1,7 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { codeInspectorPlugin } from 'code-inspector-plugin'
@@ -12,6 +16,39 @@ import { registerDataWatch } from './data-watch'
 import { registerMockApi } from './mock-api'
 import { registerPanelMiddleware } from './panel-middleware'
 import { registerSandboxMiddleware, sandboxPlugin } from './sandbox'
+
+/**
+ * 解析 ktr 浏览器端入口（dist/client.mjs）的绝对路径。
+ * sandbox 里的用户组件在浏览器环境评估，必须命中包 exports 的 browser 入口；
+ * 部分 vite 版本的依赖预打包不应用 browser 条件，会把 node 入口（jiti/node:os 等）打进浏览器包，
+ * 模块求值即崩溃（面板表现为一直「等待模板注册」）。这里在 dev server 内部用 alias 显式钉住，下游零处理。
+ * @returns 浏览器端入口文件的绝对路径。
+ */
+const resolveBrowserClientEntry = (): string => {
+  // 打包产物 dist/ 内 chunk 平铺，client.mjs 与当前 chunk 同级
+  const bundled = fileURLToPath(new URL('./client.mjs', import.meta.url))
+  if (fs.existsSync(bundled)) {
+    return bundled
+  }
+  // ktr 自身开发/测试直跑源码时的兜底：向上找包根再拼 dist/client.mjs
+  let dir = path.dirname(fileURLToPath(import.meta.url))
+  for (let i = 0; i < 10; i++) {
+    const pkgPath = path.join(dir, 'package.json')
+    if (fs.existsSync(pkgPath)) {
+      try {
+        if (JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).name === '@karinjs/template-react') {
+          return path.join(dir, 'dist', 'client.mjs')
+        }
+      } catch {
+        // package.json 解析失败时继续向上找
+      }
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return bundled
+}
 
 /**
  * 创建 ktr 开发服务：先同步约定产物，再挂载面板、sandbox 和 mock API。
@@ -38,7 +75,7 @@ export const createDevServer = async (config: ResolvedKtrConfig): Promise<DevSer
       sandboxPlugin(config)
     ],
     resolve: {
-      alias: [tailwindCssAlias]
+      alias: [tailwindCssAlias, { find: /^@karinjs\/template-react$/, replacement: resolveBrowserClientEntry() }]
     },
     optimizeDeps: {
       // Tailwind oxide 是原生二进制，预打包会破坏其加载路径，直接排除。

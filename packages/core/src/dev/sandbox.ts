@@ -300,11 +300,16 @@ window.addEventListener('message', (event) => {
     selectedPath = payload.path
     selectedData = {}
     hasSelectedData = false
+    // 切换模板时丢弃捕获快照带来的扩展字段，仅保留面板主题弹窗选择的 theme。
+    selectedCtx = { scale: 1, theme: selectedCtx.theme }
   }
   if (type === 'ktr:data') {
     selectedPath = payload.path
     selectedData = payload.data ?? {}
     hasSelectedData = true
+    // 捕获快照（captured.json）携带完整 ctx 时整包回放，真实还原本地渲染时的运行时上下文；
+    // 普通 mock 不带 ctx，丢掉上一个快照的扩展字段，但保留面板主题弹窗选择的 theme。
+    selectedCtx = payload.ctx && typeof payload.ctx === 'object' ? { scale: 1, ...payload.ctx } : { scale: 1, theme: selectedCtx.theme }
     renderCurrent()
   }
   if (type === 'ktr:theme') {

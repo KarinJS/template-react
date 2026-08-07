@@ -70,7 +70,7 @@ JSON mock **必须放在 `data/` 子目录**（`template/<板块>/<模板>/data/
 
 ## 捕获数据：captured.json
 
-机器人真实触发一次渲染（比如群里有人发 `#渲染模板 hello/card`）时，框架会把**这次实际用的数据**自动写入该模板的 `data/captured.json`——同一文件滚动覆盖，只保留最近一次。完整闭环：
+机器人真实触发一次渲染（比如群里有人发 `#渲染模板 hello/card`）时，框架会把**这次实际用的数据和运行时上下文**自动写入该模板的 `data/captured.json`——同一文件滚动覆盖，只保留最近一次。文件是 `{ data, ctx }` 快照形状：`data` 为本次渲染的完整数据（含渲染前插件加工的字段），`ctx` 为本次的运行时上下文（`scale`、`theme` 以及下游插件挂上去的扩展字段）。面板选中它回放时会把 `ctx` 一并下发沙盒，画布与真实渲染完全一致。完整闭环：
 
 <Steps>
 <Step>
@@ -80,7 +80,7 @@ JSON mock **必须放在 `data/` 子目录**（`template/<板块>/<模板>/data/
 </Step>
 <Step>
 
-框架把本次渲染数据写入 `data/captured.json`（滚动覆盖，不堆积历史文件）。
+框架把本次渲染的 `{ data, ctx }` 快照写入 `data/captured.json`（滚动覆盖，不堆积历史文件）。
 
 </Step>
 <Step>

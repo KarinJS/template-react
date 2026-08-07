@@ -15,18 +15,22 @@ const templateCaptureDir = (captureDir: string, templatePath: string): string =>
 
 /**
  * 保存一次真实渲染数据，滚动覆盖模板目录下的 captured.json。
+ * 传入 ctx 时写成 `{ data, ctx }` 完整快照：版本页脚、取色、缩放等运行时上下文随数据一起捕获，
+ * 面板选中 captured.json 回放时能把后端真实下发的 props 完整还原。
  * @param captureDir 捕获根目录。
  * @param templatePath 模板路由。
  * @param data 本次渲染使用的数据。
+ * @param ctx 本次渲染的运行时上下文（可选；不传时保持纯 data 形状）。
  * @returns 捕获是否成功。
  */
-export const saveCapturedData = (captureDir: string, templatePath: string, data: unknown): boolean => {
+export const saveCapturedData = (captureDir: string, templatePath: string, data: unknown, ctx?: unknown): boolean => {
   try {
     const dir = templateCaptureDir(captureDir, templatePath)
     ensureDir(dir)
 
     // 固定写入 captured.json，每次捕获直接覆盖旧数据，不再保留历史版本。
-    fs.writeFileSync(path.join(dir, capturedDataFileName), JSON.stringify(data, null, 2), 'utf-8')
+    const payload = ctx === undefined ? data : { data, ctx }
+    fs.writeFileSync(path.join(dir, capturedDataFileName), JSON.stringify(payload, null, 2), 'utf-8')
 
     return true
   } catch (error) {
