@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import tailwindcss from '@tailwindcss/vite'
 import fg from 'fast-glob'
-import { build, mergeConfig, type UserConfig } from 'vite'
+import { build, mergeConfig, type InlineConfig } from 'vite'
 
 import { resolveConfig } from '../config'
 import { resolveKtrViteConfig } from '../config/vite'
@@ -111,8 +111,10 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
   const relativeCssEntry = path.relative(config.outDir, cssEntry).replace(/\\/g, '/')
   fs.writeFileSync(tempEntry, `<link rel="stylesheet" href="${relativeCssEntry}">`, 'utf-8')
 
-  const baseConfig: UserConfig = {
+  const baseConfig: InlineConfig = {
     root: config.root,
+    // 不加载下游项目自己的 vite.config.ts（那是生产打包配置），扩展统一走 karin.template.ts 的 vite 字段。
+    configFile: false,
     logLevel: 'silent',
     plugins: [tailwindcss()],
     resolve: {

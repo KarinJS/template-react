@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { codeInspectorPlugin } from 'code-inspector-plugin'
-import { createServer, mergeConfig, type UserConfig } from 'vite'
+import { createServer, mergeConfig, type InlineConfig } from 'vite'
 
 import { resolveKtrViteConfig } from '../config/vite'
 import { ensureConventions } from '../conventions/registry'
@@ -59,9 +59,11 @@ export const createDevServer = async (config: ResolvedKtrConfig): Promise<DevSer
   await ensureConventions(config)
   await ensureDevCss(config)
 
-  const baseConfig: UserConfig = {
+  const baseConfig: InlineConfig = {
     root: config.root,
     appType: 'custom',
+    // 不加载下游项目自己的 vite.config.ts（那是生产打包配置），扩展统一走 karin.template.ts 的 vite 字段。
+    configFile: false,
     clearScreen: false,
     // 内部插件分工：code-inspector 源码定位、React JSX 编译、Tailwind v4 编译、iframe 沙盒虚拟模块。
     plugins: [
