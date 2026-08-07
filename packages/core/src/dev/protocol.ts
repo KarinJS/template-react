@@ -24,8 +24,13 @@ interface PanelThemePayload {
 /** 开发面板发送给 iframe 沙盒的跨窗口消息。 */
 export type PanelMessage =
   | { source: 'ktr-panel'; type: 'ktr:select'; payload: { path: string } }
-  | { source: 'ktr-panel'; type: 'ktr:data'; payload: { path: string; data: unknown; ctx?: Record<string, unknown> } }
+  | {
+      source: 'ktr-panel'
+      type: 'ktr:data'
+      payload: { path: string; data: unknown; ctx?: Record<string, unknown>; emptyReason?: 'no-data' | 'load-failed' }
+    }
   | { source: 'ktr-panel'; type: 'ktr:theme'; payload: PanelThemePayload }
+  | { source: 'ktr-panel'; type: 'ktr:panel-theme'; payload: { dark: boolean } }
   | { source: 'ktr-panel'; type: 'ktr:scale'; payload: { scale: number } }
   | { source: 'ktr-panel'; type: 'ktr:inspect'; payload: { enabled: boolean } }
 

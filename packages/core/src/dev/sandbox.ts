@@ -73,6 +73,43 @@ let selectedData = {}
 let selectedCtx = { scale: 1, theme: {} }
 let hasSelectedData = false
 let renderToken = 0
+// 数据为空或渲染失败时的占位提示，替换模板渲染位置。
+// emptyReason: null 正常渲染；'no-data' 未选择数据；'load-failed' 数据加载失败；'render-failed' 组件渲染抛错。
+let emptyState = null
+
+// 占位卡：内联样式实现，不依赖下游样式，固定尺寸让面板的测量/缩放/拖拽与真实模板一致。
+const Placeholder = ({ title, detail, isError }) =>
+  React.createElement(
+    'div',
+    {
+      style: {
+        width: 800,
+        minHeight: 420,
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        padding: '48px 40px',
+        border: '2px dashed rgba(128, 128, 128, 0.45)',
+        borderRadius: 24,
+        color: '#888',
+        fontFamily: "'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+        textAlign: 'center',
+        background: 'rgba(128, 128, 128, 0.06)'
+      }
+    },
+    React.createElement('div', { style: { fontSize: 40, lineHeight: 1 } }, isError ? '⚠️' : '🗂️'),
+    React.createElement('div', { style: { fontSize: 22, fontWeight: 600, color: isError ? '#dc2626' : '#999' } }, title),
+    detail
+      ? React.createElement(
+          'div',
+          { style: { fontSize: 14, color: '#aaa', maxWidth: 640, whiteSpace: 'pre-wrap', wordBreak: 'break-all' } },
+          detail
+        )
+      : null
+  )
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -90,7 +127,12 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.error) {
-      return React.createElement('pre', { style: { color: '#dc2626', whiteSpace: 'pre-wrap', padding: 24 } }, String(this.state.error?.stack || this.state.error))
+      // 渲染失败时用占位卡替换模板位置，尺寸可被面板测量，画布缩放/拖拽行为与正常模板一致。
+      return React.createElement(Placeholder, {
+        title: '模板渲染失败',
+        detail: String(this.state.error?.message || this.state.error),
+        isError: true
+      })
     }
 
     return this.props.children
@@ -146,8 +188,8 @@ const applyTheme = () => {
   document.body.classList.toggle('dark', mode === 'dark')
   document.documentElement.dataset.theme = mode
   document.body.dataset.theme = mode
-  document.documentElement.style.colorScheme = mode
-  document.body.style.colorScheme = mode
+  // 注意：不要在这里设置 color-scheme——它是 iframe 画布背板颜色的来源（light 时不透明白、dark 时深色），
+  // 背板颜色由面板外壳主题通过 ktr:panel-theme 单独控制，与模板主题解耦。
   for (const [name, key] of themeVarNames) {
     const value = theme[key]
     if (typeof value === 'string' && value) {
@@ -244,6 +286,14 @@ const TemplateHost = ({ template, data, ctx, renderId, onRendered }) => {
   return React.createElement(Component, { data, ctx })
 }
 
+// 占位卡挂载时也上报尺寸：占位渲染走与真实模板相同的测量/上报路径，画布缩放与拖拽算法保持一致。
+const ReportOnMount = ({ onRendered, children }) => {
+  React.useLayoutEffect(() => {
+    onRendered()
+  }, [onRendered])
+  return children
+}
+
 // 面板下发主题时整体合并：以 theme.mode 为唯一明暗依据；颜色字段以面板显式下发为准。
 const updateTheme = (payload = {}) => {
   const rawTheme = payload && typeof payload === 'object' && payload.theme ? payload.theme : payload
@@ -274,16 +324,24 @@ const renderCurrent = () => {
   try {
     const onRendered = () => reportRendered(startedAt, currentToken)
     // 与 SSR 外壳保持同一截图边界：包一层被动 #container，面板的测量与截图目标（#container ?? body）就和生产 HTML 一致。
+    // 数据为空/加载失败时渲染占位卡，替换模板位置；占位卡走同一 #container 测量，画布的缩放/拖拽行为不变。
+    const content = emptyState
+      ? React.createElement(Placeholder, {
+          title: emptyState === 'load-failed' ? '数据加载失败' : '暂无可预览的数据',
+          detail: emptyState === 'load-failed' ? '数据文件读取失败，请检查文件内容或重新选择' : '在左侧数据区选择或新建一份 mock 数据',
+          isError: emptyState === 'load-failed'
+        })
+      : React.createElement(TemplateHost, {
+          template,
+          data: selectedData,
+          ctx: selectedCtx,
+          renderId: startedAt,
+          onRendered
+        })
     root.render(
       React.createElement(ErrorBoundary, { key: selectedPath + ':' + Date.now() },
         React.createElement('div', { id: 'container' },
-          React.createElement(TemplateHost, {
-            template,
-            data: selectedData,
-            ctx: selectedCtx,
-            renderId: startedAt,
-            onRendered
-          })
+          emptyState ? React.createElement(ReportOnMount, { onRendered }, content) : content
         )
       )
     )
@@ -303,6 +361,7 @@ window.addEventListener('message', (event) => {
     selectedPath = payload.path
     selectedData = {}
     hasSelectedData = false
+    emptyState = null
     // 切换模板时丢弃捕获快照带来的扩展字段，仅保留面板主题弹窗选择的 theme。
     selectedCtx = { scale: 1, theme: selectedCtx.theme }
   }
@@ -310,10 +369,19 @@ window.addEventListener('message', (event) => {
     selectedPath = payload.path
     selectedData = payload.data ?? {}
     hasSelectedData = true
+    // 数据为空或加载失败时渲染占位卡（emptyReason 由面板在加载失败时显式置 load-failed）。
+    const isEmptyObject = selectedData && typeof selectedData === 'object' && Object.keys(selectedData).length === 0
+    emptyState = payload.emptyReason ?? (isEmptyObject ? 'no-data' : null)
     // 捕获快照（captured.json）携带完整 ctx 时整包回放，真实还原本地渲染时的运行时上下文；
     // 普通 mock 不带 ctx，丢掉上一个快照的扩展字段，但保留面板主题弹窗选择的 theme。
     selectedCtx = payload.ctx && typeof payload.ctx === 'object' ? { scale: 1, ...payload.ctx } : { scale: 1, theme: selectedCtx.theme }
     renderCurrent()
+  }
+  if (type === 'ktr:panel-theme') {
+    // 面板外壳明暗：只用于 iframe 画布背板（transform 合成时 UA 背板随 color-scheme 透出），与模板主题解耦。
+    const scheme = payload && payload.dark ? 'dark' : ''
+    document.documentElement.style.colorScheme = scheme
+    document.body.style.colorScheme = scheme
   }
   if (type === 'ktr:theme') {
     updateTheme(payload)

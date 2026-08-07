@@ -324,11 +324,14 @@ const App = () => {
       const response = await fetch(`/__ktr/api/data?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`)
       if (!response.ok) {
         setStatus(`Data ${response.status}`)
+        // 加载失败时用占位卡替换沙盒中的模板渲染位置。
+        postSandbox('ktr:data', { path, data: {}, emptyReason: 'load-failed' })
         return
       }
 
       const body = (await response.json()) as { data: unknown; readonly: boolean; ctx?: Record<string, unknown> }
-      setJsonText(pretty(body.data))
+      // 捕获快照（captured.json）带 ctx：编辑器展示完整的 { data, ctx } 快照，写回时也保持完整形状。
+      setJsonText(pretty(body.ctx !== undefined ? { data: body.data, ctx: body.ctx } : body.data))
       setReadonly(body.readonly)
       // 捕获快照（captured.json）会带 ctx：版本页脚、取色、缩放等运行时上下文一并回放。
       postSandbox('ktr:data', { path, data: body.data, ...(body.ctx ? { ctx: body.ctx } : {}) })
@@ -516,6 +519,12 @@ const App = () => {
   }, [postSandbox, sandboxReadyTick, templateTheme])
 
   useEffect(() => {
+    // 面板外壳明暗同步给沙盒：决定 iframe 画布背板（UA 背板随 color-scheme 透出），
+    // 深色面板下圆角海报的四角不再透出默认白背板。与模板主题完全解耦。
+    postSandbox('ktr:panel-theme', { dark: panelDark })
+  }, [postSandbox, sandboxReadyTick, panelDark])
+
+  useEffect(() => {
     // 检查模式开关同步给沙盒，由沙盒拨 code-inspector 客户端的持久检查态。
     postSandbox('ktr:inspect', { enabled: inspectMode })
   }, [postSandbox, sandboxReadyTick, inspectMode])
@@ -594,7 +603,13 @@ const App = () => {
       toast.success('保存成功', { description: `${name} 已写回数据文件` })
       // 数据内容变化可能改变组件尺寸，标记下次渲染完成后自动适应画布。
       shouldAutoFitRef.current = true
-      postSandbox('ktr:data', { path: selectedPath, data })
+      // 编辑器里若是捕获快照的完整 { data, ctx } 形状，推给沙盒时拆包下发。
+      const isSnapshot = data !== null && typeof data === 'object' && 'data' in data && 'ctx' in data
+      postSandbox('ktr:data', {
+        path: selectedPath,
+        data: isSnapshot ? (data as { data: unknown }).data : data,
+        ...(isSnapshot ? { ctx: (data as { ctx: Record<string, unknown> }).ctx } : {})
+      })
       await loadEntries(selectedPath, name)
       navigatePanel(selectedPath, name, true)
     } else {
