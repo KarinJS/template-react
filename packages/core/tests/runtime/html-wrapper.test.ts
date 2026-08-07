@@ -48,6 +48,8 @@ describe('HtmlWrapper', () => {
     // 内容被包装进被动的 #container 截图边界，包装器不强加任何外观。
     expect(html).toContain('<div id="container">')
     expect(html).not.toContain('border-radius: 5rem')
+    // flex 容器下禁止截图边界被视口宽度压缩，否则宽于视口的模板会被裁切。
+    expect(html).toContain('#container {\n  flex-shrink: 0;\n}')
   })
 
   it('emits no theme variables or data-theme when caller provides no theme', () => {

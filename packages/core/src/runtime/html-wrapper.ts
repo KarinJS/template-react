@@ -6,6 +6,8 @@ import type { HtmlWrapperOptions, RenderContext } from '../types'
 /**
  * SSR 输出页面的基础重置样式：背景透明保证截图圆角处无底色，#container 只是被动的截图边界，
  * 圆角、阴影、背景等外观完全由用户组件根元素自己的 className 决定。
+ * #container 必须 flex-shrink: 0：body 是 flex 容器且宽度受视口（默认 800px）限制，
+ * 不禁止收缩时宽于视口的模板会被压缩（配合 overflow 裁剪就是右侧内容被切掉）。
  * @returns 重置样式 CSS 文本。
  */
 const resetStyle = () => `
@@ -18,6 +20,9 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
+}
+#container {
+  flex-shrink: 0;
 }
 `
 
