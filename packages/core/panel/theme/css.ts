@@ -1,4 +1,4 @@
-import { baseMin, darkPalette, hueShiftMax, lightPalette, semanticColors } from './palette'
+import { darkPalette, hueShiftMax, lightPalette, semanticColors } from './palette'
 import { calculateForeground, formatOklch, normalizeHue, withChroma, withHue, type OklchColor } from './oklch'
 import type { ThemeKnobs } from './knobs'
 
@@ -75,10 +75,11 @@ const generateColorVars = (knobs: ThemeKnobs, mode: 'light' | 'dark'): Record<st
   vars['--focus'] = vars['--accent']!
   vars['--link'] = vars['--foreground']!
 
-  // 3. 语义色（色相联动）
-  // 以 baseMin 为原点：默认旋钮下必须等于 1，否则默认主题的语义色
-  // 会比组件库官方值浓一点，用户一打开面板画布就悄悄变色。
-  const chromaScale = Math.min(1 + (knobs.base - baseMin) * 2, 1.35)
+  // 与官方 generate-theme-colors 的 chromaBoost 一致：1 + grayChroma * 2。
+  // 语义色随灰阶染色量一起微微提彩，让整套配色观感统一。
+  // 注意 variables.css 里的 0.1935 等是「未提彩」的基准值，官方默认
+  // 同样会放大约 1.95%，所以这里不能为了对齐那份文件而消掉 boost。
+  const chromaScale = Math.min(1 + knobs.base * 2, 1.35)
   for (const [name, semantic] of Object.entries(semanticColors)) {
     // 暗色模式下语义色的基准色相与亮色不同（HeroUI 官方 variables.css 如此）。
     const baseHue = mode === 'light' ? semantic.hueLight : semantic.hueDark

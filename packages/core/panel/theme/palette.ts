@@ -87,9 +87,18 @@ export const semanticColors = {
 /** 默认强调色（HeroUI 蓝紫色），明度 62%、彩度 0.195、色相 253°。 */
 export const defaultAccent: OklchColor = { l: 0.6204, c: 0.195, h: 253.83 }
 
-/** 主题旋钮：base 是灰阶偏移量，控制面板整体温度（0 = 冷灰，0.02 = 暖灰）。 */
-export const baseMin = 0.0015
+/**
+ * base 旋钮的区间：灰阶染色量，控制中性色朝强调色偏多少。
+ *
+ * 官方不暴露这个值，而是从强调色彩度派生：min(chroma * 0.05, 0.015)。
+ * 默认强调色（c=0.195）下得 0.00975，即 defaultBase。这里抽成旋钮让用户可调，
+ * 上限沿用官方的两倍余量。
+ */
+export const baseMin = 0
 export const baseMax = 0.02
+
+/** 默认灰阶染色量，等于官方在默认强调色下派生出的 grayChroma。 */
+export const defaultBase = Math.min(defaultAccent.c * 0.05, 0.015)
 
 /** 灰阶和语义色跟主色色相的最大偏移角度（度）。 */
 export const hueShiftMax = 0.12

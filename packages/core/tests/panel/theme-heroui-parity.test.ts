@@ -50,18 +50,30 @@ describe('默认旋钮生成的调色板对齐 HeroUI 官方值', () => {
     expect(readVar(lightBlock, 'accent')).toBe('oklch(62.04% 0.1950 253.83)')
   })
 
-  it('语义色在亮色下与官方一致', () => {
-    expect(readVar(lightBlock, 'success')).toBe('oklch(73.29% 0.1935 150.81)')
-    expect(readVar(lightBlock, 'warning')).toBe('oklch(78.19% 0.1585 72.33)')
-    expect(readVar(lightBlock, 'danger')).toBe('oklch(65.32% 0.2328 25.74)')
+  // 语义色会按 chromaBoost = 1 + base * 2 微微提彩（官方同样如此）。
+  // 默认 base = min(0.195 * 0.05, 0.015) = 0.00975，boost = 1.0195，
+  // 所以这里的期望值是 variables.css 基准值乘以 1.0195 后的结果。
+  it('语义色在亮色下等于官方基准值提彩后的结果', () => {
+    expect(readVar(lightBlock, 'success')).toBe('oklch(73.29% 0.1973 150.81)')
+    expect(readVar(lightBlock, 'warning')).toBe('oklch(78.19% 0.1616 72.33)')
+    expect(readVar(lightBlock, 'danger')).toBe('oklch(65.32% 0.2373 25.74)')
   })
 
   it('语义色在暗色下带官方的色相偏移', () => {
     // 官方在暗色把 warning 往黄偏到 76.34、danger 回正到 24.63；
-    // 逆向时若只存一个 hue 就会丢掉这个偏移。
-    expect(readVar(darkBlock, 'warning')).toBe('oklch(82.03% 0.1388 76.34)')
-    expect(readVar(darkBlock, 'danger')).toBe('oklch(59.40% 0.1967 24.63)')
-    expect(readVar(darkBlock, 'success')).toBe('oklch(73.29% 0.1935 150.81)')
+    // 逆向时若只存一个 hue 就会丢掉这个偏移。success 没有 hueDark。
+    expect(readVar(darkBlock, 'warning')).toBe('oklch(82.03% 0.1415 76.34)')
+    expect(readVar(darkBlock, 'danger')).toBe('oklch(59.40% 0.2005 24.63)')
+    expect(readVar(darkBlock, 'success')).toBe('oklch(73.29% 0.1973 150.81)')
+  })
+
+  it('base 为 0 时语义色回到 variables.css 的原始基准值', () => {
+    // boost 归一，可直接对照官方文件逐字校验。
+    const raw = generateSandboxCss({ ...defaultKnobs, base: 0 })
+    const rawLight = raw.slice(0, raw.search(/\.dark\b/))
+    expect(readVar(rawLight, 'success')).toBe('oklch(73.29% 0.1935 150.81)')
+    expect(readVar(rawLight, 'warning')).toBe('oklch(78.19% 0.1585 72.33)')
+    expect(readVar(rawLight, 'danger')).toBe('oklch(65.32% 0.2328 25.74)')
   })
 
   it('默认圆角与官方一致', () => {

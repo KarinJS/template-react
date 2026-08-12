@@ -1,4 +1,4 @@
-import { baseMax, defaultAccent } from './palette'
+import { baseMax, defaultAccent, defaultBase } from './palette'
 
 /**
  * 主题旋钮（knobs）是模板主题所有可调参数的数据模型。
@@ -156,7 +156,7 @@ export const defaultKnobs: ThemeKnobs = {
   hue: defaultAccent.h,
   chroma: defaultAccent.c,
   lightness: defaultAccent.l,
-  base: 0.0015,
+  base: defaultBase,
   radius: '0.5rem',
   fontSans: fontSansOptions[0]!.value,
   fontMono: fontMonoOptions[0]!.value
