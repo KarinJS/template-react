@@ -57,21 +57,26 @@ export const darkPalette = {
  */
 export const semanticColors = {
   success: {
-    hue: 150.81,
+    hueLight: 150.81,
+    hueDark: 150.81,
     chromaLight: 0.1935,
     chromaDark: 0.1935,
     lightnessLight: 0.7329,
     lightnessDark: 0.7329
   },
   warning: {
-    hue: 72.33,
+    hueLight: 72.33,
+    // 暗色下 HeroUI 把警告色往黄偏 4°，抵消深背景上的发绿感。
+    hueDark: 76.34,
     chromaLight: 0.1585,
     chromaDark: 0.1388,
     lightnessLight: 0.7819,
     lightnessDark: 0.8203
   },
   danger: {
-    hue: 25.74,
+    hueLight: 25.74,
+    // 暗色下略微回正，避免偏橙。
+    hueDark: 24.63,
     chromaLight: 0.2328,
     chromaDark: 0.1967,
     lightnessLight: 0.6532,
