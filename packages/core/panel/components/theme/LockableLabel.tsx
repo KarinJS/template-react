@@ -26,18 +26,18 @@ export const LockableLabel = ({ label, knob, tooltip, isLocked, onToggleLock }: 
     <Label className="text-xs font-medium text-foreground">{label}</Label>
 
     {tooltip && (
-      <Tooltip closeDelay={0} delay={150}>
+      <Tooltip closeDelay={80} delay={150}>
         <Tooltip.Trigger>
           <Info aria-label={`${label}说明`} className="size-3.5 shrink-0 text-muted" tabIndex={0} />
         </Tooltip.Trigger>
-        <Tooltip.Content className="max-w-56">
+        <Tooltip.Content showArrow className="max-w-56">
           <Tooltip.Arrow />
           <p className="text-xs leading-relaxed">{tooltip}</p>
         </Tooltip.Content>
       </Tooltip>
     )}
 
-    <Tooltip closeDelay={0} delay={150}>
+    <Tooltip closeDelay={80} delay={150}>
       <Tooltip.Trigger>
         {/* 平时隐藏，hover 标签行或已锁定时显现，避免一排锁图标干扰视线。 */}
         <button
@@ -52,7 +52,7 @@ export const LockableLabel = ({ label, knob, tooltip, isLocked, onToggleLock }: 
           {isLocked ? <Lock className="size-3.5" /> : <LockOpen className="size-3.5" />}
         </button>
       </Tooltip.Trigger>
-      <Tooltip.Content>
+      <Tooltip.Content showArrow>
         <Tooltip.Arrow />
         <p className="text-xs">{isLocked ? '已锁定数值' : '锁定数值'}</p>
       </Tooltip.Content>

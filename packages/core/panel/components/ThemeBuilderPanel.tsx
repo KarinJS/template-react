@@ -113,25 +113,25 @@ export const ThemeBuilderPanel = ({
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5">
-          <Tooltip closeDelay={0} delay={200}>
+          <Tooltip closeDelay={80} delay={200}>
             <Tooltip.Trigger>
               <Button aria-label="随机生成" isIconOnly onPress={onRandomize} size="sm" variant="ghost">
                 <Shuffle className="size-4" />
               </Button>
             </Tooltip.Trigger>
-            <Tooltip.Content>
+            <Tooltip.Content showArrow>
               <Tooltip.Arrow />
               <p className="text-xs">随机生成（跳过已锁定项）</p>
             </Tooltip.Content>
           </Tooltip>
 
-          <Tooltip closeDelay={0} delay={200}>
+          <Tooltip closeDelay={80} delay={200}>
             <Tooltip.Trigger>
               <Button aria-label="恢复默认" isDisabled={isDefault} isIconOnly onPress={onReset} size="sm" variant="ghost">
                 <RotateCcw className="size-4" />
               </Button>
             </Tooltip.Trigger>
-            <Tooltip.Content>
+            <Tooltip.Content showArrow>
               <Tooltip.Arrow />
               <p className="text-xs">恢复默认</p>
             </Tooltip.Content>
@@ -162,11 +162,11 @@ export const ThemeBuilderPanel = ({
               {/* 明暗不设锁：它是即时切换的视图开关，不参与随机配色。 */}
               <div className="flex h-6 items-center gap-1">
                 <Label className="text-xs font-medium text-foreground">明暗模式</Label>
-                <Tooltip closeDelay={0} delay={150}>
+                <Tooltip closeDelay={80} delay={150}>
                   <Tooltip.Trigger>
                     <Info aria-label="明暗模式说明" className="size-3.5 shrink-0 text-muted" tabIndex={0} />
                   </Tooltip.Trigger>
-                  <Tooltip.Content className="max-w-56">
+                  <Tooltip.Content showArrow className="max-w-56">
                     <Tooltip.Arrow />
                     <p className="text-xs leading-relaxed">两套配色都已下发到画布，切换是纯 CSS 命中，不会重新计算。</p>
                   </Tooltip.Content>

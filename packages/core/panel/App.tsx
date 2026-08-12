@@ -1,23 +1,24 @@
-import { Breadcrumbs, Button, ButtonGroup, ScrollShadow, Toast, Toolbar, toast } from '@heroui/react'
-import { Brush, Camera, Crosshair, ExternalLink, Maximize2, Palette, RefreshCw } from 'lucide-react'
+import { Breadcrumbs, Button, ButtonGroup, ScrollShadow, Toast, Toolbar, Tooltip, toast } from '@heroui/react'
+import { Brush, Camera, Crosshair, Maximize2, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { DataFileSelector } from './components/DataFileSelector'
 import { MockDataEditorModal } from './components/MockDataEditorModal'
-import { PanelThemeControls } from './components/PanelThemeControls'
+import { PanelThemeSelect } from './components/PanelThemeSelect'
 import { PlatformSelector } from './components/PlatformSelector'
 import { PreviewPanel, type PreviewPanelRef } from './components/PreviewPanel'
 import { ScreenshotPreviewModal } from './components/ScreenshotPreviewModal'
-import { TemplateThemeControls } from './components/TemplateThemeControls'
+import { ThemeBuilderPanel } from './components/ThemeBuilderPanel'
+import { calculateForeground, formatOklch } from './theme/oklch'
+import { usePanelTheme } from './theme/usePanelTheme'
+import { useSandboxThemeSync } from './theme/useSandboxThemeSync'
+import { useThemeBuilder } from './theme/useThemeBuilder'
 import type { DataEntry, SandboxMessage, TemplateMeta } from './types'
 import { useDataFileSync } from './useDataFileSync'
 
 const panelSource = 'ktr-panel'
-const panelAccentStorageKey = 'ktr-panel-accent'
-const panelDarkStorageKey = 'ktr-panel-dark'
-const templateAccentStorageKey = 'ktr-template-accent'
 const templateDarkStorageKey = 'ktr-template-dark'
 
 /** 捕获数据文件名，与 src/runtime/capture.ts 的 capturedDataFileName 保持一致（面板走浏览器包，不能直接 import node 侧源码）。 */
@@ -120,21 +121,6 @@ const useStoredBoolean = (key: string, defaultValue: boolean) => {
   return [value, setValue] as const
 }
 
-/** 保存可选字符串配置，传入 undefined 时清理本地覆盖。 */
-const useStoredString = (key: string) => {
-  const [value, setValue] = useState<string | undefined>(() => window.localStorage.getItem(key) || undefined)
-
-  useEffect(() => {
-    if (value) {
-      window.localStorage.setItem(key, value)
-    } else {
-      window.localStorage.removeItem(key)
-    }
-  }, [key, value])
-
-  return [value, setValue] as const
-}
-
 /** Karin 标识只服务于开发面板外壳，不会注入到用户截图模板中。 */
 const KarinMark = () => (
   <svg className="h-10 w-10" viewBox="0 0 230 221" xmlns="http://www.w3.org/2000/svg">
@@ -153,6 +139,18 @@ const KarinMark = () => (
   </svg>
 )
 
+/**
+ * GitHub 官方标志。
+ *
+ * lucide v1 移除了全部品牌图标（商标授权原因），所以这里内联官方 mark 路径，
+ * 而不是拿一个通用的「外链」图标凑数——那个图标表达的是「新窗口打开」，不是「去 GitHub」。
+ */
+const GithubMark = ({ size = 20 }: { size?: number }) => (
+  <svg aria-hidden="true" fill="currentColor" height={size} viewBox="0 0 16 16" width={size} xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-2.91-.88-2.91-2.79 0-.55.2-1.02.51-1.39-.06-.15-.23-.75.05-1.56 0 0 .61-.19 2 .74a4.7 4.7 0 0 1 1.28-.17c.44 0 .87.06 1.28.17 1.39-.94 2-.74 2-.74.28.81.11 1.41.05 1.56.32.37.51.84.51 1.39 0 1.92-1.14 2.59-2.92 2.79.3.26.56.76.56 1.54 0 1.11-.01 2.02-.01 2.29 0 .21.15.46.55.38A7.995 7.995 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+  </svg>
+)
+
 /** 开发面板主组件：维护模板、数据文件和主题状态，并通过 postMessage 驱动 iframe 沙盒渲染。 */
 const App = () => {
   const location = useLocation()
@@ -160,23 +158,25 @@ const App = () => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const previewPanelRef = useRef<PreviewPanelRef | null>(null)
   const [templates, setTemplates] = useState<TemplateMeta[]>([])
+  // 约定模板注册进度：沙盒逐个 import 时上报，模板清单到位前用于渲染侧边栏进度条。
+  const [registerProgress, setRegisterProgress] = useState<{ loaded: number; total: number; path: string } | null>(null)
   const [selectedPath, setSelectedPath] = useState('')
   const [entries, setEntries] = useState<DataEntry[]>([])
   const [selectedDataName, setSelectedDataName] = useState('')
   const [jsonText, setJsonText] = useState(pretty({}))
   const [readonly, setReadonly] = useState(false)
-  const [panelDark, setPanelDark] = useStoredBoolean(panelDarkStorageKey, false)
-  const [panelAccentOverride, setPanelAccentOverride] = useStoredString(panelAccentStorageKey)
-  // 模板主题与面板主题完全独立：模板明暗和模板主色各自持久化，互不影响面板外壳。
+  // 面板外壳主题：三态偏好（浅色/深色/跟随系统），解析出的明暗只用于面板自身配色。
+  const { preference: panelThemePreference, isDark: panelDark, setPreference: setPanelThemePreference } = usePanelTheme()
+  // 模板主题与面板主题完全独立：模板明暗单独持久化，配色由主题构建器管理。
   const [templateDark, setTemplateDark] = useStoredBoolean(templateDarkStorageKey, false)
-  const [templateAccentOverride, setTemplateAccentOverride] = useStoredString(templateAccentStorageKey)
+  const themeBuilder = useThemeBuilder()
   const [scale, setScale] = useState(1)
   const [fitRequest, setFitRequest] = useState(0)
   const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 })
   const [status, setStatus] = useState('Ready')
   const [editorOpen, setEditorOpen] = useState(false)
-  const [panelThemeOpen, setPanelThemeOpen] = useState(false)
-  const [templateThemeOpen, setTemplateThemeOpen] = useState(false)
+  /** 右侧主题构建器面板是否展开。默认收起，避免一进面板就挤占画布宽度。 */
+  const [themeBuilderOpen, setThemeBuilderOpen] = useState(false)
   const [screenshotUrl, setScreenshotUrl] = useState<string>()
   /** 截图弹窗的独立开关：关闭只翻标志位、不销毁截图内容，退出动画才能完整播放。 */
   const [screenshotOpen, setScreenshotOpen] = useState(false)
@@ -198,35 +198,42 @@ const App = () => {
   const selectedEntry = useMemo(() => entries.find((entry) => entry.name === selectedDataName), [entries, selectedDataName])
   const templateParts = selectedPath ? selectedPath.split('/') : []
   const shellTheme: TemplateThemeMode = panelDark ? 'dark' : 'light'
-  const resolvedPanelAccent = panelAccentOverride ?? (panelDark ? '#fafafa' : '#111111')
+  // 面板外壳固定 Next.js 风格的黑白基底：它是开发工具，不该和用户正在调的模板配色抢注意力。
+  const resolvedPanelAccent = panelDark ? '#fafafa' : '#111111'
   const resolvedPanelAccentForeground = getContrastTextColor(resolvedPanelAccent)
   const resolvedPanelAccentHover = `color-mix(in oklab, ${resolvedPanelAccent} 88%, ${panelDark ? '#09090b' : '#fafafa'} 12%)`
   const resolvedPanelAccentSoft = `color-mix(in oklab, ${resolvedPanelAccent} 14%, transparent)`
   const resolvedPanelAccentSoftHover = `color-mix(in oklab, ${resolvedPanelAccent} 20%, transparent)`
-  const resolvedPanelDefault = panelDark ? '#18181b' : '#f4f4f5'
-  const resolvedPanelDefaultHover = panelDark ? '#232326' : '#ededed'
+  // 控件底色刻意比卡片（--surface）更亮一档：下拉、次要按钮、选中态都用 --default，
+  // 和卡片同色就会糊成一片、看不出层级。深色下往上提，浅色下往下压。
+  const resolvedPanelDefault = panelDark ? '#2a2a30' : '#e6e6ea'
+  const resolvedPanelDefaultHover = panelDark ? '#33333a' : '#dcdce2'
 
   // 面板自己的 HeroUI 主题变量，与传给用户组件的模板主题变量分开维护。
   const panelThemeStyle = useMemo<CSSVariableStyle>(
     () => ({
-      '--background': panelDark ? '#09090b' : '#fafafa',
+      // 明确的四层灰阶：页面底 < 卡片 < 控件 < hover。
+      // 相邻两层至少差一档，否则卡片里的下拉和按钮会和卡片本身同色。
+      '--background': panelDark ? '#09090b' : '#f4f4f5',
       '--foreground': panelDark ? '#fafafa' : '#09090b',
-      '--surface': panelDark ? '#111113' : '#ffffff',
+      '--surface': panelDark ? '#16161a' : '#ffffff',
       '--surface-foreground': panelDark ? '#fafafa' : '#09090b',
-      '--surface-secondary': panelDark ? '#18181b' : '#f5f5f5',
+      '--surface-secondary': panelDark ? '#1e1e22' : '#f7f7f8',
       '--surface-secondary-foreground': panelDark ? '#fafafa' : '#09090b',
-      '--surface-tertiary': panelDark ? '#232326' : '#efefef',
+      '--surface-tertiary': panelDark ? '#26262b' : '#efeff1',
       '--surface-tertiary-foreground': panelDark ? '#fafafa' : '#09090b',
-      '--overlay': panelDark ? '#111113' : '#ffffff',
+      // 浮层比卡片再亮一档：弹层盖在卡片上，同色会失去边界感。
+      '--overlay': panelDark ? '#1e1e22' : '#ffffff',
       '--overlay-foreground': panelDark ? '#fafafa' : '#09090b',
-      '--muted': panelDark ? '#a1a1aa' : '#71717a',
-      '--scrollbar': panelDark ? '#3f3f46' : '#d4d4d8',
+      '--muted': panelDark ? '#a1a1aa' : '#6b6b74',
+      '--scrollbar': panelDark ? '#3f3f46' : '#c9c9d0',
       '--default': resolvedPanelDefault,
+      '--default-hover': resolvedPanelDefaultHover,
       '--default-foreground': panelDark ? '#fafafa' : '#09090b',
-      '--segment': panelDark ? '#18181b' : '#f4f4f5',
+      '--segment': panelDark ? '#2e2e33' : '#ffffff',
       '--segment-foreground': panelDark ? '#fafafa' : '#09090b',
-      '--border': panelDark ? '#27272a' : '#e4e4e7',
-      '--separator': panelDark ? '#232326' : '#ededed',
+      '--border': panelDark ? '#2b2b31' : '#e0e0e4',
+      '--separator': panelDark ? '#26262b' : '#e7e7ea',
       '--accent': resolvedPanelAccent,
       '--accent-foreground': resolvedPanelAccentForeground,
       '--accent-soft': resolvedPanelAccentSoft,
@@ -234,10 +241,10 @@ const App = () => {
       '--backdrop': panelDark ? 'rgba(0, 0, 0, 0.72)' : 'rgba(250, 250, 250, 0.82)',
       '--focus': resolvedPanelAccent,
       '--link': resolvedPanelAccent,
-      '--field-background': panelDark ? '#111113' : '#ffffff',
+      '--field-background': panelDark ? '#1e1e22' : '#ffffff',
       '--field-foreground': panelDark ? '#fafafa' : '#09090b',
       '--field-placeholder': panelDark ? '#71717a' : '#a1a1aa',
-      '--field-border': panelDark ? '#27272a' : '#e4e4e7',
+      '--field-border': panelDark ? '#33333a' : '#d8d8de',
       '--field-border-width': '1px',
       '--color-accent': resolvedPanelAccent,
       '--color-accent-hover': resolvedPanelAccentHover,
@@ -248,8 +255,11 @@ const App = () => {
       '--color-default': resolvedPanelDefault,
       '--color-default-hover': resolvedPanelDefaultHover,
       '--color-default-foreground': panelDark ? '#fafafa' : '#09090b',
+      // 卡片不投影（面板是密集布局，投影会显脏），但浮层需要投影来脱离卡片。
       '--surface-shadow': 'none',
-      '--overlay-shadow': 'none',
+      '--overlay-shadow': panelDark
+        ? '0 10px 30px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06)'
+        : '0 10px 30px -12px rgba(9, 9, 11, 0.18), 0 0 0 1px rgba(9, 9, 11, 0.05)',
       '--field-shadow': 'none'
     }),
     [
@@ -264,18 +274,24 @@ const App = () => {
     ]
   )
 
-  // 用户组件通过 ctx.theme 和 CSS 变量消费这些 token；模板主题与面板外壳主题完全独立：
-  // 只有显式选择模板主题色时才下发 accent 系列，未选择时不下发任何颜色，组件库自身主题生效。
+  // 用户组件通过 ctx.theme 消费明暗和主色；视觉变量走另一条路（CSS 注入沙盒，见 useSandboxThemeSync）。
+  // 这里只在用户动过构建器时才下发颜色：保持「不设置就用组件库默认主题」的语义。
   const templateTheme = useMemo<TemplateTheme>(() => {
     const theme: TemplateTheme = { mode: templateDark ? 'dark' : 'light' }
-    if (templateAccentOverride) {
-      theme.accent = templateAccentOverride
-      theme.accentForeground = getContrastTextColor(templateAccentOverride)
-      theme.accentSoft = `color-mix(in oklab, ${templateAccentOverride} 14%, transparent)`
-      theme.accentSoftForeground = templateAccentOverride
+    if (!themeBuilder.isDefault) {
+      const accent = formatOklch({ l: themeBuilder.knobs.lightness, c: themeBuilder.knobs.chroma, h: themeBuilder.knobs.hue })
+      theme.accent = accent
+      theme.accentForeground = formatOklch(
+        calculateForeground({ l: themeBuilder.knobs.lightness, c: themeBuilder.knobs.chroma, h: themeBuilder.knobs.hue })
+      )
+      theme.accentSoft = `color-mix(in oklab, ${accent} 15%, transparent)`
+      theme.accentSoftForeground = accent
     }
     return theme
-  }, [templateDark, templateAccentOverride])
+  }, [templateDark, themeBuilder.isDefault, themeBuilder.knobs])
+
+  // 主题 CSS 注入 iframe：与上面的 ctx.theme 并行的第二条路，负责全部视觉变量。
+  useSandboxThemeSync(iframeRef, themeBuilder.sandboxCss, sandboxReadyTick, themeBuilder.customFonts)
 
   /** 向 iframe 沙盒发送渲染指令或主题数据。 */
   const postSandbox = useCallback((type: string, payload: unknown) => {
@@ -333,10 +349,16 @@ const App = () => {
       // 捕获快照（captured.json）带 ctx：编辑器展示完整的 { data, ctx } 快照，写回时也保持完整形状。
       setJsonText(pretty(body.ctx !== undefined ? { data: body.data, ctx: body.ctx } : body.data))
       setReadonly(body.readonly)
+      // 快照自带明暗时以数据为准回显「模板主题」：否则面板会拿上次持久化的选择覆盖数据，
+      // 出现「数据是 light、控件显示 dark」的状态脱节。
+      const capturedMode = (body.ctx?.theme as { mode?: unknown } | undefined)?.mode
+      if (capturedMode === 'dark' || capturedMode === 'light') {
+        setTemplateDark(capturedMode === 'dark')
+      }
       // 捕获快照（captured.json）会带 ctx：版本页脚、取色、缩放等运行时上下文一并回放。
       postSandbox('ktr:data', { path, data: body.data, ...(body.ctx ? { ctx: body.ctx } : {}) })
     },
-    [postSandbox]
+    [postSandbox, setTemplateDark]
   )
 
   // 让 WebSocket 回调始终能读到最新的模板路由。
@@ -376,6 +398,19 @@ const App = () => {
         const nextTemplates = event.data.payload.templates
         setTemplates(nextTemplates)
         setSandboxReadyTick((tick) => tick + 1)
+      }
+
+      if (event.data.type === 'ktr:register-progress') {
+        // 约定模板逐个注册的进度，侧边栏据此渲染进度条替代「等待模板注册」。
+        // 只接受前进：沙盒可能因 Vite 依赖优化重跑而整页刷新并从头注册，
+        // 此时直接覆盖会让进度条肉眼可见地倒转回零。总数变化（模板增删）才允许重置。
+        const next = event.data.payload
+        setRegisterProgress((prev) => {
+          if (prev && prev.total === next.total && next.loaded < prev.loaded) {
+            return prev
+          }
+          return next
+        })
       }
 
       if (event.data.type === 'ktr:rendered') {
@@ -740,21 +775,43 @@ const App = () => {
                     </div>
                   </div>
 
-                  <Button
-                    aria-label="GitHub"
-                    isIconOnly
-                    onPress={() => window.open('https://github.com/KarinJS/karin', '_blank', 'noopener,noreferrer')}
-                    size="lg"
-                    variant="ghost"
-                  >
-                    <ExternalLink size={22} />
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <PanelThemeSelect
+                      panelTheme={shellTheme}
+                      panelThemeStyle={panelThemeStyle}
+                      value={panelThemePreference}
+                      onChange={setPanelThemePreference}
+                    />
+
+                    <Tooltip closeDelay={80} delay={200}>
+                      <Tooltip.Trigger>
+                        <Button
+                          aria-label="在 GitHub 上查看"
+                          className="size-9 min-h-0 shrink-0 items-center justify-center rounded-lg p-0"
+                          isIconOnly
+                          onPress={() => window.open('https://github.com/KarinJS/karin', '_blank', 'noopener,noreferrer')}
+                          variant="ghost"
+                        >
+                          <GithubMark size={20} />
+                        </Button>
+                      </Tooltip.Trigger>
+                      <Tooltip.Content showArrow>
+                        <Tooltip.Arrow />
+                        <p className="text-xs">在 GitHub 上查看</p>
+                      </Tooltip.Content>
+                    </Tooltip>
+                  </div>
                 </div>
               </div>
 
               <ScrollShadow className="min-h-0 flex-1 px-4 py-4" hideScrollBar size={56}>
                 <div className="space-y-4 pb-6">
-                  <PlatformSelector selectedPath={selectedPath} templates={templates} onSelect={selectTemplate} />
+                  <PlatformSelector
+                    selectedPath={selectedPath}
+                    templates={templates}
+                    registerProgress={registerProgress}
+                    onSelect={selectTemplate}
+                  />
 
                   <DataFileSelector
                     entries={entries}
@@ -775,7 +832,9 @@ const App = () => {
 
           <Separator className="ktr-resize-handle" />
 
-          <Panel defaultSize="82%" id="preview" minSize="64%">
+          {/* minSize 按三面板布局定：主题构建器展开时画布要让出空间，
+              64% 那种按两面板算的下限会把侧边栏压到它自己的下限。 */}
+          <Panel defaultSize="82%" id="preview" minSize="44%">
             <section className="flex h-full min-w-0 flex-col bg-background">
               <div className="flex h-14 shrink-0 items-center border-b border-border px-4">
                 <div className="flex w-full min-w-0 items-center justify-between gap-3">
@@ -792,8 +851,12 @@ const App = () => {
                     </div>
                     <div className="mt-1 truncate text-[11px] leading-tight text-muted">
                       {selectedTemplate?.description ?? status} · 数据：{selectedDataName || 'none'} · 面板：
-                      {shellTheme === 'dark' ? '深色' : '浅色'} · 模板：{templateDark ? '深色' : '浅色'} · 模板主题：
-                      {templateAccentOverride?.toUpperCase() ?? '组件库默认'}
+                      {panelThemePreference === 'system'
+                        ? `跟随系统（${shellTheme === 'dark' ? '深色' : '浅色'}）`
+                        : shellTheme === 'dark'
+                          ? '深色'
+                          : '浅色'}{' '}
+                      · 模板：{templateDark ? '深色' : '浅色'} · 模板主题：{themeBuilder.isDefault ? '组件库默认' : '已自定义'}
                     </div>
                   </div>
 
@@ -820,12 +883,11 @@ const App = () => {
                       定位
                     </Button>
 
-                    <Button onPress={() => setPanelThemeOpen(true)} size="sm" variant="secondary">
-                      <Palette size={16} />
-                      面板主题
-                    </Button>
-
-                    <Button onPress={() => setTemplateThemeOpen(true)} size="sm" variant="primary">
+                    <Button
+                      onPress={() => setThemeBuilderOpen((open) => !open)}
+                      size="sm"
+                      variant={themeBuilderOpen ? 'primary' : 'secondary'}
+                    >
                       <Brush size={16} />
                       模板主题
                     </Button>
@@ -848,34 +910,35 @@ const App = () => {
               </div>
             </section>
           </Panel>
+
+          {themeBuilderOpen && (
+            <>
+              <Separator className="ktr-resize-handle" />
+
+              <Panel defaultSize="22%" id="theme-builder" maxSize="34%" minSize="18%">
+                <ThemeBuilderPanel
+                  exportCss={themeBuilder.exportCss}
+                  isDark={templateDark}
+                  isDefault={themeBuilder.isDefault}
+                  knobs={themeBuilder.knobs}
+                  customFonts={themeBuilder.customFonts}
+                  lockedKnobs={themeBuilder.lockedKnobs}
+                  panelTheme={shellTheme}
+                  panelThemeStyle={panelThemeStyle}
+                  onClose={() => setThemeBuilderOpen(false)}
+                  onDarkChange={setTemplateDark}
+                  onImportFont={themeBuilder.importFont}
+                  onKnobsChange={themeBuilder.setKnobs}
+                  onRandomize={themeBuilder.randomize}
+                  onRemoveFont={themeBuilder.removeFont}
+                  onReset={themeBuilder.reset}
+                  onToggleLock={themeBuilder.toggleLock}
+                />
+              </Panel>
+            </>
+          )}
         </Group>
       </div>
-
-      <PanelThemeControls
-        isDarkMode={panelDark}
-        isMonochromeAccent={!panelAccentOverride}
-        isOpen={panelThemeOpen}
-        panelAccent={resolvedPanelAccent}
-        panelTheme={shellTheme}
-        panelThemeStyle={panelThemeStyle}
-        onAccentChange={(hex) => setPanelAccentOverride(normalizeHexColor(hex))}
-        onOpenChange={setPanelThemeOpen}
-        onResetAccent={() => setPanelAccentOverride(undefined)}
-        onThemeModeChange={setPanelDark}
-      />
-
-      <TemplateThemeControls
-        accent={templateAccentOverride ?? '#0a72ef'}
-        isDarkMode={templateDark}
-        isDefaultAccent={!templateAccentOverride}
-        isOpen={templateThemeOpen}
-        panelTheme={shellTheme}
-        panelThemeStyle={panelThemeStyle}
-        onAccentChange={(hex) => setTemplateAccentOverride(normalizeHexColor(hex))}
-        onOpenChange={setTemplateThemeOpen}
-        onResetAccent={() => setTemplateAccentOverride(undefined)}
-        onThemeModeChange={setTemplateDark}
-      />
 
       <MockDataEditorModal
         isOpen={editorOpen}
