@@ -38,10 +38,7 @@ export const ChromaSlider = ({ hue, value, onChange }: ChromaSliderProps) => (
         background: `linear-gradient(to right, oklch(70% 0 ${hue}), oklch(70% ${baseMax} ${hue}))`
       }}
     >
-      <Slider.Thumb
-        className="size-4 border-[1.5px] border-white shadow-lg"
-        style={{ background: `oklch(70% ${value} ${hue})` }}
-      />
+      <Slider.Thumb className="size-4 border-[1.5px] border-white shadow-lg" style={{ background: `oklch(70% ${value} ${hue})` }} />
     </Slider.Track>
   </Slider>
 )

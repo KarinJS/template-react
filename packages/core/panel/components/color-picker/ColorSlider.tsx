@@ -22,13 +22,7 @@ interface ColorSliderProps extends Omit<AriaColorSliderProps, 'children'> {
  * 注意这里没有包裹额外的 flex 容器：包一层再给间距，
  * 会让轨道两侧多出两块「渐变露出来的边」，看着像凭空多了两个色块。
  */
-export const ColorSlider = ({
-  className,
-  orientation = 'horizontal',
-  thumbBackground,
-  trackBackground,
-  ...props
-}: ColorSliderProps) => (
+export const ColorSlider = ({ className, orientation = 'horizontal', thumbBackground, trackBackground, ...props }: ColorSliderProps) => (
   // className 用 ?? '' 兜底：仓库开了 exactOptionalPropertyTypes，
   // 直接透传可能为 undefined 的值会被判定为不满足必填的 ClassNameOrFunction。
   <AriaColorSlider className={className ?? ''} orientation={orientation} {...props}>

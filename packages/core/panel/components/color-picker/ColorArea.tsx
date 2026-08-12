@@ -18,12 +18,7 @@ interface ColorAreaProps {
  * 手柄背景实时跟随当前色——这里的取舍跟色相滑块相反：
  * 取色区表达「你选中了哪个点」，手柄就该显示那个点的颜色。
  */
-export const ColorArea = ({
-  className,
-  colorSpace = 'hsl',
-  xChannel = 'saturation',
-  yChannel = 'lightness'
-}: ColorAreaProps) => (
+export const ColorArea = ({ className, colorSpace = 'hsl', xChannel = 'saturation', yChannel = 'lightness' }: ColorAreaProps) => (
   <AriaColorArea
     className={`size-full shrink-0 rounded-2xl border border-border ${className ?? ''}`}
     colorSpace={colorSpace}

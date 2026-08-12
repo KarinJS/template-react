@@ -23,12 +23,7 @@ export interface CustomFont {
   url: string
 }
 /** 错误码，用于国际化提示。 */
-export type FontUrlError =
-  | 'not-https'
-  | 'not-allowed-cdn'
-  | 'invalid-url'
-  | 'cannot-detect-family'
-  | 'already-imported'
+export type FontUrlError = 'not-https' | 'not-allowed-cdn' | 'invalid-url' | 'cannot-detect-family' | 'already-imported'
 
 /**
  * 检查 URL 是否是受支持的字体 CDN 或本地字体文件。
@@ -47,15 +42,11 @@ export const validateFontUrl = (urlString: string): FontUrlError | null => {
 
   // jsDelivr 只认特定路径
   if (url.hostname === 'cdn.jsdelivr.net') {
-    return allowedJsDelivrPrefixes.some((prefix) => url.pathname.startsWith(prefix))
-      ? null
-      : 'not-allowed-cdn'
+    return allowedJsDelivrPrefixes.some((prefix) => url.pathname.startsWith(prefix)) ? null : 'not-allowed-cdn'
   }
 
   // 其他 CDN 检查域名白名单
-  return allowedHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))
-    ? null
-    : 'not-allowed-cdn'
+  return allowedHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`)) ? null : 'not-allowed-cdn'
 }
 
 /**
@@ -87,9 +78,7 @@ export const detectFontFamily = (urlString: string): string | null => {
   }
 
   // Fontsource: /npm/@fontsource/inter 或 /fontsource/fonts/inter
-  const fontsourceMatch = /\/npm\/@fontsource(?:-variable)?\/([^@/]+)|\/fontsource\/fonts\/([^@/:]+)/.exec(
-    url.pathname,
-  )
+  const fontsourceMatch = /\/npm\/@fontsource(?:-variable)?\/([^@/]+)|\/fontsource\/fonts\/([^@/:]+)/.exec(url.pathname)
   if (fontsourceMatch) {
     const slug = fontsourceMatch[1] ?? fontsourceMatch[2]
     if (slug) return titleCase(slug.replaceAll('-', ' '))
@@ -158,4 +147,3 @@ export const getFontUrlErrorMessage = (error: FontUrlError): string => {
       return '该字体已导入'
   }
 }
-

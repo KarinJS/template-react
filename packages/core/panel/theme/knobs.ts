@@ -116,8 +116,7 @@ export const fontMonoOptions: readonly KnobOption[] = [
     id: 'ibm-plex-mono',
     label: 'IBM Plex Mono',
     value: `'IBM Plex Mono', ui-monospace, monospace`,
-    cdnUrl:
-      'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@100;200;300;400;500;600;700&display=swap'
+    cdnUrl: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@100;200;300;400;500;600;700&display=swap'
   },
   {
     id: 'geist-mono',
@@ -183,8 +182,7 @@ const clampNumber = (value: unknown, fallback: number, min: number, max: number)
   typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, min), max) : fallback
 
 /** 字符串旋钮的兜底，空串也算非法。 */
-const fallbackString = (value: unknown, fallback: string): string =>
-  typeof value === 'string' && value ? value : fallback
+const fallbackString = (value: unknown, fallback: string): string => (typeof value === 'string' && value ? value : fallback)
 
 /**
  * 校验并补全来自 localStorage 的旋钮。

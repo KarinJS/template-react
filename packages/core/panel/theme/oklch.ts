@@ -21,8 +21,7 @@ export interface OklchColor {
  * 明度写成百分比、彩度保留 4 位、色相保留 2 位：位数是权衡后的结果——
  * 再多会让导出的 CSS 噪声变大，再少滑动时会出现可见的台阶。
  */
-export const formatOklch = ({ l, c, h }: OklchColor): string =>
-  `oklch(${(l * 100).toFixed(2)}% ${c.toFixed(4)} ${h.toFixed(2)})`
+export const formatOklch = ({ l, c, h }: OklchColor): string => `oklch(${(l * 100).toFixed(2)}% ${c.toFixed(4)} ${h.toFixed(2)})`
 
 /** 换色相，保持明度彩度。 */
 export const withHue = (color: OklchColor, h: number): OklchColor => ({ ...color, h })

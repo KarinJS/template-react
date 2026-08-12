@@ -61,7 +61,11 @@ const useFontPreviews = (urls: readonly string[]) => {
 }
 
 /** 从字体栈里取出首个 family 名，用于卡片预览。 */
-const primaryFamily = (stack: string): string => stack.split(',')[0]?.trim().replace(/^['"]|['"]$/g, '') ?? stack
+const primaryFamily = (stack: string): string =>
+  stack
+    .split(',')[0]
+    ?.trim()
+    .replace(/^['"]|['"]$/g, '') ?? stack
 
 /**
  * 字体选择器：内置候选 + CDN 导入两种模式共用一个弹层。

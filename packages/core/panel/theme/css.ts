@@ -1,17 +1,5 @@
-import {
-  darkPalette,
-  hueShiftMax,
-  lightPalette,
-  semanticColors
-} from './palette'
-import {
-  calculateForeground,
-  formatOklch,
-  normalizeHue,
-  withChroma,
-  withHue,
-  type OklchColor
-} from './oklch'
+import { darkPalette, hueShiftMax, lightPalette, semanticColors } from './palette'
+import { calculateForeground, formatOklch, normalizeHue, withChroma, withHue, type OklchColor } from './oklch'
 import type { ThemeKnobs } from './knobs'
 
 /**
@@ -54,24 +42,19 @@ const toKebab = (key: string): string => `--${key.replace(/[A-Z]/g, (m) => `-${m
 /**
  * 语义色跟主色色相联动（HeroUI 原设计是固定色相，这里允许旋转）。
  */
-const shiftSemanticHue = (semanticHue: number, mainHue: number): number =>
-  normalizeHue(semanticHue + (mainHue - 253.83) * hueShiftMax)
+const shiftSemanticHue = (semanticHue: number, mainHue: number): number => normalizeHue(semanticHue + (mainHue - 253.83) * hueShiftMax)
 
 /**
  * 染色：根据 base 旋钮把调色板里的颜色偏向主色色相，彩度等比缩放。
  */
-const tintColor = (color: OklchColor, mainHue: number, baseAmount: number): OklchColor =>
-  withChroma(withHue(color, mainHue), baseAmount)
+const tintColor = (color: OklchColor, mainHue: number, baseAmount: number): OklchColor => withChroma(withHue(color, mainHue), baseAmount)
 
 /**
  * 生成单色模式的全部变量。
  *
  * 输出格式：`{ '--accent': 'oklch(...)', '--success': 'oklch(...)', ... }`
  */
-const generateColorVars = (
-  knobs: ThemeKnobs,
-  mode: 'light' | 'dark'
-): Record<string, string> => {
+const generateColorVars = (knobs: ThemeKnobs, mode: 'light' | 'dark'): Record<string, string> => {
   const mainHue = normalizeHue(knobs.hue)
   const accentColor: OklchColor = { l: knobs.lightness, c: knobs.chroma, h: mainHue }
   const accentFg = calculateForeground(accentColor)
@@ -155,8 +138,10 @@ const generateDerivedVars = (mode: 'light' | 'dark'): Record<string, string> => 
   // 字段状态
   vars['--field-focus'] = 'var(--field-background, var(--default))'
   vars['--field-hover'] = `color-mix(in oklab, var(--field-background, var(--default)) 90%, var(--field-foreground, var(--foreground)) 2%)`
-  vars['--field-border-hover'] = `color-mix(in oklab, var(--field-border, var(--border)) 88%, var(--field-foreground, var(--foreground)) 10%)`
-  vars['--field-border-focus'] = `color-mix(in oklab, var(--field-border, var(--border)) 74%, var(--field-foreground, var(--foreground)) 22%)`
+  vars['--field-border-hover'] =
+    `color-mix(in oklab, var(--field-border, var(--border)) 88%, var(--field-foreground, var(--foreground)) 10%)`
+  vars['--field-border-focus'] =
+    `color-mix(in oklab, var(--field-border, var(--border)) 74%, var(--field-foreground, var(--foreground)) 22%)`
 
   // 各色系的 hover / soft / soft-hover / soft-foreground
   for (const key of colorKeys) {
@@ -252,7 +237,3 @@ ${formatVars(darkVars)}
 }
 `
 }
-
-
-
-
