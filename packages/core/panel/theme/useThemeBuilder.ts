@@ -2,7 +2,16 @@ import { useCallback, useMemo, useState } from 'react'
 
 import { generateExportCss, generateSandboxCss } from './css'
 import { detectFontFamily, validateFontUrl, type CustomFont, type FontUrlError } from './fontCdn'
-import { defaultKnobs, isDefaultKnobs, radiusOptions, sanitizeKnobs, type LockableKnob, type ThemeKnobs } from './knobs'
+import {
+  defaultKnobs,
+  fontMonoOptions,
+  fontSansOptions,
+  isDefaultKnobs,
+  radiusOptions,
+  sanitizeKnobs,
+  type LockableKnob,
+  type ThemeKnobs
+} from './knobs'
 import { baseMax } from './palette'
 
 /** 旋钮的持久化键。 */
@@ -141,7 +150,7 @@ export const useThemeBuilder = () => {
     [customFonts, persistFonts]
   )
 
-  /** 随机配色，跳过已锁定的旋钮；字体不参与随机（换字体的视觉跳变太大）。 */
+  /** 随机配色，跳过已锁定的旋钮（含字体，与官方主题构建器一致）。 */
   const randomize = useCallback(() => {
     setKnobsState((current) => {
       const isLocked = (knob: LockableKnob) => lockedKnobs.includes(knob)
@@ -152,8 +161,10 @@ export const useThemeBuilder = () => {
         lightness: isLocked('accent') ? current.lightness : randomInRange(randomRanges.lightness),
         base: isLocked('base') ? current.base : randomInRange(randomRanges.base),
         radius: isLocked('radius') ? current.radius : randomItem(radiusOptions).value,
-        fontSans: current.fontSans,
-        fontMono: current.fontMono
+        // 官方 useRandomizeVariables 同样把 fontFamily 纳入随机并尊重其锁；
+        // 若这里固定不动，面板上那两个字体锁就成了点了没反应的死控件。
+        fontSans: isLocked('fontSans') ? current.fontSans : randomItem(fontSansOptions).value,
+        fontMono: isLocked('fontMono') ? current.fontMono : randomItem(fontMonoOptions).value
       }
 
       persistKnobs(next)
