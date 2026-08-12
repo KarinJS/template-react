@@ -32,11 +32,12 @@ export const useSandboxThemeSync = (
   const fontsRef = useRef(fonts)
   fontsRef.current = fonts
 
+  /** 指向当前 iframe 的同步函数，供 css/fonts 变化时复用。 */
+  const syncRef = useRef<(() => void) | null>(null)
+
   useEffect(() => {
     const iframe = iframeRef.current
     if (!iframe) return
-
-    let frame = 0
 
     /** 同步字体节点：先回收已移除的，再补上缺失的。 */
     const syncFonts = (doc: Document) => {
@@ -98,19 +99,24 @@ export const useSandboxThemeSync = (
       doc.head.appendChild(style)
     }
 
-    // 合并到下一帧：拖滑块时 css 每帧都变，逐次写 DOM 会拖慢渲染。
-    if (frame) cancelAnimationFrame(frame)
-    frame = requestAnimationFrame(() => {
-      frame = 0
-      syncTheme()
-    })
+    syncTheme()
 
     // iframe 重新加载会清掉 head，load 之后要补注入。
     iframe.addEventListener('load', syncTheme)
+    syncRef.current = syncTheme
 
     return () => {
-      if (frame) cancelAnimationFrame(frame)
       iframe.removeEventListener('load', syncTheme)
+      syncRef.current = null
     }
-  }, [iframeRef, css, readyTick, fonts])
+  }, [iframeRef, readyTick])
+
+  // css 或字体变化时重新写入，但不重建 load 监听：
+  // 反复解绑重绑会让注入时序变得不可预期。
+  useEffect(() => {
+    // 合并到下一帧：拖滑块时 css 每帧都变，逐次写 DOM 会拖慢渲染。
+    const frame = requestAnimationFrame(() => syncRef.current?.())
+
+    return () => cancelAnimationFrame(frame)
+  }, [css, fonts])
 }
