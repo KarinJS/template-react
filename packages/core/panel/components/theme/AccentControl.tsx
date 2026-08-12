@@ -1,5 +1,6 @@
 import { Button } from '@heroui/react'
 import { useMemo } from 'react'
+import type React from 'react'
 import type { Color } from 'react-aria-components'
 
 import { ariaColorToOklch, getHueFromColor, safeParseColor } from '../../theme/colorFormat'

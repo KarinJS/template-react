@@ -2,17 +2,7 @@ import { InputGroup, ListBox, Popover } from '@heroui/react'
 import { ChevronsUpDown } from 'lucide-react'
 import type React from 'react'
 
-/** 一个可选项。 */
-export interface PopoverOption {
-  /** 稳定标识，同时作为 ListBox 的 key。 */
-  id: string
-  /** 选项名称。 */
-  label: string
-  /** 写入旋钮的实际值。 */
-  value: string
-  /** 网格卡片上的大号缩写，仅圆角这类需要图形化预览的选项使用。 */
-  abbr?: string
-}
+import type { KnobOption } from '../../theme/knobs'
 
 /** 选项弹层的属性。 */
 interface OptionPopoverProps {
@@ -23,7 +13,7 @@ interface OptionPopoverProps {
   /** 弹层里的补充说明。 */
   description?: string
   /** 全部可选项。 */
-  options: readonly PopoverOption[]
+  options: readonly KnobOption[]
   /** 当前选中的值。 */
   value: string
   /** 面板外壳明暗，用于弹层配色。 */
