@@ -28,7 +28,7 @@ interface ThemeBuilderPanelProps {
   /** 已导入的自定义字体。 */
   customFonts: CustomFont[]
   /** 导入自定义字体回调。 */
-  onImportFont: (url: string) => FontUrlError | 'already-imported' | null
+  onImportFont: (url: string) => FontUrlError | null
   /** 移除自定义字体回调。 */
   onRemoveFont: (url: string) => void
   /** 面板外壳明暗，用于浮层配色。 */
