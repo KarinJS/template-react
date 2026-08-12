@@ -17,7 +17,7 @@ export default defineConfig({
     // 纯 JS 的小工具包全部内联进产物，让发布包的 dependencies 只剩运行引擎（vite/tailwind）；
     // 这些包同时只声明在 devDependencies，下游安装时根本不会出现。
     // jiti 不能内联：它按 import.meta.url 相对路径 require 自己包里的 babel 变换文件。
-    alwaysBundle: ['cac', 'chokidar', 'consola', 'defu', 'fast-glob'],
+    alwaysBundle: ['@clack/prompts', 'cac', 'chokidar', 'consola', 'defu', 'fast-glob'],
     neverBundle: ['react', 'react-dom', 'react-dom/server', '@karinjs/template-react/registry-types'],
     onlyBundle: false
   },

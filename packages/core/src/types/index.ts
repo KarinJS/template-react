@@ -27,6 +27,14 @@ export interface ThemeContext {
   muted: string
   /** 边框和分割线颜色。 */
   border: string
+  /**
+   * 任意 CSS 变量的直通口，键必须是合法的自定义属性名（如 `--radius`、`--font-sans`）。
+   *
+   * 上面那些字段是常用语义色的快捷方式；开发面板的主题构建器会调整更多变量
+   * （圆角、字体、状态色等），它们统一从这里下发，不必逐个加字段。
+   * 同名时以本字段为准，因为它更晚写入。
+   */
+  vars: Record<string, string>
 }
 
 /** 渲染器注入给模板的运行时上下文，用户数据始终放在 data 中。 */

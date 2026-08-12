@@ -1,9 +1,9 @@
-import fs from 'node:fs'
 import path from 'node:path'
 
 import type { Plugin, ViteDevServer } from 'vite'
 
-import { templateRegistryPath } from '../conventions/registry'
+import { ensureCssEntry } from '../conventions/css-entry'
+import { discoverTemplateRoutes } from '../conventions/registry'
 import type { ResolvedKtrConfig } from '../types'
 
 // Vite 虚拟模块约定：resolve 后的 id 加 \0 前缀，防止被其他插件当作真实文件处理。
@@ -16,59 +16,38 @@ const normalizePath = (filePath: string): string => filePath.replace(/\\/g, '/')
 const fsImport = (filePath: string): string => `/@fs/${normalizePath(filePath)}`
 
 /**
- * 确保 sandbox 能独立加载用户模板样式。
- * @param config 已解析的 ktr 配置。
- * @returns CSS 入口的绝对路径，缺失时会写入默认入口。
- */
-const ensureCssEntry = (config: ResolvedKtrConfig): string => {
-  const cssEntry = config.cssEntry ?? path.join(config.templateDir, 'style.css')
-  // 零配置兜底：用户没有 style.css 时写一份带主题 token 映射的默认入口。
-  if (!fs.existsSync(cssEntry)) {
-    fs.mkdirSync(path.dirname(cssEntry), { recursive: true })
-    fs.writeFileSync(
-      cssEntry,
-      `@import "tailwindcss";
-
-@theme {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-muted: var(--muted);
-  --color-border: var(--border);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent-soft: var(--accent-soft);
-  --color-accent-soft-foreground: var(--accent-soft-foreground);
-}
-`,
-      'utf-8'
-    )
-  }
-  return cssEntry
-}
-
-/**
  * 生成 iframe sandbox 的虚拟模块代码，用户组件只在这个隔离环境里运行。
  * @param config 已解析的 ktr 配置。
  * @returns sandbox 入口模块的源码字符串。
  */
-const sandboxCode = (config: ResolvedKtrConfig): string => {
-  const registryPath = templateRegistryPath(config)
+const sandboxCode = async (config: ResolvedKtrConfig): Promise<string> => {
   const cssEntry = ensureCssEntry(config)
+  // 逐路由动态导入而不是整包导入 .ktr 注册表：注册表是单个模块，导入即同步拉起全部模板，
+  // 无法按模块粒度上报进度。这里在 load 阶段展开约定路由，运行时一个个 await，注册完一个推一次进度。
+  const routes = await discoverTemplateRoutes(config.templateDir)
+  const loaderItems = routes
+    .map((item) => `  ['${item.route}', () => import('${fsImport(path.join(config.templateDir, item.file))}')]`)
+    .join(',\n')
 
-  // 通过 /@fs/ 绝对路径导入 .ktr 注册表和 CSS 入口，保证 sandbox 总能拿到最新的模板清单和样式。
+  // 通过 /@fs/ 绝对路径导入模板与 CSS 入口，保证 sandbox 总能拿到最新的模板实现和样式。
   return `
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { templates } from '${fsImport(registryPath)}'
 import '${fsImport(cssEntry)}'
+
+// 约定扫描出的模板加载器，顺序与侧边栏展示顺序一致。
+const templateLoaders = [
+${loaderItems}
+]
+// 注册完成的模板定义，键为约定路由。
+const templates = {}
 
 const source = 'ktr-sandbox'
 const target = 'ktr-panel'
 const rootElement = document.getElementById('root')
 const root = createRoot(rootElement)
 // 面板只下发显式设置的主题字段（模式 + 可选主题色），框架不发明默认色，组件库自身主题生效。
-let selectedPath = Object.keys(templates)[0]
+let selectedPath = ''
 let selectedData = {}
 let selectedCtx = { scale: 1, theme: {} }
 let hasSelectedData = false
@@ -159,8 +138,9 @@ const metadata = () => Object.entries(templates).map(([path, def]) => ({
 
 const isAsyncComponent = (component) => component?.constructor?.name === 'AsyncFunction'
 
-// 主题变量和 dark 类名同时写到 html、body 上，用户组件从哪一级读取都能生效；
+// 变量名与 HeroUI 的语义色变量一一对应，覆盖它们即可换肤；
 // 只注入面板显式提供的字段，其余变量移除，让组件库自身主题生效。
+// 仍然同时写 html 和 body：面板里用户组件可能挂在任意一级，两边都写最省心。
 const themeVarNames = [
   ['--background', 'background'],
   ['--foreground', 'foreground'],
@@ -170,15 +150,11 @@ const themeVarNames = [
   ['--accent', 'accent'],
   ['--accent-foreground', 'accentForeground'],
   ['--accent-soft', 'accentSoft'],
-  ['--accent-soft-foreground', 'accentSoftForeground'],
-  ['--ktr-theme-accent', 'accent'],
-  ['--ktr-theme-accent-foreground', 'accentForeground'],
-  ['--ktr-theme-background', 'background'],
-  ['--ktr-theme-foreground', 'foreground'],
-  ['--ktr-theme-surface', 'surface'],
-  ['--ktr-theme-muted', 'muted'],
-  ['--ktr-theme-border', 'border']
+  ['--accent-soft-foreground', 'accentSoftForeground']
 ]
+
+// 记录通过 vars 写入的变量名，下一轮好把已移除的键清理干净。
+const appliedVarNames = new Set()
 
 const applyTheme = () => {
   const theme = selectedCtx.theme || {}
@@ -199,6 +175,25 @@ const applyTheme = () => {
       document.documentElement.style.removeProperty(name)
       document.body.style.removeProperty(name)
     }
+  }
+
+  // vars 直通口：面板主题构建器调整的圆角、字体等变量从这里来。
+  // 记住上一轮写过哪些键，切换主题时把不再出现的键清掉，避免残留。
+  const nextVars = theme.vars || {}
+  for (const name of appliedVarNames) {
+    if (!(name in nextVars)) {
+      document.documentElement.style.removeProperty(name)
+      document.body.style.removeProperty(name)
+    }
+  }
+  appliedVarNames.clear()
+  for (const [name, value] of Object.entries(nextVars)) {
+    if (!/^--[a-z0-9-]+$/i.test(name) || typeof value !== 'string' || !value) {
+      continue
+    }
+    document.documentElement.style.setProperty(name, value)
+    document.body.style.setProperty(name, value)
+    appliedVarNames.add(name)
   }
 }
 
@@ -379,7 +374,9 @@ window.addEventListener('message', (event) => {
   }
   if (type === 'ktr:panel-theme') {
     // 面板外壳明暗：只用于 iframe 画布背板（transform 合成时 UA 背板随 color-scheme 透出），与模板主题解耦。
-    const scheme = payload && payload.dark ? 'dark' : ''
+    // 必须显式写 'light'：留空会清掉内联值，让模板 dark 类命中组件库样式表里的 color-scheme: dark，
+    // UA 背板转深色后从模板圆角外侧透出，表现为浅色面板下切深色模板时整块背景发黑。
+    const scheme = payload && payload.dark ? 'dark' : 'light'
     document.documentElement.style.colorScheme = scheme
     document.body.style.colorScheme = scheme
   }
@@ -449,7 +446,38 @@ window.addEventListener('keyup', (event) => {
   }
 })
 
-post('ktr:ready', { templates: metadata() })
+// 逐个注册约定模板：每完成一个就上报一次进度，让侧边栏进度条可见地推进。
+// 顺序 await 而非 Promise.all：并发下浏览器会同时拉起全部模板依赖，进度条会挤在最后一起跳完。
+// 进度按「当前序号」而非「已加载数」上报：中途触发 full-reload（如 Vite 依赖优化重跑）后沙盒会重建，
+// 重建的编号能对面板的进度条做「追加恢复」而不是「归零重来」，避免大板块加载到一半进度又倒转。
+const registerTemplates = async () => {
+  const total = templateLoaders.length
+  // 序号从 1 开始：模板加载成功后同步增加，失败时也占位推进，保证进度条总能单调递增。
+  let index = 0
+
+  for (const [routePath, load] of templateLoaders) {
+    index += 1
+    try {
+      const mod = await load()
+      const def = mod.default
+      if (def) {
+        templates[routePath] = def
+        if (!selectedPath) {
+          selectedPath = routePath
+        }
+      }
+    } catch (error) {
+      // 单个模板注册失败不阻塞其余模板，错误上报面板状态栏。
+      postError(routePath, error)
+    }
+
+    post('ktr:register-progress', { loaded: index, total, path: routePath })
+  }
+
+  post('ktr:ready', { templates: metadata() })
+}
+
+void registerTemplates()
 
 if (import.meta.hot) {
   import.meta.hot.accept(() => {
@@ -475,11 +503,34 @@ export const sandboxPlugin = (config: ResolvedKtrConfig): Plugin => ({
     }
     return undefined
   },
-  load(id) {
+  async load(id) {
     if (id === resolvedVirtualModuleId) {
-      return sandboxCode(config)
+      return await sandboxCode(config)
     }
     return undefined
+  },
+  configureServer(server) {
+    // 约定路由清单在 load 阶段展开进虚拟模块，模板增删不会经过模块图，
+    // 需要手动失效虚拟模块并整页刷新，否则新模板不会出现在侧边栏。
+    const templateDir = normalizePath(config.templateDir)
+    const isTemplateEntry = (file: string): boolean => {
+      const normalized = normalizePath(file)
+      return normalized.startsWith(`${templateDir}/`) && /\/index\.(tsx|jsx)$/.test(normalized)
+    }
+
+    const reloadSandbox = (file: string): void => {
+      if (!isTemplateEntry(file)) {
+        return
+      }
+      const mod = server.moduleGraph.getModuleById(resolvedVirtualModuleId)
+      if (mod) {
+        server.moduleGraph.invalidateModule(mod)
+      }
+      server.ws.send({ type: 'full-reload' })
+    }
+
+    server.watcher.on('add', reloadSandbox)
+    server.watcher.on('unlink', reloadSandbox)
   }
 })
 

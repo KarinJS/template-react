@@ -148,15 +148,37 @@ const generateDerivedVars = (mode: 'light' | 'dark'): Record<string, string> => 
   vars['--field-border-focus'] =
     `color-mix(in oklab, var(--field-border, var(--border)) 74%, var(--field-foreground, var(--foreground)) 22%)`
 
-  // 各色系的 hover / soft / soft-hover / soft-foreground
-  for (const key of colorKeys) {
+  // 语义色三件套的 hover / soft 用同一套比例。
+  for (const key of ["accent", "success", "warning", "danger"]) {
     vars[`--${key}-hover`] = `color-mix(in oklab, var(--${key}) 90%, var(--${key}-foreground) 10%)`
     vars[`--${key}-soft`] = `color-mix(in oklab, var(--${key}) ${softMix}%, transparent)`
     vars[`--${key}-soft-hover`] = `color-mix(in oklab, var(--${key}) ${softHoverMix}%, transparent)`
-    const fgMix = mode === 'light' ? 30 : 20
-    const fgBase = mode === 'light' ? 70 : 80
-    vars[`--${key}-soft-foreground`] = `color-mix(in oklab, var(--${key}) ${fgBase}%, var(--foreground) ${fgMix}%)`
   }
+
+  // soft-foreground 的混合比例每种色各不相同，且亮暗有别：
+  // 这些数字是官方为可读性逐个调过的，不能用一个统一公式代替。
+  const softForegroundMix: Record<string, { light: string; dark: string }> = {
+    accent: { light: "70%, var(--foreground) 30%", dark: "80%, var(--foreground) 30%" },
+    success: { light: "80%, var(--foreground) 60%", dark: "80%, var(--foreground) 30%" },
+    warning: { light: "80%, var(--foreground) 70%", dark: "80%, var(--foreground) 30%" },
+    danger: { light: "70%, var(--foreground) 40%", dark: "80%, var(--foreground) 30%" }
+  }
+  for (const [key, mix] of Object.entries(softForegroundMix)) {
+    vars[`--${key}-soft-foreground`] = `color-mix(in oklab, var(--${key}) ${mix[mode]})`
+  }
+
+  // default 是中性色，比例与语义色不同：hover 只挪 4%，soft 用 50%。
+  vars["--default-hover"] = "color-mix(in oklab, var(--default) 96%, var(--default-foreground) 4%)"
+  vars["--default-soft"] = "color-mix(in oklab, var(--default) 50%, transparent)"
+  vars["--default-soft-hover"] = "color-mix(in oklab, var(--default) 60%, transparent)"
+  vars["--default-soft-foreground"] = "var(--default-foreground)"
+
+  // danger 的 soft 固定 15% / 20%，不随明暗变化。
+  vars["--danger-soft"] = "color-mix(in oklab, var(--danger) 15%, transparent)"
+  vars["--danger-soft-hover"] = "color-mix(in oklab, var(--danger) 20%, transparent)"
+
+  // 焦点环直接复用 --focus。
+  vars["--tw-ring-color"] = "var(--focus)"
 
   return vars
 }

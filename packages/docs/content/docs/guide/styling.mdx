@@ -1,9 +1,9 @@
 ---
 title: 样式与主题
-description: template/style.css 的结构、可用的 token 类名、深色模式与主题变量下发机制
+description: template/style.css 的结构、继承自 HeroUI 的颜色 token、换肤方式与主题变量下发机制
 ---
 
-模板用 Tailwind CSS v4 写样式。这一页讲清样式入口每一行的作用、哪些颜色类名可以直接用，以及主题变量什么时候会（不会）被注入。
+模板用 Tailwind CSS v4 写样式，颜色体系直接继承 [HeroUI v3](https://heroui.com/cn/docs/react/getting-started/colors) 的默认主题。这一页讲清样式入口每一行的作用、有哪些颜色类名可以直接用、怎么换肤，以及主题变量什么时候会（不会）被注入。
 
 <Callout type="info">
   不熟 Tailwind 的"类名即样式"写法？先翻翻 [Tailwind CSS 文档](https://tailwindcss.com/docs)，学会查类名就够了。
@@ -11,69 +11,105 @@ description: template/style.css 的结构、可用的 token 类名、深色模�
 
 ## 样式入口：template/style.css
 
-所有模板共用一份样式入口：
+所有模板共用一份样式入口，`ktr init` 会替你生成，零配置项目首次启动时也会自动补上：
 
 ```css title="template/style.css"
 @import 'tailwindcss';
-@import '@heroui/styles';
-@source "./**/*.{ts,tsx}";
+@import '@karinjs/template-react/styles';
+@source './**/*.{ts,tsx}';
+```
 
-@theme {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-muted: var(--muted);
-  --color-border: var(--border);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent-soft: var(--accent-soft);
-  --color-accent-soft-foreground: var(--accent-soft-foreground);
-}
+三行各自的作用：
+
+- `@import 'tailwindcss'`：Tailwind v4 本体。
+- `@import '@karinjs/template-react/styles'`：ktr 的样式基座，里面引入了 HeroUI v3 全套样式——基础重置、组件样式、默认主题变量，以及把语义色桥接到 Tailwind token 的那段声明。**HeroUI 由 ktr 自带**，你不需要单独装 `@heroui/styles`。
+- `@source './**/*.{ts,tsx}'`：让 Tailwind 扫描 `template/` 下所有 TS/TSX 的类名（v4 按需生成，只产出真正用到的类）。
+
+<Callout type="error">
+  **不要再写 `@theme { --color-accent: var(--accent); ... }` 这类颜色映射块。** HeroUI 已经用 `@theme inline`
+  做好了桥接；你再写一遍**普通** `@theme` 会把它盖掉——普通 `@theme` 会把变量真的产出到 `:root`，于是 `bg-accent` 编译成
+  `var(--color-accent)`，主题色只能在 `:root` 层级改；而 `inline` 桥接编译出的是 `var(--accent)`，写在任意元素上的变量都能生效。
+  老版本文档里的那段映射块已经移除，如果你的项目里还留着，删掉即可。
+</Callout>
+
+需要加字体、加自定义 token 时，在这三行之后继续写就行：
+
+```css title="template/style.css"
+@import 'tailwindcss';
+@import '@karinjs/template-react/styles';
+@source './**/*.{ts,tsx}';
 
 body {
   font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 ```
 
-- `@import 'tailwindcss'` / `@import '@heroui/styles'`：引入 Tailwind v4 本体和 HeroUI 组件库样式。
-- `@source "./**/*.{ts,tsx}"`：让 Tailwind 扫描 `template/` 下所有 TS/TSX 文件的类名（v4 按需生成，只产出用到的类）。
-- `@theme { ... }`：关键的一段，做映射（token 即"设计令牌"，给颜色起统一名字）：把 `--color-background` 这类 Tailwind 变量指向运行时注入的 `--background` 等 CSS 变量。写 `bg-background`，规则就是"背景色等于当前 `--background` 的值"。
-- `body { font-family: ... }`：截图全局字体，按目标平台调整。
+## 可用的颜色类
 
-## 可用的 token 颜色类
+继承 HeroUI 后，下面这些语义化类名开箱可用，且会跟随明暗模式和换肤自动变化。命名规律很简单：**不带后缀的是背景色，带 `-foreground` 的是该背景上的文字色**。
 
-| 类名                          | 作用                                   |
-| ----------------------------- | -------------------------------------- |
-| `bg-background`               | 模板根背景色                           |
-| `text-foreground`             | 主要文字颜色                           |
-| `bg-surface`                  | 卡片、面板等承载内容的表面色           |
-| `text-muted`                  | 次要文字、弱信息颜色                   |
-| `border-border`               | 边框和分割线颜色                       |
-| `bg-accent` / `text-accent`   | 主强调色（按钮、徽标、重点数字）       |
-| `text-accent-foreground`      | 主色背景上的文字颜色                   |
-| `bg-accent-soft`              | 主色的浅色背景（图标底色、弱强调区域） |
-| `text-accent-soft-foreground` | 浅色主色背景上的文字颜色               |
+| 类名                                             | 作用                                           |
+| ------------------------------------------------ | ---------------------------------------------- |
+| `bg-background`                                  | 模板根背景色                                   |
+| `text-foreground`                                | 主要文字颜色                                   |
+| `bg-surface` / `text-surface-foreground`         | 卡片、面板等承载内容的表面色                   |
+| `bg-surface-secondary` / `bg-surface-tertiary`   | 表面色的两级弱化，用于分层                     |
+| `text-muted`                                     | 次要文字、弱信息颜色                           |
+| `border-border` / `border-separator`             | 边框、分割线颜色                               |
+| `bg-accent` / `text-accent`                      | 主强调色（按钮、徽标、重点数字）               |
+| `text-accent-foreground`                         | 主色背景上的文字颜色                           |
+| `bg-accent-soft` / `text-accent-soft-foreground` | 主色的浅色背景（图标底色、弱强调区域）         |
+| `bg-success` / `bg-warning` / `bg-danger`        | 状态色，各自都有 `-foreground` 和 `-soft` 变体 |
+| `bg-default`                                     | 中性填充色（次要按钮、标签底色）               |
+| `bg-overlay`                                     | 浮层类元素的背景色                             |
+| `rounded-lg` / `rounded-2xl` 等                  | 圆角，统一由 `--radius` 派生                   |
 
-优先用这些语义化类而不是 `bg-white`、`text-gray-500` 这类写死的颜色，模板才能跟随主题变化。
+优先用这些语义化类，而不是 `bg-white`、`text-gray-500` 这类写死的颜色，模板才能跟随主题变化。完整变量清单见 [HeroUI Colors](https://heroui.com/cn/docs/react/getting-started/colors)。
+
+## 换肤
+
+改颜色不需要动 ktr 的基座，在自己的 `style.css` 里覆盖 HeroUI 的变量即可（`ktr init` 选"HeroUI + 自定义换肤块"会直接生成带注释的骨架）：
+
+```css title="template/style.css"
+@import 'tailwindcss';
+@import '@karinjs/template-react/styles';
+@source './**/*.{ts,tsx}';
+
+:root {
+  --accent: oklch(0.62 0.19 254);
+  --radius: 0.5rem;
+}
+
+.dark,
+[data-theme='dark'] {
+  --accent: oklch(0.72 0.16 254);
+}
+```
+
+`--accent` 一改，`bg-accent`、`text-accent`、`bg-accent-soft`（它是基于 `--accent` 的 `color-mix` 计算色）以及 HeroUI 组件的主色会一起跟着变。想整套换掉就照 [HeroUI Theming](https://heroui.com/cn/docs/react/getting-started/theming) 的变量表写。
 
 ## 深色模式
 
 - **读 `ctx.theme.mode`**：值是 `'light'` 或 `'dark'`，在组件里写条件逻辑（如深色下换图、去投影）：`const isDark = ctx.theme?.mode === 'dark'`。
 - **用 `dark:` 变体**：`dark:bg-xxx` 在深色模式下自动生效，适合纯样式差异。
 
+明暗切换靠的是 `dark` 类名和 `data-theme` 属性——HeroUI 的深色变量定义在 `.dark, [data-theme="dark"]` 选择器上，ktr 渲染时会把它们写到 `<body>`，你不需要自己处理。
+
 ## 主题变量什么时候注入
 
 <Callout type="error">
   **框架不发明默认主题色。** `ctx.theme` 是可选的 `Partial`——只注入调用方显式提供的字段，没有兜底默认值。没人显式设置时，SSR
-  和面板沙盒都**不注入任何颜色变量**，组件库（HeroUI 等）按自身默认主题渲染。框架永远不会偷偷塞一套颜色进来劫持你的设计。
+  和面板沙盒都**不注入任何颜色变量**，HeroUI 按自身默认主题渲染。框架永远不会偷偷塞一套颜色进来劫持你的设计。
 </Callout>
 
 主题色的下发路径有两条，同时生效：
 
 - **面板调试时**："模板主题"弹窗里显式选了明暗模式或主色，面板把这些设置通过 `ctx.theme` 传给沙盒组件，同时把对应 CSS 变量写到预览页面上；没选过主色就是"组件库默认"。
-- **SSR 真实渲染时**：调用方在渲染选项里显式传了 `theme` 字段，框架把变量同时写到输出 HTML 的 `html` 和 `body` 上——`:root` 层级的变量有了值，`@theme` 那段映射才能生效，token 类名在真实截图里才会跟随主题。
+- **SSR 真实渲染时**：调用方在渲染选项里显式传了 `theme` 字段，框架把变量写到输出 HTML 的 `<body>` 上。因为桥接是 `@theme inline`，变量写在 body 这一级就会被所有后代继承到，token 类名在真实截图里随之跟随主题。
 
-`ctx.theme` 每个字段都可能不存在，消费时始终用可选链（`ctx.theme?.mode`），`undefined` 时交给组件库默认主题即可。
+`ThemeContext` 的字段名与 HeroUI 变量一一对应（`accent` → `--accent`、`accentForeground` → `--accent-foreground`、`background` → `--background`，以此类推），所以"传 theme"和"改 CSS 变量"是同一套东西的两种入口。
+
+`ctx.theme` 每个字段都可能不存在，消费时始终用可选链（`ctx.theme?.mode`），`undefined` 时交给 HeroUI 默认主题即可。
 
 <Cards>
   <Card title="开发面板导览" href="./dev-panel" description="主题弹窗在面板里的位置和效果" />

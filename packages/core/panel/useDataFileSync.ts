@@ -1,71 +1,53 @@
 import { useEffect, useRef } from 'react'
 
-/** dev server 推送数据文件变更时使用的 WebSocket 自定义事件名，与 src/dev/data-watch.ts 保持一致。 */
+/** 数据文件变更事件名，与 dev 服务端 data-watch 保持一致。 */
 const dataFilesChangedEvent = 'ktr:data-files-changed'
 
-/** 数据文件变更事件的负载：模板路由和发生变化的文件名。 */
+/** SSE 事件流端点，与 dev 服务端 mock-api 的 /stream 路由保持一致。 */
+const dataStreamPath = '/__ktr/api/stream'
+
+/** 数据文件变更负载。 */
 export interface DataFilesChangedPayload {
-  /** 模板路由，例如 hello/card。 */
+  /** 模板路由，例如 bilibili/videoInfo。 */
   templatePath: string
   /** 发生变更的数据文件名，例如 captured.json。 */
   file: string
 }
 
 /**
- * 通过 Vite HMR 的 WebSocket 通道订阅 mock 数据文件变更事件，断线后自动重连。
- * @param onEvent 收到数据文件变更时的回调。
+ * 订阅 dev 服务端的数据文件变更事件，用于面板无感刷新当前画布。
+ *
+ * 走 SSE 而不是 Vite 的 HMR WebSocket：Vite 8 对浏览器同源的 HMR 连接强制校验 token，
+ * 面板是静态产物、拿不到那个 token，手写 WS 客户端能连上但永远收不到任何帧。
+ * EventSource 自带断线重连，服务端重启后无需手动恢复。
+ *
+ * @param onEvent 收到变更事件时的回调。
  * @returns 无返回值。
  */
 export const useDataFileSync = (onEvent: (payload: DataFilesChangedPayload) => void): void => {
-  // 用 ref 保存最新回调，WebSocket 闭包内始终调用当前渲染的回调，避免闭包过期。
+  // 回调放进 ref：订阅只建立一次，避免每次渲染重连导致事件丢失。
   const onEventRef = useRef(onEvent)
+  onEventRef.current = onEvent
 
   useEffect(() => {
-    onEventRef.current = onEvent
-  })
+    const source = new EventSource(dataStreamPath)
 
-  useEffect(() => {
-    let socket: WebSocket | null = null
-    let reconnectTimer: number | undefined
-    // 卸载标记：组件卸载后关闭连接并停止重连。
-    let stopped = false
-
-    const connect = () => {
-      if (stopped) {
-        return
+    const handle = (event: MessageEvent<string>): void => {
+      try {
+        const payload = JSON.parse(event.data) as DataFilesChangedPayload
+        if (payload && typeof payload.templatePath === 'string' && typeof payload.file === 'string') {
+          onEventRef.current(payload)
+        }
+      } catch {
+        // 非法负载直接忽略，不影响后续事件。
       }
-
-      // 复用 vite-hmr 子协议，直接挂在 dev server 的 HMR WebSocket 端点上。
-      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-      socket = new WebSocket(`${protocol}://${window.location.host}`, 'vite-hmr')
-
-      socket.addEventListener('message', (event) => {
-        try {
-          const message = JSON.parse(String(event.data)) as { type?: string; event?: string; data?: DataFilesChangedPayload }
-          // 只处理数据文件变更事件，HMR 通道上的其他报文原样忽略。
-          if (message.type === 'custom' && message.event === dataFilesChangedEvent && message.data) {
-            onEventRef.current(message.data)
-          }
-        } catch {
-          // 非 JSON 报文不影响面板，直接忽略。
-        }
-      })
-
-      socket.addEventListener('close', () => {
-        socket = null
-        if (!stopped) {
-          // dev server 重启等原因断线后 1s 自动重连。
-          reconnectTimer = window.setTimeout(connect, 1000)
-        }
-      })
     }
 
-    connect()
+    source.addEventListener(dataFilesChangedEvent, handle as EventListener)
 
     return () => {
-      stopped = true
-      window.clearTimeout(reconnectTimer)
-      socket?.close()
+      source.removeEventListener(dataFilesChangedEvent, handle as EventListener)
+      source.close()
     }
   }, [])
 }

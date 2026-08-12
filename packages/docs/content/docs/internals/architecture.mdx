@@ -96,7 +96,9 @@ art-template 范式的痛点可以归纳为四类：
 
 **被动的截图边界**：包装器统一提供 `<div id="container">` 包裹组件，它不做任何外观修饰；圆角、阴影、背景完全由用户组件根元素的 className 决定。`html, body { background: transparent !important }` 保证 `omitBackground` 截图时圆角外区域透明。
 
-**稀疏主题注入**：框架不发明任何默认主题色。`ctx.theme` 是可选的 `Partial<ThemeContext>`，只有调用方显式提供的字段才会被写成 CSS 变量；变量同时写在 `<html>` 和 `<body>` 上——因为 Tailwind v4 `@theme` 的 `--color-*: var(--*)` 映射在 `:root` 声明并解析，只写 `body` 时 `:root` 会回落到组件库默认色（早期版本 SSR 截图因此意外呈现 HeroUI 蓝）。
+**稀疏主题注入**：框架不发明任何默认主题色。`ctx.theme` 是可选的 `Partial<ThemeContext>`，只有调用方显式提供的字段才会被写成 CSS 变量，变量名与 HeroUI 的语义色变量一一对应（`accent` → `--accent`）。
+
+变量只写在 `<body>` 上。这依赖一个前提：颜色 token 的桥接必须是 HeroUI 提供的 `@theme inline`，它把 `bg-accent` 编译成 `var(--accent)`，因此变量写在任意祖先元素上都会被后代继承。反例是在样式入口里再写一遍**普通** `@theme { --color-accent: var(--accent) }`——那会把 inline 桥接盖掉，变量被固化到 `:root`，`bg-accent` 编译成 `var(--color-accent)`，元素级注入随即失效（早期版本因此必须把变量同时写到 `<html>` 和 `<body>`，SSR 截图仍会意外呈现 HeroUI 蓝）。所以 ktr 生成的样式入口不含任何颜色映射块，详见 [样式与主题](/docs/guide/styling)。
 
 ## 6. 面板隔离与数据同步
 

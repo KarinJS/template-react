@@ -18,6 +18,16 @@ export interface DataEntry {
   readonly: boolean
 }
 
+/** 约定模板注册进度：已注册/总计路由数，面板据此渲染加载进度条。 */
+export interface RegisterProgress {
+  /** 已注册完成的模板数。 */
+  loaded: number
+  /** 约定扫描到的模板总数。 */
+  total: number
+  /** 当前注册完成的模板路由。 */
+  path: string
+}
+
 /** iframe 沙盒向 React 面板回传的消息。 */
 export type SandboxMessage =
   | {
@@ -51,6 +61,14 @@ export type SandboxMessage =
       type: 'ktr:hmr'
       /** 发生热更新的模板路由。 */
       payload: { path: string }
+    }
+  | {
+      /** 固定来源标记，面板据此过滤非沙盒消息。 */
+      source: 'ktr-sandbox'
+      /** 约定模板注册进度上报（注册完成一个就推一次）。 */
+      type: 'ktr:register-progress'
+      /** loaded/total 为注册进度，path 为刚注册完成的模板路由。 */
+      payload: RegisterProgress
     }
   | {
       /** 固定来源标记，面板据此过滤非沙盒消息。 */

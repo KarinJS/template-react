@@ -18,6 +18,8 @@ interface PanelThemePayload {
     muted?: string
     /** 边框颜色。 */
     border?: string
+    /** 任意 CSS 变量直通口，与 ThemeContext.vars 语义一致。 */
+    vars?: Record<string, string>
   }
 }
 
@@ -37,6 +39,7 @@ export type PanelMessage =
 /** iframe 沙盒回传给开发面板的跨窗口消息。 */
 export type SandboxMessage =
   | { source: 'ktr-sandbox'; type: 'ktr:ready'; payload: { templates: Array<{ path: string; name?: string; description?: string }> } }
+  | { source: 'ktr-sandbox'; type: 'ktr:register-progress'; payload: { loaded: number; total: number; path: string } }
   | { source: 'ktr-sandbox'; type: 'ktr:rendered'; payload: { path: string; elapsed: number; size?: { width: number; height: number } } }
   | { source: 'ktr-sandbox'; type: 'ktr:error'; payload: { path?: string; message: string; stack?: string } }
   | { source: 'ktr-sandbox'; type: 'ktr:hmr'; payload: { path: string } }

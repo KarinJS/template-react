@@ -6,9 +6,18 @@ import { resolveConfig } from '../config'
 import { ensureConventions } from '../conventions/registry'
 import { createDevServer } from '../dev/server'
 import { explicitOpenFlag } from './args'
+import { createCommand, initCommand } from './scaffold'
 
 /** ktr 是下游插件项目里主要使用的开发命令入口。 */
 const cli = cac('ktr')
+
+cli.command('init', '在当前项目里初始化模板开发环境').action(async () => {
+  await initCommand()
+})
+
+cli.command('create [name]', '新建一个模板项目').action(async (name?: string) => {
+  await createCommand(name)
+})
 
 cli
   .command('dev', 'Start template development panel')
@@ -36,8 +45,8 @@ cli
         dev
       }
     })
-    const server = await createDevServer(config)
-    consola.success(`Template panel ready at ${server.url}`)
+    // 启动详情（含地址、模板数、端口冲突提示）由 createDevServer 在清屏后统一打印，这里不再重复输出。
+    await createDevServer(config)
   })
 
 cli.command('sync', 'Generate convention-based template registry files').action(async () => {

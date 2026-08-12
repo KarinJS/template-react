@@ -39,6 +39,8 @@ const themeVariables = (theme?: Partial<RenderContext['theme']>): string => {
     return ''
   }
 
+  // 变量名与 HeroUI 的语义色变量一一对应（ThemeContext 的字段名就是照它取的），
+  // 覆盖这些变量即可换肤，无需另造一套 --ktr-theme-* 别名（那套全仓只写不读，已移除）。
   const entries: Array<[string, string | undefined]> = [
     ['--background', theme.background],
     ['--foreground', theme.foreground],
@@ -48,15 +50,16 @@ const themeVariables = (theme?: Partial<RenderContext['theme']>): string => {
     ['--accent', theme.accent],
     ['--accent-foreground', theme.accentForeground],
     ['--accent-soft', theme.accentSoft],
-    ['--accent-soft-foreground', theme.accentSoftForeground],
-    ['--ktr-theme-accent', theme.accent],
-    ['--ktr-theme-accent-foreground', theme.accentForeground],
-    ['--ktr-theme-background', theme.background],
-    ['--ktr-theme-foreground', theme.foreground],
-    ['--ktr-theme-surface', theme.surface],
-    ['--ktr-theme-muted', theme.muted],
-    ['--ktr-theme-border', theme.border]
+    ['--accent-soft-foreground', theme.accentSoftForeground]
   ]
+
+  // vars 里的任意变量追加在后面：同名时覆盖上面的快捷字段。
+  for (const [name, value] of Object.entries(theme.vars ?? {})) {
+    // 只接受合法的自定义属性名，挡掉借键名注入选择器或声明的情况。
+    if (/^--[a-z0-9-]+$/i.test(name)) {
+      entries.push([name, value])
+    }
+  }
 
   // 过滤值中的引号和分号，防止主题色被注入额外 CSS 声明。
   return entries
@@ -93,10 +96,11 @@ export class HtmlWrapper {
     const mode = ctx.theme?.mode
     const variables = attr(themeVariables(ctx.theme))
 
-    // 主题变量同时写 html 和 body：Tailwind v4 @theme 的 --color-*: var(--*) 声明在 :root 上解析，
-    // 只写 body 时 :root 会回落到组件库默认色（如 HeroUI 蓝），SSR 截图与面板观感不一致。
+    // 主题变量只写 body：HeroUI 的 @theme inline 桥接把 bg-accent 编译成 var(--accent)，
+    // 变量在任意祖先元素上声明都能被后代继承到，不需要落在 :root。
+    // 明暗同理——HeroUI 的 dark 变量定义在 `.dark, [data-theme="dark"]` 选择器上，body 带上即可。
     return `<!DOCTYPE html>
-<html lang="zh-CN" style="${variables}">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width">

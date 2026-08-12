@@ -7,42 +7,10 @@ import { build, mergeConfig, type InlineConfig } from 'vite'
 
 import { resolveConfig } from '../config'
 import { resolveKtrViteConfig } from '../config/vite'
+import { ensureCssEntry } from '../conventions/css-entry'
 import { ensureConventions } from '../conventions/registry'
 import { tailwindCssAlias } from '../tailwind'
 import type { BuildTemplatesOptions, BuildTemplatesResult, ResolvedKtrConfig } from '../types'
-
-/**
- * 确保 Tailwind 入口存在，让零配置项目也能启动。
- * @param config 已解析的 ktr 配置。
- * @returns CSS 入口的绝对路径。
- */
-const ensureCssEntry = (config: ResolvedKtrConfig): string => {
-  const cssEntry = config.cssEntry ?? path.join(config.templateDir, 'style.css')
-  // 零配置兜底：用户没有 style.css 时写一份带主题 token 映射的默认入口。
-  if (!fs.existsSync(cssEntry)) {
-    fs.mkdirSync(path.dirname(cssEntry), { recursive: true })
-    fs.writeFileSync(
-      cssEntry,
-      `@import "tailwindcss";
-
-@theme {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-muted: var(--muted);
-  --color-border: var(--border);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent-soft: var(--accent-soft);
-  --color-accent-soft-foreground: var(--accent-soft-foreground);
-}
-`,
-      'utf-8'
-    )
-  }
-
-  return cssEntry
-}
 
 /**
  * 复制下游资源目录，保证生产环境截图能访问图片等静态文件。

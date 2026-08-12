@@ -41,10 +41,12 @@ describe('HtmlWrapper', () => {
     expect(html).toContain('.a{color:red}')
     expect(html).toContain('.b{color:blue}')
     expect(html).toContain('data-theme="light"')
-    expect(html).toContain('--ktr-theme-accent: #0a72ef')
-    // 主题变量同时写在 html 和 body 上，:root 的 @theme 变量映射才能拿到注入的主题色。
-    expect(html).toContain('<html lang="zh-CN" style="')
+    // 主题变量只写 body：HeroUI 的 @theme inline 桥接让 token 类编译成 var(--accent)，
+    // 变量在任意祖先上声明都会被继承，不需要落到 :root，也不需要在 html 上重复一遍。
+    expect(html).toContain('<html lang="zh-CN">')
     expect(html).toContain('--accent: #0a72ef')
+    // 曾经额外下发的 --ktr-theme-* 别名全仓无人消费，已移除。
+    expect(html).not.toContain('--ktr-theme-')
     // 内容被包装进被动的 #container 截图边界，包装器不强加任何外观。
     expect(html).toContain('<div id="container">')
     expect(html).not.toContain('border-radius: 5rem')

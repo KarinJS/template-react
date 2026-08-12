@@ -1,14 +1,71 @@
 import path from 'node:path'
 
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ViteDevServer } from 'vite'
 
 import type { ResolvedKtrConfig } from '../types'
 
-/** 数据文件变更时推送给面板的 WebSocket 自定义事件名，面板侧按此名称过滤消息。 */
+/** 数据文件变更时推送给面板的事件名，SSE 与（兼容路径）WebSocket 通道共用。 */
 export const dataFilesChangedEvent = 'ktr:data-files-changed'
 
+/** SSE 事件流端点，面板侧只消费这里，不依赖 Vite 内部 HMR 协议。 */
+export const dataStreamPath = '/__ktr/api/stream'
+
 /**
- * 监听 mock 数据目录下的 JSON 文件变更，按模板路由去抖后通过 Vite WebSocket 通知面板刷新。
+ * 数据文件变更的推送负载，面板侧按此形状更新数据下拉并重渲染画布。
+ */
+export interface DataFilesChangedPayload {
+  /** 模板路由，例如 bilibili/videoInfo。 */
+  templatePath: string
+  /** 发生变更的数据文件名，例如 captured.json。 */
+  file: string
+}
+
+/**
+ * 连接活跃的 SSE 响应集合：Vite 8 的 HMR WebSocket 对浏览器同源连接强制校验 token，
+ * 面板内手写 WS 客户端拿不到 token，事件永远收不到；这里改用不受 token 限制的 SSE 通道。
+ */
+const sseClients = new Set<ServerResponse>()
+
+/** 给所有在线的 SSE 客户端推送一条 JSON 事件。 */
+const broadcast = (payload: DataFilesChangedPayload): void => {
+  const body = `event: ${dataFilesChangedEvent}\ndata: ${JSON.stringify(payload)}\n\n`
+  for (const client of sseClients) {
+    client.write(body)
+  }
+}
+
+/**
+ * 处理 /__ktr/api/stream 的 SSE 长连接：发送重连提示后挂起连接，断线由面板自动重连。
+ * @param req HTTP 请求。
+ * @param res HTTP 响应。
+ * @returns 无返回值。
+ */
+export const handleDataStream = (req: IncomingMessage, res: ServerResponse): void => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  })
+  res.write(`retry: 1000\n\n`)
+  sseClients.add(res)
+
+  // 空闲心跳：注释帧不触发面板回调，只用于防止连接被中间层按空闲超时掐断。
+  const heartbeat = setInterval(() => {
+    res.write(': ping\n\n')
+  }, 30_000)
+
+  const close = (): void => {
+    clearInterval(heartbeat)
+    sseClients.delete(res)
+  }
+  req.on('close', close)
+  res.on('close', close)
+}
+
+/**
+ * 监听 mock 数据目录下的 JSON 文件变更，按模板路由去抖后通过 SSE 通知面板刷新。
  * @param server Vite 开发服务器。
  * @param config 已解析的 ktr 配置。
  * @returns 无返回值。
@@ -50,7 +107,7 @@ export const registerDataWatch = (server: ViteDevServer, config: ResolvedKtrConf
       templatePath,
       setTimeout(() => {
         debounceTimers.delete(templatePath)
-        server.ws.send(dataFilesChangedEvent, { templatePath, file: fileName })
+        broadcast({ templatePath, file: fileName })
       }, 100)
     )
   }

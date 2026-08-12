@@ -1,7 +1,7 @@
-import { Card, Description, Label, ListBox, ScrollShadow, Tabs } from '@heroui/react'
+import { Card, Description, Label, ListBox, ProgressBar, ScrollShadow, Tabs } from '@heroui/react'
 import { useMemo, type Key } from 'react'
 
-import type { TemplateMeta } from '../types'
+import type { RegisterProgress, TemplateMeta } from '../types'
 
 /** 板块模板选择卡片的属性。 */
 interface PlatformSelectorProps {
@@ -9,6 +9,8 @@ interface PlatformSelectorProps {
   templates: TemplateMeta[]
   /** 当前选中的模板路由。 */
   selectedPath?: string
+  /** 约定模板的注册进度，沙盒每注册完一个模块推一次；尚未开始时为 null。 */
+  registerProgress?: RegisterProgress | null
   /** 选择模板回调，参数为模板约定路由。 */
   onSelect: (path: string) => void
 }
@@ -23,7 +25,7 @@ const groupTemplates = (templates: TemplateMeta[]) =>
   }, {})
 
 /** 板块选择卡片：按板块分组展示模板，切换板块时自动选中该组第一个模板。 */
-export const PlatformSelector = ({ templates, selectedPath, onSelect }: PlatformSelectorProps) => {
+export const PlatformSelector = ({ templates, selectedPath, registerProgress, onSelect }: PlatformSelectorProps) => {
   const groups = useMemo(() => groupTemplates(templates), [templates])
   const groupEntries = Object.entries(groups)
   const selectedGroup = selectedPath?.split('/')[0]
@@ -93,7 +95,26 @@ export const PlatformSelector = ({ templates, selectedPath, onSelect }: Platform
             ))}
           </Tabs>
         ) : (
-          <Description className="px-0.5 pt-4 text-xs text-muted">等待模板注册</Description>
+          <div className="space-y-2 pt-2">
+            {/* 模板注册进度：总数未定（约定扫描尚未返回）时走不定态，一旦拿到总数立即转百分比。 */}
+            <ProgressBar
+              aria-label="模板注册进度"
+              className="w-full"
+              color="accent"
+              isIndeterminate={!registerProgress || registerProgress.total === 0}
+              size="sm"
+              value={registerProgress ? (registerProgress.loaded / registerProgress.total) * 100 : 0}
+            >
+              <ProgressBar.Track>
+                <ProgressBar.Fill />
+              </ProgressBar.Track>
+            </ProgressBar>
+            <Description className="px-0.5 text-xs text-muted">
+              {registerProgress && registerProgress.total > 0
+                ? `正在注册模板 ${registerProgress.loaded}/${registerProgress.total} · ${registerProgress.path}`
+                : '等待模板注册'}
+            </Description>
+          </div>
         )}
       </Card.Content>
     </Card>

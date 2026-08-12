@@ -75,7 +75,39 @@ export default defineConfig({
 
 ## CLI 命令
 
-安装 `@karinjs/template-react` 后通过 `pnpm ktr <命令>` 调用。
+安装 `@karinjs/template-react` 后通过 `pnpm ktr <命令>` 调用；`init` 和 `create` 也可以在装包前用 `npx @karinjs/template-react <命令>` 直接跑。
+
+### ktr init
+
+```bash
+npx @karinjs/template-react init
+```
+
+在**已有**的 Karin 插件项目里初始化模板开发环境。交互问答四项：样式方案（ktr 自带的 HeroUI 主题 / 额外带一段换肤覆盖块）、是否生成示例模板、是否生成 `src/utils/render.ts` 胶水层、开发面板端口。
+
+产出：`karin.template.ts`、`template/style.css`、可选的示例模板与胶水层；给 `tsconfig.json` 补 `jsx: "react-jsx"`；给 `package.json` 补开发依赖和 `template` / `template:build` 脚本。
+
+**成功后你会看到**：终端逐条列出新建/覆盖/保留了哪些文件，最后提示该执行的安装命令。
+
+<Callout>
+  **已存在的东西不会被悄悄改掉**：文件名冲突时会先列出清单再问你是否覆盖，选否则只补缺失的部分；`package.json`
+  里已经写过的依赖版本和同名脚本一律保留不动（包括你刻意放在 `dependencies` 里的 react）；`tsconfig.json`
+  用正则插入而不是重写，注释和格式都保得住。
+</Callout>
+
+### ktr create
+
+```bash
+npx @karinjs/template-react create <项目名>
+```
+
+从零新建一个可直接跑起来的模板项目：建目录、写 `package.json` 和 `tsconfig.json`，然后走与 `init` 相同的问答和产出。省略项目名时会先问你要叫什么。目标目录已存在且非空时会直接报错退出。
+
+**成功后你会看到**：终端提示 `cd <项目名> && pnpm install && pnpm template`。
+
+<Callout type="warn">
+  这两个命令需要真实终端——单选框和确认框靠逐键读取 stdin，用管道或重定向喂输入会拿不到按键，命令会直接报错提示而不是静默卡住。
+</Callout>
 
 ### ktr sync
 
@@ -93,7 +125,12 @@ pnpm ktr sync
 pnpm ktr dev --port 5180 --host localhost --open
 ```
 
-启动模板开发面板（会先自动执行一次 `sync`）。选项：`--port`、`--host` 覆盖监听地址，`--open` / `--no-open` 控制是否打开浏览器。**成功后你会看到**：终端输出 `Template panel ready at http://localhost:5180/__ktr/panel/`，`open` 生效时自动打开浏览器。
+启动模板开发面板（会先自动执行一次 `sync`）。选项：`--port`、`--host` 覆盖监听地址，`--open` / `--no-open` 控制是否打开浏览器。**成功后你会看到**：终端清屏并打印启动详情——面板地址、模板数量、启动耗时，`open` 生效时自动打开浏览器。
+
+<Callout>
+  **端口被占用时**会自动回退到下一个可用端口，并在启动详情里额外打印是哪个进程占着（进程名 + PID）以及按当前系统该用什么命令杀掉它（Windows
+  走 `taskkill`，类 Unix 走 `kill`）。
+</Callout>
 
 <Callout>
   **`open` 的生效规则**：默认 `true`；配置文件里的 `open: false` 正常生效；CLI 只有**显式传** `--open` / `--no-open`

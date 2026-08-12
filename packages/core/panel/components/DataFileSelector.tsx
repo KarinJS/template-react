@@ -46,13 +46,15 @@ export const DataFileSelector = ({
 }: DataFileSelectorProps) => (
   <Card className="w-full border border-border shadow-none" variant="default">
     <Card.Header className="flex-col items-start gap-3 px-4 pb-3 pt-4">
-      <div className="flex w-full items-start justify-between gap-3">
-        <div>
+      {/* 侧边栏可以被拖到很窄（尤其是主题构建器展开时），所以允许 Chip 换行到下一行，
+          文字容器必须带 min-w-0 才能正常收缩——否则 shrink-0 的 Chip 会把标题挤成竖排单字。 */}
+      <div className="flex w-full flex-wrap items-start justify-between gap-x-3 gap-y-2">
+        <div className="min-w-0 flex-1 basis-40">
           <Card.Title className="text-sm font-semibold text-foreground">数据文件</Card.Title>
           <Card.Description className="mt-1 text-xs text-muted">切换并编辑当前模板使用的 mock 数据</Card.Description>
         </div>
         <Chip className="shrink-0 tracking-[0.16em] uppercase" size="md" variant="soft">
-          加载了 {entries.length} 个数据文件
+          {entries.length} 个数据文件
         </Chip>
       </div>
     </Card.Header>

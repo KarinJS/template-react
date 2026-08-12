@@ -39,7 +39,9 @@ const Card = ({ data }: TemplateProps<CardData>) => (
   <div className="w-155 bg-white p-8 text-zinc-900">
     <h1 className="text-3xl font-bold">{data.title}</h1>
     {data.items.map((item) => (
-      <p key={item.label}>{item.label}: {item.value}</p>
+      <p key={item.label}>
+        {item.label}: {item.value}
+      </p>
     ))}
   </div>
 )
@@ -64,11 +66,11 @@ npx skills add KarinJS/template-react@karin-template-react
 
 ## 仓库结构
 
-| 路径 | 说明 |
-| --- | --- |
+| 路径            | 说明                                                                                |
+| --------------- | ----------------------------------------------------------------------------------- |
 | `packages/core` | 发布包 `@karinjs/template-react`（CLI、约定扫描、开发服务器、SSR 运行时、面板源码） |
-| `packages/docs` | 文档站（Fumadocs，自动部署 GitHub Pages） |
-| `skills/` | Agent 技能包 |
+| `packages/docs` | 文档站（Fumadocs，自动部署 GitHub Pages）                                           |
+| `skills/`       | Agent 技能包                                                                        |
 
 ## 本地开发
 

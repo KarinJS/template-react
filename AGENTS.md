@@ -23,11 +23,13 @@
 - `template/<板块>/<模板>/data/*.json`：JSON mock 统一收在 `data/` 子目录，可在面板中筛选、编辑和保存。
 - `template/<板块>/<模板>/data/captured.json`：真实渲染时自动捕获的本次数据，滚动覆盖单文件；开发服务器会把变更实时推送给面板，面板自动刷新并选中。
 - `template/<板块>/<模板>/components/`：模板内部子组件和逻辑文件的固定存放目录（可选），不会被扫描为路由；复杂模板在这里自由分层，`index.tsx` 只做总装。
-- `template/style.css`：下游模板自己的 Tailwind CSS 入口。
+- `template/style.css`：下游模板的 Tailwind CSS 入口，固定三行（`tailwindcss` + `@karinjs/template-react/styles` + `@source`）。不写也能跑，首次启动由 `ensureCssEntry` 自动补。
 - 组件根元素**不要**写 `id="container"`：截图边界由 HtmlWrapper 统一提供。想要圆角截图时给根元素加 `rounded-*` 类（需要裁剪内容时配合 `overflow-hidden`），框架不会强加或剥离任何外观。
 - `template/**/_*`：以下划线开头的目录视为内部辅助目录，不会被当作模板路由扫描。
 
 `karin.template.ts` 只配置 `@karinjs/template-react` 自身行为，例如端口、输出目录、Vite 扩展配置。不要在这里手写模板清单。
+
+下游初始化由 `ktr init`（已有项目）和 `ktr create <name>`（新建项目）负责，交互层用 `@clack/prompts`（打包时内联，不进发布依赖），生成逻辑拆成纯函数放在 `src/cli/scaffold/`（`files.ts` 算文件内容、`apply.ts` 落盘和打补丁、`prompts.ts` 交互），便于不走交互直接测试。
 
 ## 自动生成目录
 
@@ -53,7 +55,8 @@
 - 优先遵循现有代码风格；涉及面板外观时参考 `D:\GitHub\karin-plugin-kkk\packages\template\src\dev`。
 - 保持 `template/` 约定大于配置，不把生成注册表写回用户源码目录。
 - 不要给 iframe 沙盒或用户组件外层强加圆角、阴影、背景或额外缩放；用户组件样式必须由用户自己完全控制。
-- 面板主题只影响开发面板外壳；传给用户组件的主题色应通过 `ctx.theme` 和 CSS 变量/token 生效。框架不发明默认主题色：未显式设置时 SSR 和沙盒都不注入任何颜色变量，组件库自身主题生效。
+- 颜色体系继承 HeroUI：`@heroui/styles` 是 core 的正式 dependency，通过 `@karinjs/template-react/styles` 子路径导出给下游。**任何地方都不要再写普通 `@theme { --color-*: var(--*) }` 映射块**——HeroUI 的 `themes/shared/theme.css` 已用 `@theme inline` 桥接，普通 `@theme` 会把它盖掉，导致 token 编译成 `var(--color-*)` 并固化到 `:root`，元素级主题注入失效。
+- 面板主题只影响开发面板外壳；传给用户组件的主题色通过 `ctx.theme` 写成 CSS 变量生效，变量名与 HeroUI 语义色一一对应（`accent` → `--accent`）。框架不发明默认主题色：未显式设置时 SSR 和沙盒都不注入任何颜色变量，HeroUI 自身主题生效。
 - 修改约定扫描、mock API、构建路径或沙盒协议时，要同时补测试。
 - 公共接口、核心流程和示例模板数据接口使用中文注释，便于下游开发者直接阅读源码。
 - 手动编辑文件使用 `apply_patch`；格式化、测试和构建用项目脚本完成。

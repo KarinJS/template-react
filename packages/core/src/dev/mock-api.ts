@@ -7,6 +7,7 @@ import type { ViteDevServer } from 'vite'
 import { ensureTemplateRegistry, templateRegistryPath } from '../conventions/registry'
 import { capturedDataFileName } from '../runtime/capture'
 import type { ResolvedKtrConfig } from '../types'
+import { handleDataStream } from './data-watch'
 
 /**
  * 判断 JSON 内容是否是 captured.json 的 { data, ctx } 完整快照形状。
@@ -215,6 +216,12 @@ const handleMockApiRequest = async (
 
     if (method === 'GET' && pathname === '/templates') {
       json(res, 200, { templates: await loadTemplates(server, config) })
+      return
+    }
+
+    if (method === 'GET' && pathname === '/stream') {
+      // 数据文件变更的 SSE 长连接，面板据此无感刷新画布。
+      handleDataStream(req, res)
       return
     }
 

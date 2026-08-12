@@ -4,7 +4,7 @@ description: 为 Karin 机器人插件开发 React 截图模板（@karinjs/templ
 license: MIT
 metadata:
   author: KarinJS,ikenxuan
-  version: "0.1.0"
+  version: '0.1.0'
 ---
 
 # Karin Template React 开发技能
@@ -29,9 +29,11 @@ metadata:
 - JSON mock：同目录 `data/*.json`（必须在 `data/` 子目录），面板可编辑。
 - 捕获数据：`data/captured.json`，真实渲染自动滚动覆盖，面板自动刷新并选中。
 - 组件根元素不要写 `id="container"`（包装器提供截图边界）；圆角由根元素 `rounded-*` 决定（裁剪配 `overflow-hidden`）。
-- 框架不注入默认主题色；深色判断用 `ctx.theme.mode`。
+- 样式入口 `template/style.css` 固定三行：`@import 'tailwindcss'` + `@import '@karinjs/template-react/styles'` + `@source './**/*.{ts,tsx}'`。**不要再写 `@theme { --color-accent: var(--accent); ... }` 这类映射块**——HeroUI 已用 `@theme inline` 桥接，再写普通 `@theme` 会把它盖掉（token 编译成 `var(--color-*)` 并固化到 `:root`，元素级主题注入失效）。
+- 颜色一律用继承自 HeroUI 的语义类：`bg-background`、`text-foreground`、`bg-surface`、`text-muted`、`text-accent`、`bg-accent-soft`、`border-border`、`bg-success/warning/danger` 等；不要写 `bg-white`、`text-zinc-500`。换肤在下游 `style.css` 里覆盖 `:root` / `.dark` 的 `--accent`、`--radius` 等变量。
+- 框架不注入默认主题色（不传 theme 时 HeroUI 默认主题生效）；深色判断用 `ctx.theme.mode`。`ThemeContext` 字段名与 HeroUI 变量一一对应。
 - 胶水层：`createTemplateRenderer(import.meta.url, ...)` 装配 + `renderImage(route, data, options?)` 出图。
-- 命令：`ktr sync` / `ktr dev` / `ktr build`；面板默认 `http://localhost:5180/__ktr/panel/`。
+- 命令：`ktr init`（已有项目初始化）/ `ktr create <name>`（新建项目）/ `ktr sync` / `ktr dev` / `ktr build`；面板默认 `http://localhost:5180/__ktr/panel/`。`init` 和 `create` 需要真实终端，不能用管道喂输入。
 - 构建：`ktr sync && tsdown`；`.ktr` 注册表要打进产物目录（默认 `lib/`，可自定义 outDir——加载器按 `bundledDir` 选项 → package.json `main` 目录 → 根目录扫描自动发现）；react/react-dom、core 运行时、组件库全部随产物打包（同一份产物内只有一份 React 副本，hooks 才正常——切勿只打包组件却外部引用 core 运行时）；只有 `node-karin` 由宿主提供。
 
 ## 典型任务流程
@@ -39,8 +41,9 @@ metadata:
 ### 接入 / 迁移（art-template → React 模板）
 
 1. 抓取 `llms-full.txt`，重点读 quick-start 与 internals/migration-from-art。
-2. 按文档顺序执行：装依赖 → `karin.template.ts` → 模板 `index.tsx` → mock 数据 → 胶水层 `renderImage` → `ktr dev` 验证。
-3. 完成后逐项自查：路由是否注册（`ktr sync` 输出）、类型是否生效（错误 data 应报 tsc 错）、面板预览是否正常。
+2. 脚手架能一步到位的部分交给用户跑 `npx @karinjs/template-react init`（它需要交互终端，你不能代跑）：装依赖、`karin.template.ts`、`template/style.css`、`tsconfig` 的 `jsx`、示例模板与胶水层都在里面。用户不愿意交互时，按 quick-start 的"附：手动配置"逐项手写。
+3. 之后接着做：模板 `index.tsx` → mock 数据 → 胶水层 `renderImage` → `ktr dev` 验证。
+4. 完成后逐项自查：路由是否注册（`ktr sync` 输出）、类型是否生效（错误 data 应报 tsc 错）、面板预览是否正常。
 
 ### 新模板开发
 
@@ -49,4 +52,4 @@ metadata:
 
 ### 排错
 
-先抓最新文档比对约定；常见高频问题：裸 `.tsx` 未注册、JSON 没放 `data/`、重复打包 react、手动 import `.ktr`、给组件根元素写了 `id="container"`。
+先抓最新文档比对约定；常见高频问题：裸 `.tsx` 未注册、JSON 没放 `data/`、重复打包 react、手动 import `.ktr`、给组件根元素写了 `id="container"`、样式入口里残留旧版的 `@theme` 颜色映射块（导致主题色改了不生效）。
