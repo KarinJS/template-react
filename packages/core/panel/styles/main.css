@@ -1,18 +1,16 @@
 @import 'tailwindcss';
 @import '@heroui/styles';
 
-@theme {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-surface-secondary: var(--surface-secondary);
-  --color-overlay: var(--overlay);
-  --color-muted: var(--muted);
-  --color-border: var(--border);
-  --color-separator: var(--separator);
-  --color-default: var(--default);
-  --color-accent: var(--accent);
-}
+/*
+ * 这里**不要**再写普通 `@theme { --color-*: var(--*) }` 映射块。
+ *
+ * HeroUI 的 themes/shared/theme.css 已经用 `@theme inline` 桥接了全部语义色 token。
+ * 普通 `@theme` 会把 inline 版盖掉：Tailwind 会把 `--color-surface: var(--surface)`
+ * 求值一次并固化到 `:root`，于是 `bg-surface` 编译成 `var(--color-surface)`，
+ * 永远读 :root 上那份快照。结果是元素级注入（我们在根 div 的 style 里覆盖 --surface
+ * 等变量）对 bg-surface / bg-default / border-border 这些工具类全部失效，
+ * 表现就是卡片、下拉、按钮、选中态全糊成同一个底色，层级完全消失。
+ */
 
 @source '../**/*.{js,ts,jsx,tsx,html}';
 
