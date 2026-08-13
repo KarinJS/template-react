@@ -332,9 +332,9 @@ pnpm dev:panel   # 即 ktr sync && ktr dev；pnpm dev 会同时起面板和 kari
 
 旧方案的 `.html` 原样发布即可；新方案的模板是 TS 组件，发布前要编译。要点有三个：
 
-1. **`.ktr` 注册表必须一并打包**。先 `ktr sync` 生成 `.ktr` 两个注册表，再把它们作为入口打进 `lib/`——生产环境的 SSR 直接加载 `lib/` 下的注册表，不再依赖源码目录。
+1. **`.ktr` 注册表必须一并打包**。打包配置挂 `ktrBuildPlugin` 会在 buildStart 自动刷新注册表（不挂插件则先手动 `ktr sync`），再把它们作为入口打进 `lib/`——生产环境的 SSR 直接加载 `lib/` 下的注册表，不再依赖源码目录。
 2. **整包进 `lib/`，包括 react 和本工具包运行时**：只有 `node-karin`（宿主提供）和 `jiti` 保持外部；渲染器和组件同在一份产物中，包内只有一份 React 副本，hooks 才正常。切记不要"只包一半"（组件进包而渲染器外部引用），那才会出现双 React 崩溃。
-3. **CSS 编成 `lib/style.css` 随包发布**：推荐用 Vite 打包 JS（和 `ktr dev` 同一条管线），样式由 `ktr build --outDir lib` 编译；完整配置和 tsdown 备选方案见 [构建与打包](/docs/guide/building)。
+3. **CSS 编成 `lib/style.css` 随包发布**：推荐用 Vite 打包 JS（和 `ktr dev` 同一条管线），`ktrBuildPlugin` 在 closeBundle 把样式编译到打包器的 outDir；完整配置和 tsdown 备选方案见 [构建与打包](/docs/guide/building)。
 
 想理解面板、沙盒和注册表如何协作，接着读[整体架构](/docs/internals/architecture)。
 

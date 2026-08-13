@@ -22,7 +22,7 @@ export interface KtrBuildPluginOptions {
  * 挂进下游自己的打包配置后，构建命令只剩打包器本身：
  * - `buildStart`：刷新 `.ktr` 约定注册表（替代 `ktr sync`）——早于模块解析，
  *   打包入口 import `.ktr` 时文件已经存在；
- * - `closeBundle`：编译模板 CSS 到产物目录（替代 `ktr build --outDir`）——
+ * - `closeBundle`：编译模板 CSS 到产物目录——
  *   晚于打包器清空和写入产物目录，不会被清掉也不会覆盖 JS 产物；
  * - `outputOptions`：缺省把打包器自己的输出目录当作模板产物目录，
  *   下游改 outDir 时不需要同步改任何 ktr 配置。

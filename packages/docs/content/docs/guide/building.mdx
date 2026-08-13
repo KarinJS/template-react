@@ -38,7 +38,7 @@ import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
 
 export default defineConfig({
   // ktrBuildPlugin 在 buildStart 刷新 .ktr 注册表（替代 ktr sync）、
-  // 在 closeBundle 把模板 CSS 编译到 vite 自己的 outDir（替代 ktr build --outDir lib）。
+  // 在 closeBundle 把模板 CSS 编译到 vite 自己的 outDir（产出 lib/style.css）。
   plugins: [react(), tailwindcss(), ktrBuildPlugin()],
   // 整包模式：除 node-karin（宿主提供）和 jiti 外全部内联，生产环境零安装。
   // jiti 必须外部化——它按相对路径读自己包里的文件，打进包里必崩。
@@ -76,7 +76,7 @@ vite build
 
 <Callout>
   **`ktrBuildPlugin` 替你做了两件事**：`buildStart` 阶段刷新 `.ktr` 注册表（就是 `ktr sync`），`closeBundle` 阶段编译 Tailwind CSS
-  到 `build.outDir`（就是 `ktr build --outDir lib`，产物正好是渲染器约定查找的 `lib/style.css`）。产物目录默认跟随 vite 自己的
+  到 `build.outDir`（产物正好是渲染器约定查找的 `lib/style.css`）。产物目录默认跟随 vite 自己的
   `build.outDir`，改目录不用同步改任何 ktr 配置；CSS 想走别的管线时传 `ktrBuildPlugin({ css: false })`。
 </Callout>
 

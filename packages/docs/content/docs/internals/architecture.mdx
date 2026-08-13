@@ -28,7 +28,7 @@ art-template 范式的痛点可以归纳为四类：
 
 - **开发面板链路**：`ktr dev` 启动 Vite 开发服务器，托管预构建的静态面板 SPA；用户组件在 iframe 沙盒中经用户自己的 Vite 管道编译（HMR 保留），面板与沙盒之间用 postMessage 协议通信。
 - **Karin 开发链路**：karin 插件进程触发指令 → `renderImage` → SSR 生成 HTML → karin 的 Puppeteer 截图；同时真实数据被捕获回 `ktr/template/`。
-- **发布链路**：`ktr sync` 生成注册表后，用 Vite（推荐，与开发态同一条管线）把插件逻辑、模板组件和注册表打进 `lib/`，CSS 由 `ktr build` 编译进 `lib/style.css`；也可以用 tsdown 一条命令完成。
+- **发布链路**：下游打包配置里挂 `ktrBuildPlugin`（`@karinjs/template-react/plugin`），打包器（推荐 Vite，与开发态同一条管线）把插件逻辑、模板组件和注册表打进 `lib/`，插件在 buildStart 自动刷新注册表、closeBundle 把 CSS 编译进 `lib/style.css`；tsdown 同样适用。
 
 <Callout type="info">
   关键决策：**面板是预构建的静态应用**，永远不参与用户项目的编译。用户组件只在 iframe 沙盒里运行，两个 document 之间的 CSS
@@ -110,7 +110,7 @@ art-template 范式的痛点可以归纳为四类：
 
 ## 7. 生产构建策略
 
-下游构建统一为 `ktr sync` 加一次打包：**推荐 Vite**（与 ktr dev 同一条管线，行为一致，且 core 的依赖里已带 vite/@tailwindcss/vite，零新增打包器；Node 库模式不产 CSS，样式由 `ktr build` 补编译进 `lib/style.css`），备选 tsdown（一条命令含 CSS，但需要第二套工具链和 tailwind 插件）：
+下游构建统一为打包器加 `ktrBuildPlugin`：**推荐 Vite**（与 ktr dev 同一条管线，行为一致，且 core 的依赖里已带 vite/@tailwindcss/vite，零新增打包器；插件在 buildStart 刷新注册表、closeBundle 编译 CSS 到打包器 outDir），备选 tsdown（同一插件即可，不需要额外 CSS 插件）：
 
 - **入口**：`src` 插件逻辑（扁平输出，保持 karin 的 `lib/apps` 约定）+ `.ktr` 两个注册表 + `ktr/template/style.css`；
 - **外部化边界**：只有 `node-karin`（宿主提供）保持外部；`react`/`react-dom`、`@karinjs/template-react` 运行时与组件库全部内联进产物——渲染器与组件共享产物内的同一份 React 副本，hooks 因此正常工作（双副本崩溃只在"组件进包而渲染器外部引用"的半包状态下发生）；下游 `dependencies` 因此可以为空，生产环境零安装；

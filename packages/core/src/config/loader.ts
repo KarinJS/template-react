@@ -12,9 +12,7 @@ const configNames = ['karin.template.ts', 'karin.template.mts', 'karin.template.
 /** 无配置项目使用的默认值，核心体验围绕 ktr/ 和 .ktr/ 展开。 */
 const defaults: KtrConfig = {
   dir: {
-    template: 'ktr/template',
-    cache: '.ktr',
-    out: 'dist/template'
+    template: 'ktr/template'
   },
   extraStylePaths: [],
   dev: {
@@ -126,13 +124,14 @@ export const resolveConfig = async (options: ResolveConfigOptions = {}): Promise
 
   const mergedDir = merged.dir ?? {}
   const templateDirValue = mergedDir.template ?? 'ktr/template'
-  const mockDataDirValue = mergedDir.mockData ?? templateDirValue
   const templateDir = resolvePath(root, templateDirValue)
-  const mockDataDir = resolvePath(root, mockDataDirValue)
-  const cacheDir = resolvePath(root, mergedDir.cache ?? '.ktr')
-  // 静态资源默认与模板目录同级（ktr/template -> ktr/public）：dev server 把它当 publicDir 服务，build 时复制到产物 assets/。
+  // mock 数据与模板共置（各模板自己的 data/ 子目录），缓存目录固定为项目根的 .ktr，都不可配。
+  const mockDataDir = templateDir
+  const cacheDir = resolvePath(root, '.ktr')
+  // 静态资源默认与模板目录同级（ktr/template -> ktr/public）：dev server 把它当 publicDir 服务，构建插件负责复制到产物 assets/。
   const assetsDir = resolvePath(root, mergedDir.assets ?? path.posix.join(path.posix.dirname(templateDirValue), 'public'))
-  const outDir = resolvePath(root, mergedDir.out ?? 'dist/template')
+  // 构建产物目录只服务内部约定（SSR HTML 默认落盘等）；打包时的产物目录由构建插件跟随打包器 outDir。
+  const outDir = resolvePath(root, 'dist/template')
   const extraStylePaths = (merged.extraStylePaths ?? []).map((item) => resolvePath(root, item))
   const cssEntry = detectCssEntry(root, templateDir, mergedDir.cssEntry)
 

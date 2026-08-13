@@ -22,20 +22,20 @@ const writeRegistries = (cacheDir: string): void => {
 }
 
 describe('registry loader', () => {
-  it('loads template registry from the given cacheDir', async () => {
+  it('loads template registry from the fixed .ktr cache dir', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-registry-'))
-    // 故意使用非默认的相对缓存目录，验证 cacheDir 选项确实生效。
-    writeRegistries(path.join(root, 'cache'))
+    // 缓存目录固定为项目根的 .ktr，不可配置。
+    writeRegistries(path.join(root, '.ktr'))
 
-    const registry = await loadTemplateRegistry({ root, cacheDir: 'cache' })
+    const registry = await loadTemplateRegistry({ root })
     expect(registry).toEqual({ 'hello/card': { name: '测试卡片' } })
   })
 
-  it('loads mock registry from the given cacheDir', async () => {
+  it('loads mock registry from the fixed .ktr cache dir', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-registry-'))
     writeRegistries(path.join(root, '.ktr'))
 
-    const registry = await loadMockRegistry({ root, cacheDir: '.ktr' })
+    const registry = await loadMockRegistry({ root })
     expect(registry.mockDataFiles).toEqual({ 'hello/card': ['default.json'] })
   })
 
@@ -93,7 +93,7 @@ describe('registry loader', () => {
   it('loads registries that import real JSX components and renders them', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-registry-jsx-'))
     // 注册表引用的组件含 JSX，验证 jiti 的 JSX 转换在真实加载链上生效。
-    const componentDir = path.join(root, 'template', 'hello', 'card')
+    const componentDir = path.join(root, 'ktr', 'template', 'hello', 'card')
     fs.mkdirSync(componentDir, { recursive: true })
     fs.writeFileSync(
       path.join(componentDir, 'index.tsx'),
@@ -105,7 +105,7 @@ export default { name: '卡片', component: Card }
     fs.mkdirSync(path.join(root, '.ktr'), { recursive: true })
     fs.writeFileSync(
       path.join(root, '.ktr', 'template-registry.ts'),
-      `import template_hello_card from '../template/hello/card/index'
+      `import template_hello_card from '../ktr/template/hello/card/index'
 export const templates = { 'hello/card': template_hello_card }
 `,
       'utf-8'

@@ -34,26 +34,22 @@ describe('resolveConfig', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-config-'))
     fs.writeFileSync(
       path.join(root, 'karin.template.ts'),
-      "export default { dev: { port: 6000 }, dir: { out: 'out' }, vite: { define: { __KTR_TEST__: 'true' } } }\n",
+      "export default { dev: { port: 6000 }, dir: { template: 'views' }, vite: { define: { __KTR_TEST__: 'true' } } }\n",
       'utf-8'
     )
     const config = await resolveConfig({ cwd: root })
-    expect(config.outDir).toBe(path.join(root, 'out'))
+    expect(config.templateDir).toBe(path.join(root, 'views'))
     expect(config.dev.port).toBe(6000)
     expect(config.dev.host).toBe('localhost')
     expect(config.vite).toEqual({ define: { __KTR_TEST__: 'true' } })
   })
 
-  it('resolves dir.template and dir.mockData from user config', async () => {
+  it('mockDataDir 固定等于 dir.template，不单独可配', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-config-'))
-    fs.writeFileSync(
-      path.join(root, 'karin.template.ts'),
-      "export default { dir: { template: 'templates', mockData: 'mock-data' } }\n",
-      'utf-8'
-    )
+    fs.writeFileSync(path.join(root, 'karin.template.ts'), "export default { dir: { template: 'templates' } }\n", 'utf-8')
     const config = await resolveConfig({ cwd: root })
     expect(config.templateDir).toBe(path.join(root, 'templates'))
-    expect(config.mockDataDir).toBe(path.join(root, 'mock-data'))
+    expect(config.mockDataDir).toBe(path.join(root, 'templates'))
   })
 
   it('throws readable config path errors', async () => {

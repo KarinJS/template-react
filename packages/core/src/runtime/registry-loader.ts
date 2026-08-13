@@ -11,8 +11,6 @@ import type { LoadedRegistry } from '../types'
 export interface LoadRegistryOptions {
   /** 项目根目录，默认取当前工作目录。 */
   root?: string
-  /** 约定缓存目录（相对 root 或绝对路径），默认 .ktr。 */
-  cacheDir?: string
   /** 显式指定 karin.template 配置文件路径。 */
   configFile?: string
   /** 生产打包产物所在目录（相对 root 或绝对路径），默认按 main 字段和根目录扫描自动发现。 */
@@ -25,7 +23,7 @@ export interface LoadRegistryOptions {
  * @returns 全部路径已解析为绝对路径的 ktr 配置。
  */
 const resolveRegistryConfig = async (options?: LoadRegistryOptions) => {
-  // root 映射为 resolveConfig 的 cwd，cacheDir 走 overrides 覆盖用户配置；
+  // root 映射为 resolveConfig 的 cwd；缓存目录固定为项目根的 .ktr，不提供覆盖。
   // exactOptionalPropertyTypes 下不能显式传 undefined，这里按需组装选项。
   const resolveOptions: ResolveConfigOptions = {}
   if (options?.root) {
@@ -33,9 +31,6 @@ const resolveRegistryConfig = async (options?: LoadRegistryOptions) => {
   }
   if (options?.configFile) {
     resolveOptions.configFile = options.configFile
-  }
-  if (options?.cacheDir) {
-    resolveOptions.overrides = { dir: { cache: options.cacheDir } }
   }
   return resolveConfig(resolveOptions)
 }

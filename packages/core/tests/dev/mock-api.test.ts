@@ -41,7 +41,9 @@ const readJson = async <T>(response: Response): Promise<T> => {
 describe('mock API', () => {
   it('lists, reads, saves and deletes data entries', async () => {
     const mockDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-api-'))
-    fs.cpSync(path.join(fixtureRoot, 'mock-data'), mockDataDir, { recursive: true })
+    // mock 与模板共置：fixture 的 TS mock 在 templates/hello/card/ 下，复制成同样的相对布局。
+    fs.mkdirSync(path.join(mockDataDir, 'hello/card'), { recursive: true })
+    fs.copyFileSync(path.join(fixtureRoot, 'templates', 'hello/card', 'mock.ts'), path.join(mockDataDir, 'hello/card', 'mock.ts'))
     const jsonDataDir = path.join(mockDataDir, 'hello/card', 'data')
     fs.mkdirSync(jsonDataDir, { recursive: true })
     fs.writeFileSync(path.join(jsonDataDir, 'default.json'), JSON.stringify({ title: 'Json default', items: [] }), 'utf-8')

@@ -27,13 +27,13 @@
 - 组件根元素**不要**写 `id="container"`：截图边界由 HtmlWrapper 统一提供。想要圆角截图时给根元素加 `rounded-*` 类（需要裁剪内容时配合 `overflow-hidden`），框架不会强加或剥离任何外观。
 - `ktr/template/**/_*`：以下划线开头的目录视为内部辅助目录，不会被当作模板路由扫描。
 
-`karin.template.ts` 只配置 `@karinjs/template-react` 自身行为：目录类配置收在 `dir` 对象下（`dir.template`/`dir.cache`/`dir.mockData`/`dir.assets`/`dir.out`/`dir.cssEntry`），另有 `dev`（面板端口等）、`html`、`vite` 扩展配置。构建期的产物目录由 `@karinjs/template-react/plugin` 的 `ktrBuildPlugin` 全权负责（跟随打包器 outDir）。不要在这里手写模板清单。
+`karin.template.ts` 只配置 `@karinjs/template-react` 自身行为：目录类配置收在 `dir` 对象下（`dir.template`/`dir.assets`/`dir.cssEntry`；缓存固定 `.ktr/`、mock 固定与模板共置、产物目录由 `@karinjs/template-react/plugin` 的 `ktrBuildPlugin` 跟随打包器 outDir），另有 `dev`（面板端口等）、`html`、`vite` 扩展配置。不要在这里手写模板清单。
 
 下游初始化由 `ktr init`（已有项目）和 `ktr create <name>`（新建项目）负责，交互层用 `@clack/prompts`（打包时内联，不进发布依赖），生成逻辑拆成纯函数放在 `src/cli/scaffold/`（`files.ts` 算文件内容、`apply.ts` 落盘和打补丁、`prompts.ts` 交互），便于不走交互直接测试。示例模板不是手写的：`build/scaffold-examples.ts` 的构建插件把 `packages/core/examples` 扫描成虚拟模块 `virtual:ktr-scaffold-examples`（排除 `captured.json`），tsdown 构建和 vitest 都挂同一个插件，改了 examples 后无需任何手动同步，也不存在签入的生成物。
 
 ## 自动生成目录
 
-`ktr sync`、`ktr dev`、`ktr build` 会按约定扫描 `ktr/template/`，并写入隐藏缓存目录 `.ktr/`：
+`ktr sync`、`ktr dev` 和构建插件 `ktrBuildPlugin` 会按约定扫描 `ktr/template/`，并写入隐藏缓存目录 `.ktr/`（固定位置，不可配置）：
 
 - `.ktr/template-registry.ts`：模板路由到组件的自动注册表。
 - `.ktr/mock-registry.ts`：TS mock 导出和 JSON 文件清单。

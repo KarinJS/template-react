@@ -124,7 +124,7 @@ export const scaffoldDevDependencies: Record<string, string> = {
 /** 脚手架需要写入下游 package.json 的脚本。 */
 export const scaffoldScripts: Record<string, string> = {
   template: 'ktr sync && ktr dev',
-  'template:build': 'ktr build --outDir lib'
+  'template:build': 'vite build'
 }
 
 /** withExample 时额外写入的开发依赖（示例模板用了 lucide 图标，版本与 packages/core 对齐）。 */

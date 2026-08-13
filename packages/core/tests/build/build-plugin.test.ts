@@ -19,7 +19,7 @@ describe('ktrBuildPlugin', () => {
     // 故意不写 outDir：插件应当从 vite 的 build.outDir 自动跟随。
     fs.writeFileSync(
       path.join(root, 'karin.template.ts'),
-      "export default { dir: { template: 'templates', mockData: 'mock-data', cssEntry: 'templates/style.css' } }\n",
+      "export default { dir: { template: 'templates', cssEntry: 'templates/style.css' } }\n",
       'utf-8'
     )
     fs.writeFileSync(path.join(root, 'entry.js'), 'export const answer = 42\n', 'utf-8')
@@ -55,7 +55,7 @@ describe('ktrBuildPlugin', () => {
     fs.unlinkSync(path.join(root, 'templates/index.ts'))
     fs.writeFileSync(
       path.join(root, 'karin.template.ts'),
-      "export default { dir: { template: 'templates', mockData: 'mock-data', cssEntry: 'templates/style.css' } }\n",
+      "export default { dir: { template: 'templates', cssEntry: 'templates/style.css' } }\n",
       'utf-8'
     )
     fs.writeFileSync(path.join(root, 'entry.js'), 'export const answer = 42\n', 'utf-8')

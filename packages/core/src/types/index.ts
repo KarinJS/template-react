@@ -200,38 +200,25 @@ export interface KtrConfig {
    * └── public/              # 静态资源（图片、字体文件等）
    * .ktr/                    # 框架产物缓存，类似 Next.js 的 .next，勿手动编辑
    * ```
+   *
+   * 两个不可配的固定位置：框架缓存强制为项目根的 `.ktr/`；构建产物目录
+   * 由 `@karinjs/template-react/plugin` 的 `ktrBuildPlugin` 跟随打包器自己的 outDir。
    */
   dir?: {
     /**
      * 模板根目录。组件、mock、JSON 数据和 `style.css` 都按约定放在这里。
      * 只有 `<板块>/<模板>/index.tsx` 会被注册为路由；`components/` 和 `_` 开头的目录不参与扫描。
+     * mock 数据固定在各自模板的 `data/` 子目录，与模板共置，不可单独配置。
      * @default 'ktr/template'
      */
     template?: string
     /**
-     * 框架产物的缓存目录：自动注册表、mock 清单、类型索引都写在这里。
-     * 类似 Next.js 的 `.next`，不要手动编辑，也不要提交进版本库。
-     * @default '.ktr'
-     */
-    cache?: string
-    /**
-     * mock 数据目录。默认等于 `dir.template`，方便 mock 和模板共置。
-     * @default dir.template
-     */
-    mockData?: string
-    /**
      * 静态资源目录（图片等）。dev server 会把它作为 publicDir 挂在根路径上
      * （`public/image/logo.png` 在模板里以 `/image/logo.png` 引用），
-     * `ktr build` 时整个目录复制到 `<产物目录>/assets`。
+     * 构建时由 `ktrBuildPlugin` 整个目录复制到 `<产物目录>/assets`。
      * @default 'ktr/public'（模板目录的同级 public）
      */
     assets?: string
-    /**
-     * 模板构建输出目录（`style.css` / `assets` 的落盘位置）。
-     * 只有裸跑 `ktr build` 时才用到；用 `ktrBuildPlugin` 打包时以打包器自身的 outDir 为准，此项不生效。
-     * @default 'dist/template'
-     */
-    out?: string
     /**
      * Tailwind CSS 入口文件。默认自动探测 `<dir.template>/style.css`，
      * 缺失时首次启动由框架自动补一份三行入口（tailwindcss + ktr 样式基座 + @source）。
@@ -286,13 +273,13 @@ export interface ResolvedKtrConfig {
   root: string
   /** 已解析为绝对路径的模板根目录。 */
   templateDir: string
-  /** 已解析为绝对路径的自动注册缓存目录。 */
+  /** 已解析为绝对路径的自动注册缓存目录，固定为项目根的 `.ktr`。 */
   cacheDir: string
-  /** 已解析为绝对路径的 mock 数据目录。 */
+  /** 已解析为绝对路径的 mock 数据目录，固定等于 templateDir（与模板共置）。 */
   mockDataDir: string
   /** 已解析为绝对路径的静态资源目录。 */
   assetsDir: string
-  /** 已解析为绝对路径的构建输出目录。 */
+  /** 已解析为绝对路径的构建输出目录，固定为 `dist/template`；打包时由构建插件跟随打包器 outDir 另行覆盖。 */
   outDir: string
   /** 已解析为绝对路径的 CSS 入口。 */
   cssEntry?: string
@@ -326,13 +313,13 @@ export interface ResolveConfigOptions {
   overrides?: KtrConfig
 }
 
-/** ktr build 的可选覆盖项。 */
+/** 构建模板 CSS 的可选覆盖项（内部供 dev 缓存与构建插件使用）。 */
 export interface BuildTemplatesOptions extends Partial<ResolvedKtrConfig> {
   /** 构建目标项目根目录。 */
   root?: string
 }
 
-/** ktr build 的产物统计。 */
+/** 模板 CSS 构建的产物统计。 */
 export interface BuildTemplatesResult {
   /** 构建后的 CSS 文件路径。 */
   cssPath: string

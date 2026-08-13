@@ -13,7 +13,7 @@ pnpm add @karinjs/template-react react react-dom
 
 ## 用法一览
 
-```tsx title="template/hello/card/index.tsx —— 模板组件（目录即路由）"
+```tsx title="ktr/template/hello/card/index.tsx —— 模板组件（目录即路由）"
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
 interface CardData {
@@ -44,15 +44,16 @@ export const renderImage = async (templatePath, data, options) => {
 
 ## CLI
 
-| 命令        | 说明                                                                     |
-| ----------- | ------------------------------------------------------------------------ |
-| `ktr sync`  | 扫描 `template/`，在 `.ktr/` 生成注册表与类型增强声明                    |
-| `ktr dev`   | 启动开发面板（`--port` / `--host` / `--open` / `--no-open`）             |
-| `ktr build` | 仅编译模板 Tailwind CSS（完整的 JS+CSS 产物建议直接用 tsdown，见文档站） |
+| 命令       | 说明                                                         |
+| ---------- | ------------------------------------------------------------ |
+| `ktr sync` | 扫描 `ktr/template/`，在 `.ktr/` 生成注册表与类型增强声明    |
+| `ktr dev`  | 启动开发面板（`--port` / `--host` / `--open` / `--no-open`） |
+
+生产构建没有单独的 ktr 命令：在打包配置里挂 `ktrBuildPlugin()`（`@karinjs/template-react/plugin`），注册表同步和 CSS 编译随 `vite build` / `tsdown` 自动完成，产物目录跟随打包器的 outDir。
 
 ## 关键约定
 
-- 模板组件必须写在 `template/<板块>/<模板>/index.tsx`；裸 `.tsx` 不注册。
+- 模板组件必须写在 `ktr/template/<板块>/<模板>/index.tsx`；裸 `.tsx` 不注册。
 - 子组件与逻辑文件放同目录 `components/`（不参与路由）；TS mock 固定为 `mock.ts`；JSON mock 放 `data/` 子目录。
 - 组件根元素不要写 `id="container"`（截图边界由框架提供）；圆角用根元素 `rounded-*` 类（裁剪配 `overflow-hidden`）。
 - 框架不注入默认主题色；深色模式读 `ctx.theme.mode`。

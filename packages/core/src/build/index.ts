@@ -61,13 +61,10 @@ const countTemplates = async (templatesDir: string): Promise<number> => {
  * @returns 构建产物统计。
  */
 export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promise<BuildTemplatesResult> => {
-  // 对外是扁平的已解析字段（Partial<ResolvedKtrConfig>），这里翻译成嵌套的 dir 覆盖项。
+  // 对外是扁平的已解析字段（Partial<ResolvedKtrConfig>），可配的翻译成嵌套的 dir 覆盖项。
   const dirOverrides: NonNullable<KtrConfig['dir']> = {}
   if (options.templateDir !== undefined) dirOverrides.template = options.templateDir
-  if (options.cacheDir !== undefined) dirOverrides.cache = options.cacheDir
-  if (options.mockDataDir !== undefined) dirOverrides.mockData = options.mockDataDir
   if (options.assetsDir !== undefined) dirOverrides.assets = options.assetsDir
-  if (options.outDir !== undefined) dirOverrides.out = options.outDir
   if (options.cssEntry !== undefined) dirOverrides.cssEntry = options.cssEntry
 
   const overrides: KtrConfig = {
@@ -80,6 +77,10 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
 
   const resolveOptions = options.root ? { cwd: options.root, overrides } : { overrides }
   const config = await resolveConfig(resolveOptions)
+  // 产物目录固定 dist/template，但内部调用方（dev 缓存、构建插件）可以显式指定落盘位置。
+  if (options.outDir !== undefined) {
+    config.outDir = path.isAbsolute(options.outDir) ? options.outDir : path.resolve(config.root, options.outDir)
+  }
   await ensureConventions(config)
   const cssEntry = ensureCssEntry(config)
   const outputCssPath = path.join(config.outDir, 'style.css')

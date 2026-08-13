@@ -1,7 +1,6 @@
 import { cac } from 'cac'
 import { consola } from 'consola'
 
-import { buildTemplates } from '../build'
 import { resolveConfig } from '../config'
 import { ensureConventions } from '../conventions/registry'
 import { createDevServer } from '../dev/server'
@@ -55,14 +54,6 @@ cli.command('sync', '扫描 template/ 并生成约定注册表文件').action(as
   const result = await ensureConventions(config)
   consola.success(`模板注册表已就绪：${result.routes.length} 个模板 -> ${result.registryPath}`)
 })
-
-cli
-  .command('build', '构建模板 CSS')
-  .option('--outDir <dir>', '输出目录')
-  .action(async (options: { outDir?: string }) => {
-    // 构建前会再次同步约定产物，保证生产环境使用的是最新模板清单。
-    await buildTemplates(options.outDir ? { outDir: options.outDir } : {})
-  })
 
 cli.help()
 cli.version('0.1.0')

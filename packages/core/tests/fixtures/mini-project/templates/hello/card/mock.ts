@@ -1,4 +1,4 @@
-import type { HelloCardData } from '../../../templates/hello/card/index'
+import type { HelloCardData } from './index'
 export const valid = {
   title: 'Typed mock',
   items: [{ label: 'a', value: 'b' }]
