@@ -130,6 +130,8 @@ export const resolveConfig = async (options: ResolveConfigOptions = {}): Promise
   const cacheDir = resolvePath(root, '.ktr')
   // 静态资源默认与模板目录同级（ktr/template -> ktr/public）：dev server 把它当 publicDir 服务，构建插件负责复制到产物 assets/。
   const assetsDir = resolvePath(root, mergedDir.assets ?? path.posix.join(path.posix.dirname(templateDirValue), 'public'))
+  // 资源目录本身随包发布在固定位置时（如 resources/ 与 package.json 同级），可以关掉复制避免重复打包。
+  const copyAssets = mergedDir.copyAssets ?? true
   // 构建产物目录只服务内部约定（SSR HTML 默认落盘等）；打包时的产物目录由构建插件跟随打包器 outDir。
   const outDir = resolvePath(root, 'dist/template')
   const extraStylePaths = (merged.extraStylePaths ?? []).map((item) => resolvePath(root, item))
@@ -141,6 +143,7 @@ export const resolveConfig = async (options: ResolveConfigOptions = {}): Promise
     cacheDir,
     mockDataDir,
     assetsDir,
+    copyAssets,
     outDir,
     cssEntry,
     extraStylePaths,

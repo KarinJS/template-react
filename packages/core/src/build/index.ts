@@ -65,6 +65,7 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
   const dirOverrides: NonNullable<KtrConfig['dir']> = {}
   if (options.templateDir !== undefined) dirOverrides.template = options.templateDir
   if (options.assetsDir !== undefined) dirOverrides.assets = options.assetsDir
+  if (options.copyAssets !== undefined) dirOverrides.copyAssets = options.copyAssets
   if (options.cssEntry !== undefined) dirOverrides.cssEntry = options.cssEntry
 
   const overrides: KtrConfig = {
@@ -135,7 +136,10 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
     }
   }
 
-  await copyAssets(config)
+  // 资源目录已随包发布在固定位置时可以关掉复制（dir.copyAssets: false），避免重复打包。
+  if (config.copyAssets) {
+    await copyAssets(config)
+  }
 
   const cssSize = fs.existsSync(outputCssPath) ? fs.statSync(outputCssPath).size : 0
   const templatesCount = await countTemplates(config.templateDir)

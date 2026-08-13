@@ -220,6 +220,13 @@ export interface KtrConfig {
      */
     assets?: string
     /**
+     * 构建时是否把静态资源目录复制到产物目录的 `assets/`。
+     * 设为 `false` 的场景：资源目录本身已随包发布在固定位置
+     * （例如 `resources/` 与 package.json 同级、按原样发布），再复制一份会重复打包。
+     * @default true
+     */
+    copyAssets?: boolean
+    /**
      * Tailwind CSS 入口文件。默认自动探测 `<dir.template>/style.css`，
      * 缺失时首次启动由框架自动补一份三行入口（tailwindcss + ktr 样式基座 + @source）。
      * @default '<dir.template>/style.css'
@@ -279,6 +286,8 @@ export interface ResolvedKtrConfig {
   mockDataDir: string
   /** 已解析为绝对路径的静态资源目录。 */
   assetsDir: string
+  /** 构建时是否复制静态资源到产物 assets/（对应 dir.copyAssets）。 */
+  copyAssets: boolean
   /** 已解析为绝对路径的构建输出目录，固定为 `dist/template`；打包时由构建插件跟随打包器 outDir 另行覆盖。 */
   outDir: string
   /** 已解析为绝对路径的 CSS 入口。 */

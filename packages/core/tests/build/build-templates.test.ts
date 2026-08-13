@@ -29,4 +29,36 @@ describe('buildTemplates', () => {
     expect(css).toContain('.flex')
     expect(css).not.toContain('.unused-class-name')
   })
+
+  it('dir.copyAssets 控制静态资源是否复制到产物 assets/', async () => {
+    const makeProject = () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-assets-'))
+      fs.cpSync(fixtureRoot, root, { recursive: true })
+      fs.unlinkSync(path.join(root, 'templates/index.ts'))
+      // 静态资源放在默认约定位置（模板目录同级的 public）。
+      fs.mkdirSync(path.join(root, 'public/image'), { recursive: true })
+      fs.writeFileSync(path.join(root, 'public/image/logo.png'), 'PNG', 'utf-8')
+      return root
+    }
+
+    // 默认 true：复制到产物 assets/。
+    const copied = makeProject()
+    fs.writeFileSync(
+      path.join(copied, 'karin.template.ts'),
+      "export default { dir: { template: 'templates', cssEntry: 'templates/style.css' } }\n",
+      'utf-8'
+    )
+    await buildTemplates({ root: copied })
+    expect(fs.existsSync(path.join(copied, 'dist/template/assets/image/logo.png'))).toBe(true)
+
+    // false：资源目录已随包发布在固定位置时不重复打包。
+    const skipped = makeProject()
+    fs.writeFileSync(
+      path.join(skipped, 'karin.template.ts'),
+      "export default { dir: { template: 'templates', cssEntry: 'templates/style.css', copyAssets: false } }\n",
+      'utf-8'
+    )
+    await buildTemplates({ root: skipped })
+    expect(fs.existsSync(path.join(skipped, 'dist/template/assets'))).toBe(false)
+  })
 })

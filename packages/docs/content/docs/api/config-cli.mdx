@@ -23,17 +23,18 @@ export default defineConfig({
 
 ## 配置项一览
 
-| 配置项            | 类型       | 默认值           | 说明                                                                                                                   |
-| ----------------- | ---------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `dir.template`    | `string`   | `'ktr/template'` | 模板根目录，组件、mock、JSON 数据和 `style.css` 都放在这里。                                                           |
-| `dir.assets`      | `string`   | `'ktr/public'`   | 静态资源目录（模板目录同级）；dev server 把它当 publicDir 服务，构建时由 `ktrBuildPlugin` 复制到 `<产物目录>/assets`。 |
-| `dir.cssEntry`    | `string`   | 自动探测         | Tailwind 入口；默认优先 `<dir.template>/style.css`，否则取 `dir.template` 下第一个 `.css`。                            |
-| `extraStylePaths` | `string[]` | `[]`             | 额外注入 SSR HTML 的样式文件。                                                                                         |
-| `dev.port`        | `number`   | `5180`           | `ktr dev` 监听端口。                                                                                                   |
-| `dev.host`        | `string`   | `'localhost'`    | `ktr dev` 监听主机。                                                                                                   |
-| `dev.open`        | `boolean`  | `true`           | 启动后是否自动打开浏览器。                                                                                             |
-| `html.headExtra`  | `string`   | `''`             | 追加到 SSR HTML `<head>` 的原始 HTML。                                                                                 |
-| `vite`            | 对象或函数 | 无               | 合并到内部 Vite dev/build 配置，见下。                                                                                 |
+| 配置项            | 类型       | 默认值           | 说明                                                                                                                          |
+| ----------------- | ---------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `dir.template`    | `string`   | `'ktr/template'` | 模板根目录，组件、mock、JSON 数据和 `style.css` 都放在这里。                                                                  |
+| `dir.assets`      | `string`   | `'ktr/public'`   | 静态资源目录（模板目录同级）；dev server 把它当 publicDir 服务，构建时由 `ktrBuildPlugin` 复制到 `<产物目录>/assets`。        |
+| `dir.copyAssets`  | `boolean`  | `true`           | 构建时是否复制静态资源到产物 `assets/`；资源目录本身已随包发布（如 `resources/` 与 package.json 同级）时设 `false` 避免重复。 |
+| `dir.cssEntry`    | `string`   | 自动探测         | Tailwind 入口；默认优先 `<dir.template>/style.css`，否则取 `dir.template` 下第一个 `.css`。                                   |
+| `extraStylePaths` | `string[]` | `[]`             | 额外注入 SSR HTML 的样式文件。                                                                                                |
+| `dev.port`        | `number`   | `5180`           | `ktr dev` 监听端口。                                                                                                          |
+| `dev.host`        | `string`   | `'localhost'`    | `ktr dev` 监听主机。                                                                                                          |
+| `dev.open`        | `boolean`  | `true`           | 启动后是否自动打开浏览器。                                                                                                    |
+| `html.headExtra`  | `string`   | `''`             | 追加到 SSR HTML `<head>` 的原始 HTML。                                                                                        |
+| `vite`            | 对象或函数 | 无               | 合并到内部 Vite dev/build 配置，见下。                                                                                        |
 
 不可配置的固定位置：框架缓存强制为项目根的 `.ktr/`；mock 数据固定在各模板自己的 `data/` 子目录；构建产物目录由 `ktrBuildPlugin` 跟随打包器的 outDir（SSR HTML 默认写到 `dist/template/html`）。
 

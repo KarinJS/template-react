@@ -25,6 +25,7 @@ const configFor = (mockDataDir: string): ResolvedKtrConfig => ({
   cacheDir: path.join(mockDataDir, '../.ktr'),
   mockDataDir,
   assetsDir: path.join(fixtureRoot, 'resources'),
+  copyAssets: true,
   outDir: path.join(mockDataDir, '../dist/template'),
   cssEntry: path.join(fixtureRoot, 'templates/style.css'),
   extraStylePaths: [],
