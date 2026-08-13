@@ -10,7 +10,7 @@ import { ensureTemplateRegistry, registryTypesPath } from '../../src/conventions
 /** 在临时目录搭一个最小模板项目（目录式强约定），返回根目录和已解析配置。 */
 const setupProject = async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-conventions-'))
-  const cardDir = path.join(root, 'template', 'hello', 'card')
+  const cardDir = path.join(root, 'ktr', 'template', 'hello', 'card')
   fs.mkdirSync(cardDir, { recursive: true })
   fs.writeFileSync(path.join(cardDir, 'index.tsx'), "export default { name: '卡片' }\n", 'utf-8')
   const config = await resolveConfig({ cwd: root })
@@ -30,7 +30,7 @@ describe('ensureTemplateRegistry', () => {
     // 模块增强目标固定为 registry-types 子路径，下游 loadTemplateRegistry 才能拿到精确类型。
     expect(content).toContain("declare module '@karinjs/template-react/registry-types'")
     expect(content).toContain('interface ProjectRegistry')
-    expect(content).toContain("'hello/card': typeof import('../template/hello/card/index').default")
+    expect(content).toContain("'hello/card': typeof import('../ktr/template/hello/card/index').default")
     // export {} 让文件成为模块，保证 declare module 按模块增强处理。
     expect(content).toContain('export {}')
   })
@@ -38,7 +38,7 @@ describe('ensureTemplateRegistry', () => {
   it('does not register bare <板块>/<模板>.tsx files under the strict convention', async () => {
     const { config, root } = await setupProject()
     // 裸写组件不符合强约定，直接不注册（项目未发布，不做迁移提示）。
-    fs.writeFileSync(path.join(root, 'template', 'hello', 'legacy.tsx'), 'export default {}\n', 'utf-8')
+    fs.writeFileSync(path.join(root, 'ktr', 'template', 'hello', 'legacy.tsx'), 'export default {}\n', 'utf-8')
 
     const result = await ensureTemplateRegistry(config)
     expect(result.routes).toEqual(['hello/card'])
@@ -47,7 +47,7 @@ describe('ensureTemplateRegistry', () => {
   it('treats components/ as an internal directory that never registers routes', async () => {
     const { config, root } = await setupProject()
     // components/ 里的子组件和普通 ts 逻辑文件都不参与路由，包括误建的 index.tsx。
-    const componentsDir = path.join(root, 'template', 'hello', 'card', 'components')
+    const componentsDir = path.join(root, 'ktr', 'template', 'hello', 'card', 'components')
     fs.mkdirSync(componentsDir, { recursive: true })
     fs.writeFileSync(path.join(componentsDir, 'badge.tsx'), 'export default {}\n', 'utf-8')
     fs.writeFileSync(path.join(componentsDir, 'index.tsx'), 'export default {}\n', 'utf-8')

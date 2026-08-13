@@ -9,12 +9,13 @@ import type { KtrConfig, ResolvedKtrConfig, ResolveConfigOptions } from '../type
 // 按优先级查找的配置文件名，TS 版本优先于 JS 版本。
 const configNames = ['karin.template.ts', 'karin.template.mts', 'karin.template.js', 'karin.template.mjs']
 
-/** 无配置项目使用的默认值，核心体验围绕 template/ 和 .ktr/ 展开。 */
+/** 无配置项目使用的默认值，核心体验围绕 ktr/ 和 .ktr/ 展开。 */
 const defaults: KtrConfig = {
-  templateDir: 'template',
-  cacheDir: '.ktr',
-  assetsDir: 'resources',
-  outDir: 'dist/template',
+  dir: {
+    template: 'ktr/template',
+    cache: '.ktr',
+    out: 'dist/template'
+  },
   extraStylePaths: [],
   dev: {
     port: 5180,
@@ -123,15 +124,17 @@ export const resolveConfig = async (options: ResolveConfigOptions = {}): Promise
   // defu 合并优先级：命令行覆盖 > karin.template.ts 用户配置 > 默认值。
   const merged = defu(overrideConfig, userConfig, defaults) as KtrConfig
 
-  const templateDirValue = merged.templateDir ?? 'template'
-  const mockDataDirValue = merged.mockDataDir ?? templateDirValue
+  const mergedDir = merged.dir ?? {}
+  const templateDirValue = mergedDir.template ?? 'ktr/template'
+  const mockDataDirValue = mergedDir.mockData ?? templateDirValue
   const templateDir = resolvePath(root, templateDirValue)
   const mockDataDir = resolvePath(root, mockDataDirValue)
-  const cacheDir = resolvePath(root, merged.cacheDir ?? '.ktr')
-  const assetsDir = resolvePath(root, merged.assetsDir ?? 'resources')
-  const outDir = resolvePath(root, merged.outDir ?? 'dist/template')
+  const cacheDir = resolvePath(root, mergedDir.cache ?? '.ktr')
+  // 静态资源默认与模板目录同级（ktr/template -> ktr/public）：dev server 把它当 publicDir 服务，build 时复制到产物 assets/。
+  const assetsDir = resolvePath(root, mergedDir.assets ?? path.posix.join(path.posix.dirname(templateDirValue), 'public'))
+  const outDir = resolvePath(root, mergedDir.out ?? 'dist/template')
   const extraStylePaths = (merged.extraStylePaths ?? []).map((item) => resolvePath(root, item))
-  const cssEntry = detectCssEntry(root, templateDir, merged.cssEntry)
+  const cssEntry = detectCssEntry(root, templateDir, mergedDir.cssEntry)
 
   const resolved: ResolvedKtrConfig = {
     root,

@@ -28,7 +28,7 @@ export default defineConfig({
 | `templateDir`     | `string`   | `'template'`       | 模板根目录，组件、mock、JSON 数据和 `style.css` 都放在这里。                         |
 | `cacheDir`        | `string`   | `'.ktr'`           | 框架产物缓存目录，不要手动编辑、不要提交。                                           |
 | `mockDataDir`     | `string`   | 等于 `templateDir` | mock 数据目录，扫描 `mock.ts` 和 `data/*.json` 的位置。                              |
-| `assetsDir`       | `string`   | `'resources'`      | 静态资源目录，`ktr build` 时复制到 `<outDir>/assets`。                               |
+| `assetsDir`       | `string`   | `'template/public'` | 静态资源目录（跟随 `templateDir`）；dev server 把它当 publicDir 服务，`ktr build` 时复制到 `<outDir>/assets`。 |
 | `outDir`          | `string`   | `'dist/template'`  | 构建输出目录；SSR HTML 默认写到 `<outDir>/html`。                                    |
 | `cssEntry`        | `string`   | 自动探测           | Tailwind 入口；默认优先 `template/style.css`，否则取 `templateDir` 下第一个 `.css`。 |
 | `extraStylePaths` | `string[]` | `[]`               | 额外注入 SSR HTML 的样式文件。                                                       |
@@ -115,9 +115,9 @@ npx @karinjs/template-react create <项目名>
 pnpm ktr sync
 ```
 
-扫描 `template/`，生成（或刷新）`.ktr/` 三个产物：`template-registry.ts`（路由注册表）、`mock-registry.ts`（TS mock 导出 + JSON 清单）、`registry-types.d.ts`（逐路由类型的模块增强）。**成功后你会看到**：终端输出 `Template registry ready: N templates -> <注册表路径>`。
+扫描 `template/`，生成（或刷新）`.ktr/` 三个产物：`template-registry.ts`（路由注册表）、`mock-registry.ts`（TS mock 导出 + JSON 清单）、`registry-types.d.ts`（逐路由类型的模块增强）。**成功后你会看到**：终端输出 `模板注册表已就绪：N 个模板 -> <注册表路径>`。
 
-**什么时候要跑**：新增、删除、移动模板或 mock 之后，以及 `typecheck`、`build` 之前。
+**什么时候要跑**：新增、删除、移动模板或 mock 之后，以及 `typecheck`、`build` 之前。如果打包配置里挂了 `ktrBuildPlugin()`（`@karinjs/template-react/plugin`），打包时会自动同步，不需要单独跑。
 
 ### ktr dev
 
@@ -146,6 +146,6 @@ pnpm ktr build --outDir dist/template
 构建模板 CSS：先再次 `sync`，再把 `cssEntry` 编译为 `<outDir>/style.css`（引用资源进 `<outDir>/assets`）。**成功后你会看到**：终端输出构建统计，`<outDir>/style.css` 已生成。
 
 <Callout>
-  用 Vite 打包的项目需要这一步编译 CSS（Node 库模式的 Vite 不产 CSS），产物 `lib/style.css` 正好是渲染器约定位置；用 tsdown
-  打包的项目不用单独跑——CSS 由 tailwind 插件在管线内编译。两种方式见 [构建与打包](/docs/guide/building)。
+  打包配置里挂了 `ktrBuildPlugin()` 就不用单独跑这一步——插件会在 `closeBundle` 阶段把 CSS 编译到打包器自己的 outDir。用 tsdown
+  且 CSS 走 tailwind 插件的项目同样不需要。两种方式见 [构建与打包](/docs/guide/building)。
 </Callout>

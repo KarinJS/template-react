@@ -20,22 +20,22 @@ describe('scaffoldFiles', () => {
     const paths = scaffoldFiles(baseOptions).map((file) => file.path)
 
     for (const route of exampleRoutes) {
-      expect(paths).toContain(`template/${route}/index.tsx`)
+      expect(paths).toContain(`ktr/template/${route}/index.tsx`)
     }
     // 运行时捕获文件不属于示例内容。
     expect(paths.some((item) => item.endsWith('captured.json'))).toBe(false)
     // TS mock 与 JSON mock 都要带下来。
-    expect(paths).toContain('template/hello/list/mock.ts')
-    expect(paths).toContain('template/demo/nested/deep/mock.ts')
-    expect(paths).toContain('template/hello/card/data/default.json')
-    expect(paths.some((item) => /^template\/.+\/data\/.+\.json$/.test(item))).toBe(true)
+    expect(paths).toContain('ktr/template/hello/list/mock.ts')
+    expect(paths).toContain('ktr/template/demo/nested/deep/mock.ts')
+    expect(paths).toContain('ktr/template/hello/card/data/default.json')
+    expect(paths.some((item) => /^ktr\/template\/.+\/data\/.+\.json$/.test(item))).toBe(true)
   })
 
   it('withExample 为 false 时不生成任何模板文件（style.css 入口除外）', () => {
     const paths = scaffoldFiles({ ...baseOptions, withExample: false }).map((file) => file.path)
-    const templatePaths = paths.filter((item) => item.startsWith('template/'))
+    const templatePaths = paths.filter((item) => item.startsWith('ktr/template/'))
 
-    expect(templatePaths).toEqual(['template/style.css'])
+    expect(templatePaths).toEqual(['ktr/template/style.css'])
   })
 })
 
@@ -51,6 +51,6 @@ describe('示例模板虚拟模块', () => {
     const paths = exampleTemplateFiles.map((file) => file.path)
 
     expect(paths.some((item) => item.endsWith('captured.json'))).toBe(false)
-    expect(paths).not.toContain('template/style.css')
+    expect(paths).not.toContain('ktr/template/style.css')
   })
 })

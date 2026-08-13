@@ -31,7 +31,7 @@ export interface ScaffoldFile {
 const configFile = (port: number): string => `import { defineConfig } from '@karinjs/template-react'
 
 // 这里只配置 @karinjs/template-react 自身行为；
-// 模板、mock 和 JSON 数据全部按 template/ 目录约定自动发现，不需要手写清单。
+// 模板、mock 和 JSON 数据全部按 ktr/template/ 目录约定自动发现，不需要手写清单。
 export default defineConfig({
   dev: {
     port: ${port},
@@ -95,7 +95,7 @@ export const renderImage = async <K extends keyof Registry & string>(
 export const scaffoldFiles = (options: ScaffoldOptions): ScaffoldFile[] => {
   const files: ScaffoldFile[] = [
     { path: 'karin.template.ts', content: configFile(options.port) },
-    { path: 'template/style.css', content: templateCssEntryContent(options.style === 'custom') }
+    { path: 'ktr/template/style.css', content: templateCssEntryContent(options.style === 'custom') }
   ]
 
   if (options.withExample) {

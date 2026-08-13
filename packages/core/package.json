@@ -24,6 +24,10 @@
       "types": "./dist/registry-types.d.mts",
       "import": "./dist/registry-types.mjs"
     },
+    "./plugin": {
+      "types": "./dist/plugin.d.mts",
+      "import": "./dist/plugin.mjs"
+    },
     "./styles": {
       "style": "./styles/index.css",
       "default": "./styles/index.css"

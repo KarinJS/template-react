@@ -142,7 +142,7 @@ export const writeNewProjectTsconfig = (root: string): void => {
           resolveJsonModule: true,
           outDir: 'lib'
         },
-        include: ['src', 'template', '.ktr']
+        include: ['src', 'ktr', '.ktr']
       },
       null,
       2

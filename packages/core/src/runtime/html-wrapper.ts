@@ -121,7 +121,7 @@ export class HtmlWrapper {
    */
   loadInlineCss(cssFilePath: string): string {
     if (!cssFilePath || !fs.existsSync(cssFilePath)) {
-      console.warn(`[ktr] CSS file not found, skipped: ${cssFilePath}`)
+      console.warn(`[ktr] 找不到 CSS 文件，已跳过：${cssFilePath}`)
       return ''
     }
 
@@ -152,7 +152,7 @@ export class HtmlWrapper {
    */
   private toDataUri(assetPath: string): string | null {
     if (!fs.existsSync(assetPath)) {
-      console.warn(`[ktr] asset referenced by CSS was not found, skipped: ${assetPath}`)
+      console.warn(`[ktr] CSS 引用的资源不存在，已跳过：${assetPath}`)
       return null
     }
 

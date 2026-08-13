@@ -17,7 +17,7 @@ describe('buildTemplates', () => {
     fs.unlinkSync(path.join(root, 'templates/index.ts'))
     fs.writeFileSync(
       path.join(root, 'karin.template.ts'),
-      "export default { templateDir: 'templates', mockDataDir: 'mock-data', outDir: 'dist/template', cssEntry: 'templates/style.css' }\n",
+      "export default { dir: { template: 'templates', mockData: 'mock-data', out: 'dist/template', cssEntry: 'templates/style.css' } }\n",
       'utf-8'
     )
     const result = await buildTemplates({ root })

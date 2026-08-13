@@ -6,7 +6,7 @@ import fg from 'fast-glob'
 import type { ResolvedKtrConfig } from '../types'
 
 const generatedHeader = '// 此文件由 @karinjs/template-react 自动生成，请不要手动修改。'
-const generatedNotice = '// 按约定维护 template/ 下的组件、mock 与 JSON 数据，运行 ktr sync/dev/build 会自动刷新这里。'
+const generatedNotice = '// 按约定维护 ktr/template/ 下的组件、mock 与 JSON 数据，运行 ktr sync/dev/build 会自动刷新这里。'
 
 const normalizePath = (filePath: string): string => filePath.replace(/\\/g, '/')
 

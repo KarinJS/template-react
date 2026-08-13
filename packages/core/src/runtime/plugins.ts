@@ -30,7 +30,7 @@ export class PluginContainer {
     try {
       return plugin.apply ? plugin.apply(path) : true
     } catch (error) {
-      console.warn(`[ktr] render plugin ${plugin.name} apply() failed and was skipped`, error)
+      console.warn(`[ktr] 渲染插件 ${plugin.name} 的 apply() 执行失败，已跳过`, error)
       return false
     }
   }

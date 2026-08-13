@@ -165,37 +165,118 @@ export interface RenderResult {
   error?: string
 }
 
-/** karin.template.ts 支持的用户配置。 */
+/**
+ * `karin.template.ts` 支持的用户配置。
+ *
+ * 大多数情况下你只需要关心 `dev` 和 `vite`；目录全部有约定默认值，
+ * 不写就是推荐布局。构建期的产物目录由 `@karinjs/template-react/plugin`
+ * 的 `ktrBuildPlugin` 全权接管（跟随打包器自己的 outDir），无需在这里配置。
+ *
+ * @example
+ * ```ts
+ * import { defineConfig } from '@karinjs/template-react'
+ *
+ * export default defineConfig({
+ *   dev: { port: 5180, open: true },
+ *   // 需要自定义目录时才写 dir，例如：
+ *   // dir: { template: 'src/views', assets: 'src/views/public' }
+ * })
+ * ```
+ */
 export interface KtrConfig {
-  /** 模板根目录，组件、mock、JSON 数据和 style.css 默认都放在这里。 */
-  templateDir?: string
-  /** 自动注册、类型索引等框架产物的缓存目录，类似 Next.js 的 .next。 */
-  cacheDir?: string
-  /** mock 数据目录，默认等于 templateDir，方便和模板共置。 */
-  mockDataDir?: string
-  /** 静态资源目录，构建时会复制到 dist/template/assets。 */
-  assetsDir?: string
-  /** 模板构建输出目录。 */
-  outDir?: string
-  /** Tailwind CSS 入口，默认自动探测 template/style.css。 */
-  cssEntry?: string
-  /** 额外注入 SSR HTML 的样式文件。 */
+  /**
+   * 目录约定，全部相对于项目根目录解析。
+   *
+   * 默认布局（不写 `dir` 时的推荐结构）：
+   *
+   * ```text
+   * ktr/
+   * ├── template/            # 模板：目录即路由，<板块>/<模板>/index.tsx
+   * │   ├── style.css        # Tailwind 入口（缺失时首次启动自动补）
+   * │   └── hello/card/      # 一个模板
+   * │       ├── index.tsx
+   * │       ├── mock.ts
+   * │       └── data/*.json
+   * └── public/              # 静态资源（图片、字体文件等）
+   * .ktr/                    # 框架产物缓存，类似 Next.js 的 .next，勿手动编辑
+   * ```
+   */
+  dir?: {
+    /**
+     * 模板根目录。组件、mock、JSON 数据和 `style.css` 都按约定放在这里。
+     * 只有 `<板块>/<模板>/index.tsx` 会被注册为路由；`components/` 和 `_` 开头的目录不参与扫描。
+     * @default 'ktr/template'
+     */
+    template?: string
+    /**
+     * 框架产物的缓存目录：自动注册表、mock 清单、类型索引都写在这里。
+     * 类似 Next.js 的 `.next`，不要手动编辑，也不要提交进版本库。
+     * @default '.ktr'
+     */
+    cache?: string
+    /**
+     * mock 数据目录。默认等于 `dir.template`，方便 mock 和模板共置。
+     * @default dir.template
+     */
+    mockData?: string
+    /**
+     * 静态资源目录（图片等）。dev server 会把它作为 publicDir 挂在根路径上
+     * （`public/image/logo.png` 在模板里以 `/image/logo.png` 引用），
+     * `ktr build` 时整个目录复制到 `<产物目录>/assets`。
+     * @default 'ktr/public'（模板目录的同级 public）
+     */
+    assets?: string
+    /**
+     * 模板构建输出目录（`style.css` / `assets` 的落盘位置）。
+     * 只有裸跑 `ktr build` 时才用到；用 `ktrBuildPlugin` 打包时以打包器自身的 outDir 为准，此项不生效。
+     * @default 'dist/template'
+     */
+    out?: string
+    /**
+     * Tailwind CSS 入口文件。默认自动探测 `<dir.template>/style.css`，
+     * 缺失时首次启动由框架自动补一份三行入口（tailwindcss + ktr 样式基座 + @source）。
+     * @default '<dir.template>/style.css'
+     */
+    cssEntry?: string
+  }
+  /**
+   * 额外注入 SSR HTML 的样式文件列表（相对项目根目录），
+   * 内容会被内联进渲染产物的 `<style>` 标签，CSS 里相对路径的 `url()` 资源会转成 data URI。
+   * @example extraStylePaths: ['ktr/template/print.css']
+   */
   extraStylePaths?: string[]
   /** 开发面板配置。 */
   dev?: {
-    /** ktr dev 监听端口。 */
+    /**
+     * `ktr dev` 监听端口。被占用时自动回退到下一个可用端口，
+     * 并在启动详情里打印占用进程和释放命令。
+     * @default 5180
+     */
     port?: number
-    /** ktr dev 监听主机。 */
+    /**
+     * `ktr dev` 监听主机。`localhost` 只允许本机访问；要暴露给局域网设 `'0.0.0.0'`。
+     * @default 'localhost'
+     */
     host?: string
-    /** 启动后是否自动打开浏览器。 */
+    /**
+     * 启动后是否自动打开浏览器。CLI 显式传 `--open` / `--no-open` 时覆盖此项。
+     * @default true
+     */
     open?: boolean
   }
   /** SSR HTML 外壳配置。 */
   html?: {
-    /** 追加到 head 的原始 HTML。 */
+    /**
+     * 追加到渲染产物 `<head>` 的原始 HTML，比如额外的 `<link>` 字体、`<meta>` 标签。
+     * @example headExtra: '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik">'
+     */
     headExtra?: string
   }
-  /** 透传并合并到内部 Vite dev/build 配置。 */
+  /**
+   * 透传并合并到 ktr 内部的 Vite 配置（dev server 和 CSS 构建都会用到），
+   * 是下游的扩展位：加插件、改 define、调 resolve.alias 都写在这里。
+   * 不会加载下游项目自己的 `vite.config.ts`（那是生产打包配置），两者互不影响。
+   */
   vite?: KtrViteConfig
 }
 

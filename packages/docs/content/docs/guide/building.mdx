@@ -16,7 +16,7 @@ description: 把含 JSX/TS/CSS 的插件项目打包成 karin 生产可用的纯
 | 模板样式 CSS  | `template/style.css`                | `lib/style.css` |
 
 <Callout type="warn">
-  **顺序很重要**：先 `ktr sync` 生成 `.ktr` 注册表，再打包。注册表是打包入口的一部分，漏了它构建出来的包找不到任何模板。
+  **注册表必须在打包前是最新的**：不挂插件时先手动 `ktr sync`；挂了 `ktrBuildPlugin` 则由插件在 buildStart 自动刷新。漏了它构建出来的包找不到任何模板。
 </Callout>
 
 ## 方式一：Vite（推荐）
@@ -33,9 +33,12 @@ description: 把含 JSX/TS/CSS 的插件项目打包成 karin 生产可用的纯
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  // ktrBuildPlugin 在 buildStart 刷新 .ktr 注册表（替代 ktr sync）、
+  // 在 closeBundle 把模板 CSS 编译到 vite 自己的 outDir（替代 ktr build --outDir lib）。
+  plugins: [react(), tailwindcss(), ktrBuildPlugin()],
   // 整包模式：除 node-karin（宿主提供）和 jiti 外全部内联，生产环境零安装。
   // jiti 必须外部化——它按相对路径读自己包里的文件，打进包里必崩。
   ssr: {
@@ -51,7 +54,7 @@ export default defineConfig({
       entry: {
         // 你的插件入口，按需增删（karin 约定 lib/apps 结构）
         'apps/template': 'src/apps/template.ts',
-        // .ktr 注册表是固定入口，先跑 ktr sync 生成
+        // .ktr 注册表是固定入口，插件会在打包前自动刷新
         'template-registry': '.ktr/template-registry.ts',
         'mock-registry': '.ktr/mock-registry.ts'
       },
@@ -67,38 +70,38 @@ export default defineConfig({
 构建命令（写进 `package.json` 的 scripts）：
 
 ```bash
-ktr sync && vite build && ktr build --outDir lib
+vite build
 ```
 
 <Callout>
-  **为什么 CSS 单独一步**：Vite 的 Node 库模式（`ssr: true`）不产出 CSS 文件，所以样式交给 `ktr build` 编译（它内部也是 Vite
-  管线，不算换工具）。产物正好是渲染器约定查找的 `lib/style.css`。
+  **`ktrBuildPlugin` 替你做了两件事**：`buildStart` 阶段刷新 `.ktr` 注册表（就是 `ktr sync`），`closeBundle` 阶段编译 Tailwind CSS
+  到 `build.outDir`（就是 `ktr build --outDir lib`，产物正好是渲染器约定查找的 `lib/style.css`）。产物目录默认跟随 vite 自己的
+  `build.outDir`，改目录不用同步改任何 ktr 配置；CSS 想走别的管线时传 `ktrBuildPlugin({ css: false })`。
 </Callout>
 
 ## 方式二：tsdown（备选）
 
-tsdown 基于 rolldown，速度快，**一条命令**搞定 JS 和 CSS。代价是多装两个开发依赖，并且多一套和开发期不同的管线。
+tsdown 基于 rolldown，速度快，`ktrBuildPlugin` 在 tsdown 里同样生效（rolldown 兼容同一套钩子）——注册表同步和 CSS 编译都由插件完成，**不需要再装任何额外的 CSS 插件**，只多装 tsdown 本身。
 
 ```bash
-pnpm add -D tsdown @bosh-code/tsdown-plugin-tailwindcss
+pnpm add -D tsdown
 ```
 
 新建 `tsdown.config.ts`：
 
 ```ts title="tsdown.config.ts" twoslash
-import { tailwindPlugin } from '@bosh-code/tsdown-plugin-tailwindcss'
 import { defineConfig } from 'tsdown'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
 
 export default defineConfig({
   entry: {
     // 注意：入口路径必须带 ./ 前缀，否则会被当成 npm 包名解析
     'apps/template': './src/apps/template.ts',
     'template-registry': './.ktr/template-registry.ts',
-    'mock-registry': './.ktr/mock-registry.ts',
-    // CSS 通过一个 JS 入口引入（框架会把编译结果输出为 lib/style.css）
-    'template/style': './src/style.ts'
+    'mock-registry': './.ktr/mock-registry.ts'
   },
-  plugins: [tailwindPlugin()],
+  // buildStart 同步 .ktr 注册表，closeBundle 用 ktr 自带的 vite 管线把 CSS 编译到 lib/style.css
+  plugins: [ktrBuildPlugin()],
   format: ['esm'],
   platform: 'node',
   target: 'node18',
@@ -112,19 +115,10 @@ export default defineConfig({
 })
 ```
 
-上面的样式入口 `src/style.ts` 只有一行：
-
-```ts title="src/style.ts" twoslash
-// @filename: globals.d.ts
-declare module '*.css'
-// ---cut---
-import '../template/style.css'
-```
-
 构建命令：
 
 ```bash
-ktr sync && tsdown
+tsdown
 ```
 
 ## 验证构建结果

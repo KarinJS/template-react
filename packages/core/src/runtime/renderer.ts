@@ -53,7 +53,7 @@ const resolveHtmlFileName = (option: RendererOptions['htmlFileName'], templatePa
 }
 
 /**
- * 只有显式传入 captureDir 才捕获；未传时仅开发环境默认捕获到 template/。
+ * 只有显式传入 captureDir 才捕获；未传时仅开发环境默认捕获到 ktr/template/。
  * @param captureDir 捕获目录，可能未配置。
  * @returns 需要捕获时返回 true。
  */
@@ -130,8 +130,8 @@ class SSRRenderer<R extends Record<keyof R, TemplateDef<any>>> {
       const fullHtml = this.htmlWrapper.wrapContent(html, renderContext)
       fs.writeFileSync(htmlPath, fullHtml, 'utf-8')
 
-      // 捕获触发条件：显式配置了 captureDir，或开发环境下默认捕获到 template/ 目录。
-      const captureDir = this.options.captureDir ?? (process.env.NODE_ENV === 'development' ? path.resolve('template') : undefined)
+      // 捕获触发条件：显式配置了 captureDir，或开发环境下默认捕获到 ktr/template/ 目录。
+      const captureDir = this.options.captureDir ?? (process.env.NODE_ENV === 'development' ? path.resolve('ktr/template') : undefined)
       if (shouldCapture(captureDir)) {
         // data 与 renderContext 都可能被 beforeRender 插件加工过，捕获的是加工后的完整快照。
         saveCapturedData(captureDir, templatePath, data, renderContext)

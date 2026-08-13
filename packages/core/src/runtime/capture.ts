@@ -35,7 +35,7 @@ export const saveCapturedData = (captureDir: string, templatePath: string, data:
     return true
   } catch (error) {
     // 捕获失败只告警，不中断渲染主流程。
-    console.warn(`[ktr] failed to capture data for ${templatePath}`, error)
+    console.warn(`[ktr] 捕获 ${templatePath} 的数据失败`, error)
     return false
   }
 }

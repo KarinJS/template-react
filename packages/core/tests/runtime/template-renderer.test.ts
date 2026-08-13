@@ -31,7 +31,7 @@ const setupPlugin = (): { root: string; callerUrl: string } => {
 `,
     'utf-8'
   )
-  fs.mkdirSync(path.join(root, 'template', 'x'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'ktr', 'template', 'x'), { recursive: true })
   return { root, callerUrl: pathToFileURL(caller).href }
 }
 
@@ -47,8 +47,8 @@ describe('createTemplateRenderer', () => {
     expect(result.htmlPath).toBe(path.join(root, 'dist', 'template', 'html', 'x_y.html'))
     expect(fs.existsSync(result.htmlPath)).toBe(true)
 
-    // 真实数据按模板路由捕获到插件 template/ 目录的 captured.json。
-    const captured = path.join(root, 'template', 'x', 'y', 'data', capturedDataFileName)
+    // 真实数据按模板路由捕获到插件 ktr/template/ 目录的 captured.json。
+    const captured = path.join(root, 'ktr', 'template', 'x', 'y', 'data', capturedDataFileName)
     expect(fs.existsSync(captured)).toBe(true)
   })
 

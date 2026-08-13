@@ -7,6 +7,7 @@ export default defineConfig({
     client: 'src/client.ts',
     index: 'src/index.ts',
     cli: 'src/cli/index.ts',
+    plugin: 'src/plugin.ts',
     'registry-types': 'src/registry-types.ts'
   },
   // 示例模板在构建时从 examples/ 扫描注入（虚拟模块，无签入生成物）。

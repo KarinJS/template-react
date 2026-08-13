@@ -258,12 +258,10 @@ export const templateTest = karin.command('^(#)?测试模板$', async (event) =>
 ### 第 5 步：生产构建
 
 ```bash
-ktr sync && vite build && ktr build --outDir lib
+vite build
 ```
 
-- `ktr sync`：刷新 `.ktr` 注册表（打包入口的一部分，别忘了）。
-- `vite build`：把插件逻辑、模板组件、注册表全部打进 `lib/`。
-- `ktr build --outDir lib`：编译 Tailwind CSS 到 `lib/style.css`（渲染器按约定找它）。
+前提是 `vite.config.ts` 里挂了 `ktrBuildPlugin()`（来自 `@karinjs/template-react/plugin`）——它会在打包前自动刷新 `.ktr` 注册表（替代 `ktr sync`）、打包后把 Tailwind CSS 编译到 vite 自己的 `outDir`（替代 `ktr build --outDir lib`）。
 
 **成功后**：`lib/` 里能看到 `apps/*.js`、`template-registry.js`、`mock-registry.js`、`style.css`。发布后的插件不需要 `template/` 源码目录也能渲染。
 

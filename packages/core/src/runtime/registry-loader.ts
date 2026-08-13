@@ -35,13 +35,13 @@ const resolveRegistryConfig = async (options?: LoadRegistryOptions) => {
     resolveOptions.configFile = options.configFile
   }
   if (options?.cacheDir) {
-    resolveOptions.overrides = { cacheDir: options.cacheDir }
+    resolveOptions.overrides = { dir: { cache: options.cacheDir } }
   }
   return resolveConfig(resolveOptions)
 }
 
 /** 产物目录自动发现时跳过的目录（源码、资源、隐藏目录都不是构建产物）。 */
-const nonOutputDirs = new Set(['node_modules', 'src', 'template', 'templates', 'resources', 'config', 'scripts'])
+const nonOutputDirs = new Set(['node_modules', 'src', 'template', 'templates', 'ktr', 'resources', 'config', 'scripts'])
 
 /**
  * 在下游项目中定位打包产物里的注册表文件。产物目录由下游构建工具决定，框架不做假设，按优先级发现：

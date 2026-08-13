@@ -20,11 +20,11 @@ cli.command('create [name]', '新建一个模板项目').action(async (name?: st
 })
 
 cli
-  .command('dev', 'Start template development panel')
-  .option('--port <port>', 'Dev server port')
-  .option('--host <host>', 'Dev server host')
-  .option('--open', 'Open browser')
-  .option('--no-open', 'Do not open browser')
+  .command('dev', '启动模板开发面板')
+  .option('--port <port>', '开发面板端口')
+  .option('--host <host>', '开发面板监听地址')
+  .option('--open', '启动后打开浏览器')
+  .option('--no-open', '启动后不打开浏览器')
   .action(async (options: { port?: string | number; host?: string }) => {
     // 命令行参数只覆盖 dev 子配置，其他配置继续从 karin.template.ts 和默认值读取；
     // open 必须按原始 argv 判断显式传参，cac 的 --no-open 默认值不能用来区分。
@@ -49,16 +49,16 @@ cli
     await createDevServer(config)
   })
 
-cli.command('sync', 'Generate convention-based template registry files').action(async () => {
+cli.command('sync', '扫描 template/ 并生成约定注册表文件').action(async () => {
   // TypeScript 类型检查和 IDE 跳转依赖隐藏注册表，因此提供一个显式同步命令。
   const config = await resolveConfig()
   const result = await ensureConventions(config)
-  consola.success(`Template registry ready: ${result.routes.length} templates -> ${result.registryPath}`)
+  consola.success(`模板注册表已就绪：${result.routes.length} 个模板 -> ${result.registryPath}`)
 })
 
 cli
-  .command('build', 'Build template CSS')
-  .option('--outDir <dir>', 'Output directory')
+  .command('build', '构建模板 CSS')
+  .option('--outDir <dir>', '输出目录')
   .action(async (options: { outDir?: string }) => {
     // 构建前会再次同步约定产物，保证生产环境使用的是最新模板清单。
     await buildTemplates(options.outDir ? { outDir: options.outDir } : {})

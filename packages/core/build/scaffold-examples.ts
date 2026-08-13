@@ -16,8 +16,8 @@ export interface ExampleTemplateFile {
   content: string
 }
 
-/** examples 模板目录（packages/core/examples/template）。 */
-const examplesTemplateDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../examples/template')
+/** examples 模板目录（packages/core/examples/ktr/template）。 */
+const examplesTemplateDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../examples/ktr/template')
 
 /**
  * 递归扫描示例模板。
@@ -39,7 +39,7 @@ export const collectExampleTemplateFiles = (): ExampleTemplateFile[] => {
       const relative = path.relative(examplesTemplateDir, absolute).split(path.sep).join('/')
       if (relative === 'style.css') continue
       if (relative.endsWith('data/captured.json')) continue
-      files.push({ path: `template/${relative}`, content: fs.readFileSync(absolute, 'utf-8') })
+      files.push({ path: `ktr/template/${relative}`, content: fs.readFileSync(absolute, 'utf-8') })
     }
   }
 

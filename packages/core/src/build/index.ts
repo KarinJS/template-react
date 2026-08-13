@@ -8,6 +8,7 @@ import { build, mergeConfig, type InlineConfig } from 'vite'
 import { resolveConfig } from '../config'
 import { resolveKtrViteConfig } from '../config/vite'
 import { ensureCssEntry } from '../conventions/css-entry'
+import type { KtrConfig } from '../types'
 import { ensureConventions } from '../conventions/registry'
 import { tailwindCssAlias } from '../tailwind'
 import type { BuildTemplatesOptions, BuildTemplatesResult, ResolvedKtrConfig } from '../types'
@@ -60,14 +61,24 @@ const countTemplates = async (templatesDir: string): Promise<number> => {
  * @returns 构建产物统计。
  */
 export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promise<BuildTemplatesResult> => {
-  const resolveOptions = options.root
-    ? {
-        cwd: options.root,
-        overrides: options
-      }
-    : {
-        overrides: options
-      }
+  // 对外是扁平的已解析字段（Partial<ResolvedKtrConfig>），这里翻译成嵌套的 dir 覆盖项。
+  const dirOverrides: NonNullable<KtrConfig['dir']> = {}
+  if (options.templateDir !== undefined) dirOverrides.template = options.templateDir
+  if (options.cacheDir !== undefined) dirOverrides.cache = options.cacheDir
+  if (options.mockDataDir !== undefined) dirOverrides.mockData = options.mockDataDir
+  if (options.assetsDir !== undefined) dirOverrides.assets = options.assetsDir
+  if (options.outDir !== undefined) dirOverrides.out = options.outDir
+  if (options.cssEntry !== undefined) dirOverrides.cssEntry = options.cssEntry
+
+  const overrides: KtrConfig = {
+    ...(Object.keys(dirOverrides).length > 0 ? { dir: dirOverrides } : {}),
+    ...(options.extraStylePaths ? { extraStylePaths: options.extraStylePaths } : {}),
+    ...(options.dev ? { dev: options.dev } : {}),
+    ...(options.html ? { html: options.html } : {}),
+    ...(options.vite ? { vite: options.vite } : {})
+  }
+
+  const resolveOptions = options.root ? { cwd: options.root, overrides } : { overrides }
   const config = await resolveConfig(resolveOptions)
   await ensureConventions(config)
   const cssEntry = ensureCssEntry(config)
@@ -111,11 +122,23 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
     fs.unlinkSync(tempEntry)
   }
 
+  // vite 会把 html 入口按 root 相对路径再 emit 一份到产物目录
+  //（如 lib/lib/.ktr-css-entry.html），连同产生的空目录链一并清掉。
+  const emittedEntry = path.join(config.outDir, path.relative(config.root, tempEntry))
+  if (fs.existsSync(emittedEntry)) {
+    fs.unlinkSync(emittedEntry)
+    let dir = path.dirname(emittedEntry)
+    while (dir !== config.outDir && fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
+      fs.rmdirSync(dir)
+      dir = path.dirname(dir)
+    }
+  }
+
   await copyAssets(config)
 
   const cssSize = fs.existsSync(outputCssPath) ? fs.statSync(outputCssPath).size : 0
   const templatesCount = await countTemplates(config.templateDir)
-  console.log(`[ktr] built ${templatesCount} templates, CSS ${cssSize} bytes -> ${outputCssPath}`)
+  console.log(`[ktr] 已构建 ${templatesCount} 个模板，CSS ${cssSize} 字节 -> ${outputCssPath}`)
 
   return {
     cssPath: outputCssPath,

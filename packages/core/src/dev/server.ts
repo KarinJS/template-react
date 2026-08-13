@@ -79,6 +79,8 @@ export const createDevServer = async (config: ResolvedKtrConfig): Promise<DevSer
   const baseConfig: InlineConfig = {
     root: config.root,
     appType: 'custom',
+    // 静态资源目录即 vite 的 publicDir：/image/* 这类根路径引用直接从这里出。
+    publicDir: config.assetsDir,
     // 不加载下游项目自己的 vite.config.ts（那是生产打包配置），扩展统一走 karin.template.ts 的 vite 字段。
     configFile: false,
     clearScreen: false,
