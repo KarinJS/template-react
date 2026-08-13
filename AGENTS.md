@@ -63,10 +63,10 @@
 
 ## 验证要求
 
-完成涉及核心能力的改动后，至少执行：
+**每次修改代码后都必须做到单测通过、类型检查通过、构建通过**，至少执行：
 
 - `pnpm --filter @karinjs/template-react run typecheck`
-- `pnpm --filter @karinjs/template-react run test`
+- `pnpm --filter @karinjs/template-react run test`（或仓库根目录 `pnpm test`，两条路径都要能跑通）
 - `pnpm --filter @karinjs/template-react run build`
 - `pnpm --filter template-react-docs run build`（涉及文档站时）
 
