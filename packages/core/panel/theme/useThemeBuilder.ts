@@ -6,6 +6,7 @@ import {
   defaultKnobs,
   fontMonoOptions,
   fontSansOptions,
+  formRadiusOptions,
   isDefaultKnobs,
   radiusOptions,
   sanitizeKnobs,
@@ -13,6 +14,7 @@ import {
   type ThemeKnobs
 } from './knobs'
 import { baseMax } from './palette'
+import { findMatchingPreset, type ThemePreset } from './presets'
 
 /** 旋钮的持久化键。 */
 const knobsStorageKey = 'ktr-template-theme'
@@ -75,7 +77,7 @@ const readCustomFonts = (): CustomFont[] => {
  * 模板主题构建器的状态与派生数据。
  *
  * 旋钮是唯一数据源，CSS 全部由它派生：
- * `sandboxCss` 注入画布（默认主题时为空串，表示不干预），`exportCss` 供用户复制。
+ * `sandboxCss` 注入画布（默认主题时为空串，表示不干预），`getExportCss` 供代码弹窗按需取快照。
  */
 export const useThemeBuilder = () => {
   const [knobs, setKnobsState] = useState<ThemeKnobs>(readKnobs)
@@ -161,16 +163,34 @@ export const useThemeBuilder = () => {
         lightness: isLocked('accent') ? current.lightness : randomInRange(randomRanges.lightness),
         base: isLocked('base') ? current.base : randomInRange(randomRanges.base),
         radius: isLocked('radius') ? current.radius : randomItem(radiusOptions).value,
+        formRadius: isLocked('formRadius') ? current.formRadius : randomItem(formRadiusOptions).value,
         // 官方 useRandomizeVariables 同样把 fontFamily 纳入随机并尊重其锁；
         // 若这里固定不动，面板上那两个字体锁就成了点了没反应的死控件。
         fontSans: isLocked('fontSans') ? current.fontSans : randomItem(fontSansOptions).value,
-        fontMono: isLocked('fontMono') ? current.fontMono : randomItem(fontMonoOptions).value
+        fontMono: isLocked('fontMono') ? current.fontMono : randomItem(fontMonoOptions).value,
+        // 鲜艳调色板是叠加开关，不属于「配色」本身，随机时保持不动。
+        vibrant: current.vibrant
       }
 
       persistKnobs(next)
       return next
     })
   }, [lockedKnobs, persistKnobs])
+
+  /** 应用预设：一次性 patch 配色与圆角，不动字体和鲜艳开关。 */
+  const applyPreset = useCallback(
+    (preset: ThemePreset) => {
+      setKnobs({
+        hue: preset.hue,
+        chroma: preset.chroma,
+        lightness: preset.lightness,
+        base: preset.base,
+        radius: preset.radius,
+        formRadius: preset.formRadius
+      })
+    },
+    [setKnobs]
+  )
 
   /** 恢复默认，同时清空锁定状态。 */
   const reset = useCallback(() => {
@@ -185,7 +205,11 @@ export const useThemeBuilder = () => {
     knobs,
     // 默认主题不注入任何 CSS：这是「不设置就用组件库默认」语义的落点。
     sandboxCss: useMemo(() => (isDefault ? '' : generateSandboxCss(knobs)), [isDefault, knobs]),
-    exportCss: useMemo(() => generateExportCss(knobs), [knobs]),
+    // 导出 CSS 按需生成（代码弹窗打开时才取快照），不做常驻 useMemo：
+    // 拖滑块时每帧重算一大段字符串纯属浪费。
+    getExportCss: useCallback(() => generateExportCss(knobs, customFonts), [knobs, customFonts]),
+    // 当前旋钮命中的预设；undefined 即「自定义」。
+    matchingPreset: findMatchingPreset(knobs),
     isDefault,
     lockedKnobs,
     customFonts,
@@ -194,6 +218,7 @@ export const useThemeBuilder = () => {
     setKnobs,
     toggleLock,
     randomize,
+    applyPreset,
     reset
   }
 }

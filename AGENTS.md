@@ -29,7 +29,7 @@
 
 `karin.template.ts` 只配置 `@karinjs/template-react` 自身行为，例如端口、输出目录、Vite 扩展配置。不要在这里手写模板清单。
 
-下游初始化由 `ktr init`（已有项目）和 `ktr create <name>`（新建项目）负责，交互层用 `@clack/prompts`（打包时内联，不进发布依赖），生成逻辑拆成纯函数放在 `src/cli/scaffold/`（`files.ts` 算文件内容、`apply.ts` 落盘和打补丁、`prompts.ts` 交互），便于不走交互直接测试。
+下游初始化由 `ktr init`（已有项目）和 `ktr create <name>`（新建项目）负责，交互层用 `@clack/prompts`（打包时内联，不进发布依赖），生成逻辑拆成纯函数放在 `src/cli/scaffold/`（`files.ts` 算文件内容、`apply.ts` 落盘和打补丁、`prompts.ts` 交互），便于不走交互直接测试。示例模板不是手写的：`build/scaffold-examples.ts` 的构建插件把 `packages/core/examples` 扫描成虚拟模块 `virtual:ktr-scaffold-examples`（排除 `captured.json`），tsdown 构建和 vitest 都挂同一个插件，改了 examples 后无需任何手动同步，也不存在签入的生成物。
 
 ## 自动生成目录
 

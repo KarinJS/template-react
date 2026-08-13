@@ -1,24 +1,39 @@
-import { Button, Label, ScrollShadow, Separator, ToggleButton, ToggleButtonGroup, Tooltip } from '@heroui/react'
-import { Check, Copy, Info, Moon, RotateCcw, Shuffle, Sun, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import {
+  AlertDialog,
+  Button,
+  Checkbox,
+  Label,
+  ScrollShadow,
+  Separator,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  useOverlayState
+} from '@heroui/react'
+import { Check, Code2, Copy, Info, Moon, RotateCcw, Shuffle, Sun, X } from 'lucide-react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 
 import type { CustomFont, FontUrlError } from '../theme/fontCdn'
-import { fontSansOptions, fontMonoOptions, radiusOptions, type LockableKnob, type ThemeKnobs } from '../theme/knobs'
+import { type LockableKnob, type ThemeKnobs } from '../theme/knobs'
 import type { OklchColor } from '../theme/oklch'
+import { themePresets, type ThemePreset } from '../theme/presets'
 import { AccentControl } from './theme/AccentControl'
 import { CssCodeBlock } from './theme/CssCodeBlock'
 import { ChromaSlider } from './theme/ChromaSlider'
 import { LockableLabel } from './theme/LockableLabel'
 import { FontPopover } from './theme/FontPopover'
-import { OptionPopover } from './theme/OptionPopover'
+import { RadiusPopover } from './theme/RadiusPopover'
+import { ThemePresetPopover } from './theme/ThemePresetPopover'
 
 /** 主题构建器面板的属性。 */
 interface ThemeBuilderPanelProps {
   /** 当前旋钮值。 */
   knobs: ThemeKnobs
-  /** 供复制的精简 CSS。 */
-  exportCss: string
+  /** 生成导出 CSS 的回调（依赖旋钮和自定义字体，代码弹窗实时调用）。 */
+  getExportCss: () => string
+  /** 当前旋钮命中的预设；undefined 表示「自定义」。 */
+  matchingPreset: ThemePreset | undefined
   /** 模板当前是否深色模式。 */
   isDark: boolean
   /** 当前是否为默认主题。 */
@@ -43,29 +58,39 @@ interface ThemeBuilderPanelProps {
   onToggleLock: (knob: LockableKnob) => void
   /** 随机配色回调。 */
   onRandomize: () => void
+  /** 应用预设回调。 */
+  onApplyPreset: (preset: ThemePreset) => void
   /** 恢复默认回调。 */
   onReset: () => void
   /** 关闭面板回调。 */
   onClose: () => void
 }
 
+/** 「随机生成」确认框的免打扰键：勾过「不再显示」后直接随机，不再弹确认。 */
+const shuffleWarningStorageKey = 'ktr-shuffle-warning-shown'
+
 /** 表单里的一个字段：标签行 + 控件，纵向间距统一。 */
 const Field = ({ children }: { children: React.ReactNode }) => <div className="flex flex-col gap-1.5">{children}</div>
 
-/** 分组标题，用于把表单切成「配色」「形状与文字」「导出」三段。 */
+/** 分组标题，用于把表单切成「配色」「形状与文字」两段。 */
 const GroupTitle = ({ children }: { children: React.ReactNode }) => (
   <h3 className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">{children}</h3>
 )
 
+/** 键盘事件焦点是否在可输入区域：是则快捷键让位给正常输入。 */
+const isEditableTarget = (target: EventTarget | null): boolean =>
+  target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || Boolean((target as HTMLElement | null)?.isContentEditable)
+
 /**
  * 模板主题构建器：一个纵向表单，调整后实时作用到画布里的用户组件。
  *
- * 版式参照 HeroUI 官方主题构建器：每个字段都是「可锁定标签 + 单一控件」，
- * 连续量用滑块、离散量收进弹层，避免一排按钮在窄侧边栏里被挤成缝。
+ * 控件与文案复刻 HeroUI 官方主题编辑器：预设弹层、离散量收进弹层、
+ * 随机生成带确认框，导出 CSS 收进左侧滑出的代码弹窗（打开期间实时跟随旋钮）。
  */
 export const ThemeBuilderPanel = ({
   knobs,
-  exportCss,
+  getExportCss,
+  matchingPreset,
   isDark,
   isDefault,
   lockedKnobs,
@@ -78,23 +103,103 @@ export const ThemeBuilderPanel = ({
   onImportFont,
   onRemoveFont,
   onRandomize,
+  onApplyPreset,
   onReset,
   onClose
 }: ThemeBuilderPanelProps) => {
   const [copied, setCopied] = useState(false)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
+  // 代码弹窗：打开期间实时跟随旋钮生成 CSS；走 useDeferredValue，
+  // 拖滑块时高亮重渲染让位给滑块本身，不卡顿。
+  const [codeOpen, setCodeOpen] = useState(false)
+  const [codeMounted, setCodeMounted] = useState(false)
+  const liveCode = useMemo(() => (codeOpen ? getExportCss() : ''), [codeOpen, getExportCss])
+  const deferredCode = useDeferredValue(liveCode)
+
+  const codePanelRef = useRef<HTMLDivElement>(null)
+  const codeEntryRef = useRef<HTMLDivElement>(null)
+
+  // 代码弹窗打开期间，点弹窗以外的地方自动关闭（入口按钮除外，避免刚点开就被关掉）。
+  useEffect(() => {
+    if (!codeOpen) return
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (codePanelRef.current?.contains(target) || codeEntryRef.current?.contains(target)) return
+      setCodeOpen(false)
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [codeOpen])
+
+  const shuffleDialog = useOverlayState()
+  const [dontShowAgain, setDontShowAgain] = useState(false)
+
   useEffect(() => () => clearTimeout(copyTimerRef.current), [])
+
+  // 滑入动画：挂载后下一帧再归位，transition 才有起点。
+  useEffect(() => {
+    if (!codeOpen) {
+      setCodeMounted(false)
+      return
+    }
+    const frame = requestAnimationFrame(() => setCodeMounted(true))
+    return () => cancelAnimationFrame(frame)
+  }, [codeOpen])
+
+  // 按 T 随机应用一个预设，与官方主题编辑器一致；焦点在输入框时让位。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 't' || event.metaKey || event.ctrlKey || event.altKey) return
+      if (isEditableTarget(event.target)) return
+
+      const preset = themePresets[Math.floor(Math.random() * themePresets.length)]
+      if (preset) {
+        onApplyPreset(preset)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onApplyPreset])
 
   const handleCopy = async (): Promise<void> => {
     try {
-      await navigator.clipboard.writeText(exportCss)
+      await navigator.clipboard.writeText(liveCode)
       setCopied(true)
       clearTimeout(copyTimerRef.current)
       copyTimerRef.current = setTimeout(() => setCopied(false), 2000)
     } catch {
       // 剪贴板不可用（非 HTTPS 或权限被拒）时保持静默，用户仍可手动选中代码框里的文本。
     }
+  }
+
+  /** 随机生成入口：勾过「不再显示」就直接随机，否则先弹确认框。 */
+  const handleShuffleTrigger = () => {
+    try {
+      if (window.localStorage.getItem(shuffleWarningStorageKey) === 'true') {
+        onRandomize()
+        return
+      }
+    } catch {
+      // localStorage 不可用时退回每次确认。
+    }
+    setDontShowAgain(false)
+    shuffleDialog.open()
+  }
+
+  const handleShuffleConfirm = () => {
+    onRandomize()
+    if (dontShowAgain) {
+      try {
+        window.localStorage.setItem(shuffleWarningStorageKey, 'true')
+      } catch {
+        // 存不下就算了，下次继续弹确认。
+      }
+    }
+    shuffleDialog.close()
   }
 
   const accent: OklchColor = { l: knobs.lightness, c: knobs.chroma, h: knobs.hue }
@@ -105,7 +210,7 @@ export const ThemeBuilderPanel = ({
   })
 
   return (
-    <aside className="flex h-full min-w-0 flex-col border-l border-border bg-background">
+    <aside className="relative flex h-full min-w-0 flex-col border-l border-border bg-background">
       <header className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2">
         <div className="min-w-0">
           <div className="text-[10px] font-semibold tracking-[0.24em] text-muted">THEME</div>
@@ -115,7 +220,7 @@ export const ThemeBuilderPanel = ({
         <div className="flex shrink-0 items-center gap-0.5">
           <Tooltip closeDelay={80} delay={200}>
             <Tooltip.Trigger>
-              <Button aria-label="随机生成" isIconOnly onPress={onRandomize} size="sm" variant="ghost">
+              <Button aria-label="随机生成" isIconOnly onPress={handleShuffleTrigger} size="sm" variant="ghost">
                 <Shuffle className="size-4" />
               </Button>
             </Tooltip.Trigger>
@@ -143,12 +248,12 @@ export const ThemeBuilderPanel = ({
         </div>
       </header>
 
-      {/* 表单区自己滚动；导出区在它下面独立占位，见下方 footer。 */}
+      {/* 表单区自己滚动。 */}
       <ScrollShadow className="min-h-0 flex-1" hideScrollBar={false} size={32}>
         {/* 用 form 承载：这些控件本质是一组表单字段。onSubmit 阻止回车误触发导航。 */}
         <form className="flex flex-col gap-5 px-4 py-4" onSubmit={(event) => event.preventDefault()}>
           <p className="text-xs leading-relaxed text-muted">
-            实时作用到画布里的模板，不影响面板外观。调好后复制 CSS 贴进{' '}
+            实时作用到画布里的模板，不影响面板外观。调好后点下方「查看代码」复制 CSS 贴进{' '}
             <code className="rounded bg-surface px-1 py-0.5 font-mono text-[11px] text-foreground" translate="no">
               template/style.css
             </code>{' '}
@@ -197,7 +302,22 @@ export const ThemeBuilderPanel = ({
             </Field>
 
             <Field>
-              <LockableLabel label="强调色" tooltip="用于品牌与高亮的主要颜色。拖动滑块换色相，点右侧圆点精调。" {...lockProps('accent')} />
+              {/* 预设不设锁：它一次改写多个旋钮，锁的语义（随机时跳过）管不到它。 */}
+              <div className="flex h-6 items-center gap-1">
+                <Label className="text-xs font-medium text-foreground">主题</Label>
+              </div>
+              <ThemePresetPopover
+                current={matchingPreset}
+                panelTheme={panelTheme}
+                panelThemeStyle={panelThemeStyle}
+                vibrant={knobs.vibrant}
+                onApply={onApplyPreset}
+                onVibrantChange={(vibrant) => onKnobsChange({ vibrant })}
+              />
+            </Field>
+
+            <Field>
+              <LockableLabel label="强调色" tooltip="用于品牌与高亮的主要颜色" {...lockProps('accent')} />
               <AccentControl
                 accent={accent}
                 panelTheme={panelTheme}
@@ -207,11 +327,7 @@ export const ThemeBuilderPanel = ({
             </Field>
 
             <Field>
-              <LockableLabel
-                label="基础色"
-                tooltip="控制背景与表面等中性色中灰度的比例。往右染色越明显，过高会显脏。"
-                {...lockProps('base')}
-              />
+              <LockableLabel label="基础色" tooltip="控制背景与表面等中性色中灰度的比例" {...lockProps('base')} />
               <ChromaSlider hue={knobs.hue} value={knobs.base} onChange={(base) => onKnobsChange({ base })} />
             </Field>
           </section>
@@ -222,81 +338,157 @@ export const ThemeBuilderPanel = ({
             <GroupTitle>形状与文字</GroupTitle>
 
             <Field>
-              <LockableLabel label="圆角" tooltip="全局圆角基准值，各级圆角（sm/md/lg 等）都由它派生。" {...lockProps('radius')} />
-              <OptionPopover
-                description="影响卡片、按钮等所有圆角，各级尺寸按比例派生。"
-                grid
-                label="选择圆角"
-                options={radiusOptions}
+              {/* 圆角的两把锁收在弹层内的两个栏标题行（radius/formRadius 各自独立），
+                  字段行只保留标签和说明。 */}
+              <div className="flex h-6 items-center gap-1">
+                <Label className="text-xs font-medium text-foreground">圆角</Label>
+                <Tooltip closeDelay={80} delay={150}>
+                  <Tooltip.Trigger>
+                    <Info aria-label="圆角说明" className="size-3.5 shrink-0 text-muted" tabIndex={0} />
+                  </Tooltip.Trigger>
+                  <Tooltip.Content showArrow className="max-w-56">
+                    <Tooltip.Arrow />
+                    <p className="text-xs leading-relaxed">
+                      全局圆角影响整体 UI，例如菜单与弹窗；表单圆角影响表单元素，例如输入框与选择器。
+                    </p>
+                  </Tooltip.Content>
+                </Tooltip>
+              </div>
+              <RadiusPopover
+                formRadiusValue={knobs.formRadius}
+                lockedKnobs={lockedKnobs}
                 panelTheme={panelTheme}
                 panelThemeStyle={panelThemeStyle}
-                title="圆角"
-                value={knobs.radius}
-                onChange={(radius) => onKnobsChange({ radius })}
+                radiusValue={knobs.radius}
+                onFormRadiusChange={(formRadius) => onKnobsChange({ formRadius })}
+                onRadiusChange={(radius) => onKnobsChange({ radius })}
+                onToggleLock={onToggleLock}
               />
             </Field>
 
             <Field>
-              <LockableLabel
-                label="正文字体"
-                tooltip="设置 --font-sans。内置字体只设置字体栈；从 CDN 导入的字体会自动加载到画布里。"
-                {...lockProps('fontSans')}
-              />
+              {/* 字体的两把锁收在弹层内的两个段标题行（fontSans/fontMono 各自独立），
+                  字段行只保留标签和说明。 */}
+              <div className="flex h-6 items-center gap-1">
+                <Label className="text-xs font-medium text-foreground">字体</Label>
+                <Tooltip closeDelay={80} delay={150}>
+                  <Tooltip.Trigger>
+                    <Info aria-label="字体说明" className="size-3.5 shrink-0 text-muted" tabIndex={0} />
+                  </Tooltip.Trigger>
+                  <Tooltip.Content showArrow className="max-w-56">
+                    <Tooltip.Arrow />
+                    <p className="text-xs leading-relaxed">
+                      设置 --font-sans 与 --font-mono。内置字体只设置字体栈；从 CDN 导入的字体会自动加载到画布里。
+                    </p>
+                  </Tooltip.Content>
+                </Tooltip>
+              </div>
               <FontPopover
                 customFonts={customFonts}
-                description="用于正文、标题等常规文本，可从 CDN 导入自定义字体。"
-                options={fontSansOptions}
+                lockedKnobs={lockedKnobs}
+                monoValue={knobs.fontMono}
                 panelTheme={panelTheme}
                 panelThemeStyle={panelThemeStyle}
-                title="正文字体"
-                value={knobs.fontSans}
-                onChange={(fontSans) => onKnobsChange({ fontSans })}
+                sansValue={knobs.fontSans}
                 onImport={onImportFont}
+                onMonoChange={(fontMono) => onKnobsChange({ fontMono })}
                 onRemove={onRemoveFont}
-              />
-            </Field>
-
-            <Field>
-              <LockableLabel
-                label="等宽字体"
-                tooltip="设置 --font-mono。内置字体只设置字体栈；从 CDN 导入的字体会自动加载到画布里。"
-                {...lockProps('fontMono')}
-              />
-              <FontPopover
-                customFonts={customFonts}
-                description="用于代码、数据等需要等宽对齐的场景，可从 CDN 导入自定义字体。"
-                options={fontMonoOptions}
-                panelTheme={panelTheme}
-                panelThemeStyle={panelThemeStyle}
-                title="等宽字体"
-                value={knobs.fontMono}
-                onChange={(fontMono) => onKnobsChange({ fontMono })}
-                onImport={onImportFont}
-                onRemove={onRemoveFont}
+                onSansChange={(fontSans) => onKnobsChange({ fontSans })}
+                onToggleLock={onToggleLock}
               />
             </Field>
           </section>
         </form>
       </ScrollShadow>
 
-      {/*
-        导出区固定在底部并撑满剩余高度。
-        关键是这一层 flex 列 + min-h-0：滚动条只长在里面的代码块上，
-        外层抽屉自身不出现滚动条（避免两层滚动容器争夺滚轮）。
-      */}
-      <footer className="flex min-h-0 shrink-0 basis-2/5 flex-col gap-2 border-t border-border px-4 pt-3 pb-4">
-        <div className="flex shrink-0 items-center justify-between gap-2">
-          <GroupTitle>导出 CSS</GroupTitle>
-          <Button onPress={handleCopy} size="sm" variant={copied ? 'primary' : 'secondary'}>
-            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-            {copied ? '已复制' : '复制'}
-          </Button>
-        </div>
-        <p aria-live="polite" className="sr-only">
-          {copied ? 'CSS 已复制到剪贴板' : ''}
-        </p>
-        <CssCodeBlock code={exportCss} panelTheme={panelTheme} />
+      {/* 底部只留入口；CSS 预览挪到左侧滑出的代码弹窗。 */}
+      <footer className="shrink-0 border-t border-border px-4 py-3" ref={codeEntryRef}>
+        <Button className="w-full" onPress={() => setCodeOpen(true)} size="sm" variant="secondary">
+          <Code2 className="size-3.5" />
+          查看代码
+        </Button>
       </footer>
+
+      {/*
+        代码弹窗：贴在抽屉左缘滑出，不用 Modal——它是抽屉的延伸，不该遮罩整个面板。
+        打开期间实时跟随旋钮生成（deferred，拖滑块不被高亮重渲染拖住）。
+        注意外层 Panel 需要 overflow: visible（见 App.tsx），否则这里会被裁剪。
+      */}
+      {codeOpen && (
+        <div
+          className={`absolute right-full top-0 z-20 flex h-full w-105 flex-col border border-border bg-background shadow-xl transition-transform duration-200 ease-out ${
+            codeMounted ? 'translate-x-0' : 'translate-x-4'
+          }`}
+          ref={codePanelRef}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+            <p className="font-mono text-xs text-foreground" translate="no">
+              style.css
+            </p>
+            <div className="flex items-center gap-0.5">
+              <Button onPress={() => void handleCopy()} size="sm" variant={copied ? 'primary' : 'secondary'}>
+                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                {copied ? '已复制' : '复制'}
+              </Button>
+              <p aria-live="polite" className="sr-only">
+                {copied ? 'CSS 已复制到剪贴板' : ''}
+              </p>
+
+              <Button aria-label="关闭代码面板" isIconOnly onPress={() => setCodeOpen(false)} size="sm" variant="ghost">
+                <X className="size-3.5" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col p-2">
+            <CssCodeBlock code={deferredCode} panelTheme={panelTheme} />
+          </div>
+        </div>
+      )}
+
+      {/* 随机生成确认框；portal 渲染，需要重新套面板主题。 */}
+      <AlertDialog.Backdrop
+        className={panelTheme}
+        data-theme={panelTheme}
+        isDismissable
+        isOpen={shuffleDialog.isOpen}
+        style={panelThemeStyle}
+        onOpenChange={(open) => {
+          if (!open) setDontShowAgain(false)
+          shuffleDialog.setOpen(open)
+        }}
+      >
+        <AlertDialog.Container>
+          <AlertDialog.Dialog>
+            <AlertDialog.CloseTrigger />
+            <AlertDialog.Header>
+              <AlertDialog.Icon status="default">
+                <Shuffle className="size-5" />
+              </AlertDialog.Icon>
+              <AlertDialog.Heading>确定要随机生成吗？</AlertDialog.Heading>
+            </AlertDialog.Header>
+            <AlertDialog.Body>这将覆盖你当前的主题设置。</AlertDialog.Body>
+            <AlertDialog.Footer className="flex-col sm:flex-row sm:items-center">
+              <Button className="order-2 w-full sm:order-2 sm:w-auto" size="md" variant="tertiary" onPress={() => shuffleDialog.close()}>
+                取消
+              </Button>
+              <Button className="order-1 w-full sm:order-3 sm:w-auto" size="md" onPress={handleShuffleConfirm}>
+                确认
+              </Button>
+              <div className="order-3 flex flex-1 items-center gap-2 self-start sm:order-1 sm:self-center">
+                <Checkbox id="ktr-shuffle-dont-show" isSelected={dontShowAgain} variant="secondary" onChange={setDontShowAgain}>
+                  <Checkbox.Content>
+                    <Checkbox.Control>
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                  </Checkbox.Content>
+                </Checkbox>
+                <Label htmlFor="ktr-shuffle-dont-show">不再显示</Label>
+              </div>
+            </AlertDialog.Footer>
+          </AlertDialog.Dialog>
+        </AlertDialog.Container>
+      </AlertDialog.Backdrop>
     </aside>
   )
 }

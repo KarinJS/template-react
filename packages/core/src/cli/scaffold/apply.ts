@@ -72,9 +72,13 @@ const sortKeys = (input: Record<string, string>): Record<string, string> => {
 /**
  * 给下游 package.json 补开发依赖和脚本，已存在的键一律不覆盖（尊重用户已有版本和命令）。
  * @param root 项目根目录。
+ * @param extraDependencies 除 scaffoldDevDependencies 外额外写入的依赖（如 withExample 时的 lucide-react）。
  * @returns 实际新增的依赖和脚本。
  */
-export const patchPackageJson = (root: string): { addedDependencies: string[]; addedScripts: string[] } => {
+export const patchPackageJson = (
+  root: string,
+  extraDependencies: Record<string, string> = {}
+): { addedDependencies: string[]; addedScripts: string[] } => {
   const target = path.join(root, 'package.json')
   const pkg: Record<string, any> = fs.existsSync(target) ? JSON.parse(fs.readFileSync(target, 'utf-8')) : {}
   const devDependencies: Record<string, string> = pkg.devDependencies ?? {}
@@ -82,7 +86,7 @@ export const patchPackageJson = (root: string): { addedDependencies: string[]; a
   const dependencies: Record<string, string> = pkg.dependencies ?? {}
 
   const addedDependencies: string[] = []
-  for (const [name, version] of Object.entries(scaffoldDevDependencies)) {
+  for (const [name, version] of Object.entries({ ...scaffoldDevDependencies, ...extraDependencies })) {
     if (devDependencies[name] || dependencies[name]) continue
     devDependencies[name] = version
     addedDependencies.push(name)

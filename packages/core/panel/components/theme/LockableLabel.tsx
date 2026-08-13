@@ -54,7 +54,7 @@ export const LockableLabel = ({ label, knob, tooltip, isLocked, onToggleLock }: 
       </Tooltip.Trigger>
       <Tooltip.Content showArrow>
         <Tooltip.Arrow />
-        <p className="text-xs">{isLocked ? '已锁定数值' : '锁定数值'}</p>
+        <p className="text-xs">{isLocked ? '解锁数值' : '锁定数值'}</p>
       </Tooltip.Content>
     </Tooltip>
   </div>

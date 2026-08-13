@@ -1,6 +1,7 @@
 import { darkPalette, hueShiftMax, lightPalette, semanticColors } from './palette'
 import { calculateForeground, formatOklch, normalizeHue, withChroma, withHue, type OklchColor } from './oklch'
-import type { ThemeKnobs } from './knobs'
+import { fontMonoOptions, fontSansOptions, type KnobOption, type ThemeKnobs } from './knobs'
+import { generateFontFace, isFontFileUrl, type CustomFont } from './fontCdn'
 
 /**
  * CSS 生成。
@@ -106,8 +107,8 @@ const generateColorVars = (knobs: ThemeKnobs, mode: 'light' | 'dark'): Record<st
   // 6. 字段边框透明（HeroUI 默认无描边）
   vars['--field-border'] = 'transparent'
 
-  // 7. 反色背景（明暗互换时用）
-  vars['--background-inverse'] = vars['--foreground']!
+  // 7. 反色背景（明暗互换时用），保持变量引用，与官方 getDerivedColorFormulas 一致
+  vars['--background-inverse'] = 'var(--foreground)'
 
   return vars
 }
@@ -117,8 +118,12 @@ const generateColorVars = (knobs: ThemeKnobs, mode: 'light' | 'dark'): Record<st
  *
  * 明暗模式混合比例不同：亮色模式 hover 混 10%，soft 混 15%；
  * 暗色模式分别是 10% 和 12%，避免过亮。
+ *
+ * vibrant（鲜艳调色板）只改 soft-foreground：四个语义色统一换成
+ * `92% 色 + 8% 前景`，与 @heroui/styles 的 [data-vibrant-palette] 规则同式——
+ * 直接烘进生成的 CSS，比在根元素挂属性更确定，导出粘贴后也无需额外操作。
  */
-const generateDerivedVars = (mode: 'light' | 'dark'): Record<string, string> => {
+const generateDerivedVars = (mode: 'light' | 'dark', vibrant = false): Record<string, string> => {
   const softMix = mode === 'light' ? 15 : 12
   const softHoverMix = mode === 'light' ? 20 : 16
 
@@ -156,6 +161,7 @@ const generateDerivedVars = (mode: 'light' | 'dark'): Record<string, string> => 
 
   // soft-foreground 的混合比例每种色各不相同，且亮暗有别：
   // 这些数字是官方为可读性逐个调过的，不能用一个统一公式代替。
+  // 鲜艳调色板是例外：官方直接放弃逐个调参，四个语义色统一 92% 色 + 8% 前景。
   const softForegroundMix: Record<string, { light: string; dark: string }> = {
     accent: { light: '70%, var(--foreground) 30%', dark: '80%, var(--foreground) 30%' },
     success: { light: '80%, var(--foreground) 60%', dark: '80%, var(--foreground) 30%' },
@@ -163,7 +169,9 @@ const generateDerivedVars = (mode: 'light' | 'dark'): Record<string, string> => 
     danger: { light: '70%, var(--foreground) 40%', dark: '80%, var(--foreground) 30%' }
   }
   for (const [key, mix] of Object.entries(softForegroundMix)) {
-    vars[`--${key}-soft-foreground`] = `color-mix(in oklab, var(--${key}) ${mix[mode]})`
+    vars[`--${key}-soft-foreground`] = vibrant
+      ? `color-mix(in oklab, var(--${key}) 92%, var(--foreground) 8%)`
+      : `color-mix(in oklab, var(--${key}) ${mix[mode]})`
   }
 
   // default 是中性色，比例与语义色不同：hover 只挪 4%，soft 用 50%。
@@ -198,7 +206,7 @@ const radiusVars: Record<string, string> = {
 /** 字体和基准圆角（不分明暗）。 */
 const generateStaticVars = (knobs: ThemeKnobs): Record<string, string> => ({
   '--radius': knobs.radius,
-  '--field-radius': 'calc(var(--radius) * 1.5)',
+  '--field-radius': knobs.formRadius,
   '--font-sans': knobs.fontSans,
   '--font-mono': knobs.fontMono
 })
@@ -217,8 +225,8 @@ const formatVars = (vars: Record<string, string>, indent = '  '): string =>
  */
 export const generateSandboxCss = (knobs: ThemeKnobs): string => {
   const staticVars = generateStaticVars(knobs)
-  const lightVars = { ...generateColorVars(knobs, 'light'), ...generateDerivedVars('light') }
-  const darkVars = { ...generateColorVars(knobs, 'dark'), ...generateDerivedVars('dark') }
+  const lightVars = { ...generateColorVars(knobs, 'light'), ...generateDerivedVars('light', knobs.vibrant) }
+  const darkVars = { ...generateColorVars(knobs, 'dark'), ...generateDerivedVars('dark', knobs.vibrant) }
 
   return `:root,
 .light,
@@ -234,22 +242,84 @@ ${formatVars(darkVars)}
 }
 
 /**
+ * 反查当前字体栈对应的 CDN 加载项。
+ *
+ * 依次在内置候选和用户导入的自定义字体里找：
+ * 找到且带 cdnUrl 才需要导出加载代码，纯系统字体栈直接跳过。
+ */
+const findFontLoader = (
+  stack: string,
+  options: readonly KnobOption[],
+  customFonts: readonly CustomFont[]
+): { url: string; family: string } | undefined => {
+  const preset = options.find((option) => option.value === stack)
+  if (preset?.cdnUrl) {
+    // 字体栈首项即 family 名，剥掉引号后用于 @font-face。
+    const family =
+      preset.value
+        .split(',')[0]
+        ?.trim()
+        .replace(/^['"]|['"]$/g, '') ?? preset.label
+    return { url: preset.cdnUrl, family }
+  }
+
+  const custom = customFonts.find((font) => stack.startsWith(`'${font.family}'`))
+  return custom ? { url: custom.url, family: custom.family } : undefined
+}
+
+/**
+ * 生成导出 CSS 顶部的字体加载代码。
+ *
+ * CDN 样式表输出 @import（必须位于所有规则之前）；
+ * 直连字体文件输出 @font-face 块（逻辑与沙盒注入同源，见 fontCdn.ts）。
+ */
+const generateFontLoaders = (knobs: ThemeKnobs, customFonts: readonly CustomFont[]): string => {
+  const loaders = [
+    findFontLoader(knobs.fontSans, fontSansOptions, customFonts),
+    findFontLoader(knobs.fontMono, fontMonoOptions, customFonts)
+  ]
+  const seen = new Set<string>()
+  const chunks: string[] = []
+
+  for (const loader of loaders) {
+    if (!loader || seen.has(loader.url)) continue
+    seen.add(loader.url)
+
+    chunks.push(isFontFileUrl(loader.url) ? generateFontFace(loader.family, loader.url) : `@import url('${loader.url}');`)
+  }
+
+  return chunks.join('\n\n')
+}
+
+/**
  * 生成导出用的 CSS，供用户复制进 `template/style.css`。
  *
- * 与沙盒版的区别：带说明注释、不含 hover/soft 派生色和圆角阶梯——
+ * 与沙盒版的区别：带说明注释、顶部附带字体加载代码、
+ * 不含 hover/soft 派生色和圆角阶梯——
  * 那些由 `@karinjs/template-react/styles` 提供，重复写只会让用户要维护的代码变长。
  */
-export const generateExportCss = (knobs: ThemeKnobs): string => {
+export const generateExportCss = (knobs: ThemeKnobs, customFonts: readonly CustomFont[] = []): string => {
   const staticVars = generateStaticVars(knobs)
   const lightVars = generateColorVars(knobs, 'light')
   const darkVars = generateColorVars(knobs, 'dark')
+  const fontLoaders = generateFontLoaders(knobs, customFonts)
+
+  // 鲜艳调色板会改变 soft-foreground 的派生公式，而派生色平时由基座样式表提供，
+  // 所以开启时必须把这四个变量一并导出，否则粘贴后 vibrant 不生效。
+  if (knobs.vibrant) {
+    for (const key of ['accent', 'success', 'warning', 'danger']) {
+      const vibrantSoftForeground = `color-mix(in oklab, var(--${key}) 92%, var(--foreground) 8%)`
+      lightVars[`--${key}-soft-foreground`] = vibrantSoftForeground
+      darkVars[`--${key}-soft-foreground`] = vibrantSoftForeground
+    }
+  }
 
   return `/*
  * ktr 模板主题 —— 由开发面板的主题构建器生成
- * 粘贴到 template/style.css 的 @import 之后即可生效
+ * 粘贴到 template/style.css 顶部的 @import 之后、其他规则之前即可生效
  * 只包含需要覆盖的变量，hover / soft 等派生色由 @karinjs/template-react/styles 提供
  */
-
+${fontLoaders ? `\n${fontLoaders}\n` : ''}
 :root,
 .light,
 [data-theme='light'] {

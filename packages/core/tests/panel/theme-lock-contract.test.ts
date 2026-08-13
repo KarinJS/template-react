@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fontMonoOptions, fontSansOptions, radiusOptions } from '../../panel/theme/knobs'
+import { fontMonoOptions, fontSansOptions, formRadiusOptions, radiusOptions } from '../../panel/theme/knobs'
 
 /**
  * 随机化的可锁定项必须与面板上渲染出的锁一一对应。
@@ -9,14 +9,15 @@ import { fontMonoOptions, fontSansOptions, radiusOptions } from '../../panel/the
  * 于是那两个锁点了没有任何效果——纯死控件。这里从两侧钉住这个契约。
  */
 
-/** 面板上真实渲染出锁按钮的旋钮（见 ThemeBuilderPanel 的 lockProps 调用）。 */
-const lockedKnobsInUi = ['accent', 'base', 'radius', 'fontSans', 'fontMono'] as const
+/** 面板上真实渲染出锁按钮的旋钮（见 ThemeBuilderPanel 的 lockProps 调用与 FontPopover 段标题锁）。 */
+const lockedKnobsInUi = ['accent', 'base', 'radius', 'formRadius', 'fontSans', 'fontMono'] as const
 
 describe('可锁定项与随机化的契约', () => {
   it('每个 UI 上的锁都有对应的候选集或取值区间', () => {
     // accent/base 是连续区间，radius/font 是离散候选：
     // 后者必须真的有候选可抽，否则随机化无从进行。
     expect(radiusOptions.length).toBeGreaterThan(1)
+    expect(formRadiusOptions.length).toBeGreaterThan(1)
     expect(fontSansOptions.length).toBeGreaterThan(1)
     expect(fontMonoOptions.length).toBeGreaterThan(1)
   })
@@ -24,7 +25,7 @@ describe('可锁定项与随机化的契约', () => {
   it('UI 暴露的锁集合与类型定义一致', () => {
     // LockableKnob 的成员若多于 UI，说明有锁没渲染；
     // 少于 UI 则 lockProps 会类型报错。
-    const fromType: readonly string[] = ['accent', 'base', 'radius', 'fontSans', 'fontMono']
+    const fromType: readonly string[] = ['accent', 'base', 'radius', 'formRadius', 'fontSans', 'fontMono']
     expect([...lockedKnobsInUi]).toEqual([...fromType])
   })
 

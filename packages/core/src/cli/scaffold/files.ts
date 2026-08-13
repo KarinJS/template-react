@@ -1,5 +1,7 @@
 import { templateCssEntryContent } from '../../conventions/css-entry'
 
+import { exampleTemplateFiles } from 'virtual:ktr-scaffold-examples'
+
 /** 模板样式来源。 */
 export type ScaffoldStyle = 'builtin' | 'custom'
 
@@ -37,61 +39,6 @@ export default defineConfig({
     open: true
   }
 })
-`
-
-/** 示例模板组件。 */
-const exampleTemplate = (): string => `import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
-
-/** 卡片模板的数据结构。 */
-export interface HelloCardData {
-  /** 主标题。 */
-  title: string
-  /** 副标题。 */
-  subtitle?: string
-  /** 键值对列表。 */
-  items: Array<{ label: string; value: string }>
-}
-
-/**
- * 示例模板：用 HeroUI 的语义色 token 写样式，改主题时会自动跟随。
- * 圆角写在根元素上（截图边界由 ktr 外壳的 #container 提供，它不加任何外观）。
- */
-const HelloCard = ({ data }: TemplateProps<HelloCardData>) => (
-  <div className="w-155 overflow-hidden rounded-2xl bg-background p-8 text-foreground">
-    <h1 className="text-3xl font-bold">{data.title}</h1>
-    {data.subtitle && <p className="mt-2 text-sm text-muted">{data.subtitle}</p>}
-
-    <div className="mt-6 grid gap-3">
-      {data.items.map((item) => (
-        <div key={item.label} className="flex items-center justify-between rounded-xl bg-surface px-4 py-3">
-          <span className="text-sm text-muted">{item.label}</span>
-          <strong className="text-accent">{item.value}</strong>
-        </div>
-      ))}
-    </div>
-  </div>
-)
-
-export default defineTemplate({
-  name: '问候卡片',
-  description: '我的第一个 React 截图模板',
-  component: HelloCard
-})
-`
-
-/** 示例模板的 JSON 数据。 */
-const exampleData = (): string => `${JSON.stringify(
-  {
-    title: '我的第一张卡片',
-    subtitle: 'React + Tailwind CSS',
-    items: [
-      { label: '框架', value: '@karinjs/template-react' },
-      { label: '渲染', value: 'SSR HTML' }
-    ]
-  },
-  null,
-  2
-)}
 `
 
 /** src/utils/render.ts 胶水层。 */
@@ -152,10 +99,8 @@ export const scaffoldFiles = (options: ScaffoldOptions): ScaffoldFile[] => {
   ]
 
   if (options.withExample) {
-    files.push(
-      { path: 'template/hello/card/index.tsx', content: exampleTemplate() },
-      { path: 'template/hello/card/data/default.json', content: exampleData() }
-    )
+    // 示例模板由构建插件从 packages/core/examples 扫描注入（虚拟模块，见 build/scaffold-examples.ts）。
+    files.push(...exampleTemplateFiles)
   }
 
   if (options.withGlue) {
@@ -180,4 +125,9 @@ export const scaffoldDevDependencies: Record<string, string> = {
 export const scaffoldScripts: Record<string, string> = {
   template: 'ktr sync && ktr dev',
   'template:build': 'ktr build --outDir lib'
+}
+
+/** withExample 时额外写入的开发依赖（示例模板用了 lucide 图标，版本与 packages/core 对齐）。 */
+export const scaffoldExampleDependencies: Record<string, string> = {
+  'lucide-react': '^1.28.0'
 }

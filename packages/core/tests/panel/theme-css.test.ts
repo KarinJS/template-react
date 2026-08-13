@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import { generateExportCss, generateSandboxCss } from '../../panel/theme/css'
-import { defaultKnobs } from '../../panel/theme/knobs'
+import { defaultKnobs, fontSansOptions } from '../../panel/theme/knobs'
 
 const sandbox = generateSandboxCss(defaultKnobs)
-const exported = generateExportCss(defaultKnobs)
+const exported = generateExportCss(defaultKnobs, [])
 
 describe('generateSandboxCss', () => {
   it('明暗两套一次性下发，切换靠选择器命中而非重算', () => {
@@ -73,6 +73,59 @@ describe('generateExportCss', () => {
     expect(exported).toMatch(/--danger:\s*oklch\(/)
     expect(exported).toContain('--font-sans:')
     expect(exported).toContain('--radius:')
+  })
+
+  it('表单圆角直接写入 --field-radius', () => {
+    expect(exported).toContain(`--field-radius: ${defaultKnobs.formRadius}`)
+    expect(generateExportCss({ ...defaultKnobs, formRadius: '0rem' }, [])).toContain('--field-radius: 0rem')
+  })
+
+  it('选中的 CDN 字体在导出顶部带 @import，且位于所有规则之前', () => {
+    const inter = fontSansOptions.find((option) => option.id === 'inter')!
+    const result = generateExportCss({ ...defaultKnobs, fontSans: inter.value }, [])
+
+    expect(result).toContain(`@import url('${inter.cdnUrl}');`)
+    // @import 只有在所有规则之前才有效，落在 :root 后面浏览器会直接丢弃。
+    expect(result.indexOf('@import')).toBeLessThan(result.indexOf(':root'))
+  })
+
+  it('系统字体栈不产生任何字体加载代码', () => {
+    // 注释文案里会出现 @import 字样，这里只断言真正的加载语句不存在。
+    expect(exported).not.toContain('@import url(')
+    expect(exported).not.toContain('@font-face')
+  })
+
+  it('直连字体文件的自定义字体导出 @font-face', () => {
+    const stack = `'My Font', system-ui, sans-serif`
+    const result = generateExportCss({ ...defaultKnobs, fontSans: stack }, [{ family: 'My Font', url: 'https://x.com/my-font.woff2' }])
+
+    expect(result).toContain('@font-face')
+    expect(result).toContain(`font-family: 'My Font'`)
+    expect(result).toContain('https://x.com/my-font.woff2')
+  })
+
+  it('自定义样式表字体导出 @import', () => {
+    const url = 'https://fonts.googleapis.com/css2?family=Rubik'
+    const stack = `'Rubik', system-ui, sans-serif`
+    const result = generateExportCss({ ...defaultKnobs, fontMono: stack }, [{ family: 'Rubik', url }])
+
+    expect(result).toContain(`@import url('${url}');`)
+  })
+
+  it('开启鲜艳调色板时直接烘出 vibrant 的 soft-foreground 公式', () => {
+    const result = generateExportCss({ ...defaultKnobs, vibrant: true }, [])
+    // vibrant 的 soft-foreground 统一 92% 色 + 8% 前景，与官方 [data-vibrant-palette] 规则同式。
+    for (const key of ['accent', 'success', 'warning', 'danger']) {
+      expect(result).toContain(`--${key}-soft-foreground: color-mix(in oklab, var(--${key}) 92%, var(--foreground) 8%);`)
+    }
+    // 未开启时导出不包含 soft-foreground 覆盖（派生色由基座样式表提供）。
+    expect(exported).not.toContain('soft-foreground')
+  })
+
+  it('沙盒 CSS 同样按 vibrant 切换 soft-foreground 公式', () => {
+    const vibrantCss = generateSandboxCss({ ...defaultKnobs, vibrant: true })
+    expect(vibrantCss).toContain('--accent-soft-foreground: color-mix(in oklab, var(--accent) 92%, var(--foreground) 8%);')
+    expect(vibrantCss).not.toContain('var(--accent) 70%, var(--foreground) 30%')
   })
 })
 

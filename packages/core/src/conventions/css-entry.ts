@@ -21,7 +21,7 @@ export const templateCssEntryContent = (withThemeOverrides = false): string => {
 `
   if (!withThemeOverrides) return base
   return `${base}
-/* 改这里就能换肤，变量名见 https://heroui.com/cn/docs/react/getting-started/theming */
+/* 改这里就能自定义主题，变量名见 https://heroui.com/cn/docs/react/getting-started/theming */
 :root {
   /* --accent: oklch(0.62 0.19 254); */
   /* --radius: 0.5rem; */

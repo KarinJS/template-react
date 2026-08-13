@@ -1,9 +1,10 @@
 import { Breadcrumbs, Button, ButtonGroup, ScrollShadow, Toast, Toolbar, Tooltip, toast } from '@heroui/react'
+import gsap from 'gsap'
 import { Brush, Camera, Crosshair, Maximize2, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { Group, Panel, Separator } from 'react-resizable-panels'
+import { Group, Panel, Separator, type GroupImperativeHandle } from 'react-resizable-panels'
 import { useLocation, useNavigate } from 'react-router-dom'
-
+import { FaGithub } from 'react-icons/fa'
 import { DataFileSelector } from './components/DataFileSelector'
 import { MockDataEditorModal } from './components/MockDataEditorModal'
 import { PanelThemeSelect } from './components/PanelThemeSelect'
@@ -139,18 +140,6 @@ const KarinMark = () => (
   </svg>
 )
 
-/**
- * GitHub 官方标志。
- *
- * lucide v1 移除了全部品牌图标（商标授权原因），所以这里内联官方 mark 路径，
- * 而不是拿一个通用的「外链」图标凑数——那个图标表达的是「新窗口打开」，不是「去 GitHub」。
- */
-const GithubMark = ({ size = 20 }: { size?: number }) => (
-  <svg aria-hidden="true" fill="currentColor" height={size} viewBox="0 0 16 16" width={size} xmlns="http://www.w3.org/2000/svg">
-    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-2.91-.88-2.91-2.79 0-.55.2-1.02.51-1.39-.06-.15-.23-.75.05-1.56 0 0 .61-.19 2 .74a4.7 4.7 0 0 1 1.28-.17c.44 0 .87.06 1.28.17 1.39-.94 2-.74 2-.74.28.81.11 1.41.05 1.56.32.37.51.84.51 1.39 0 1.92-1.14 2.59-2.92 2.79.3.26.56.76.56 1.54 0 1.11-.01 2.02-.01 2.29 0 .21.15.46.55.38A7.995 7.995 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-  </svg>
-)
-
 /** 开发面板主组件：维护模板、数据文件和主题状态，并通过 postMessage 驱动 iframe 沙盒渲染。 */
 const App = () => {
   const location = useLocation()
@@ -177,6 +166,68 @@ const App = () => {
   const [editorOpen, setEditorOpen] = useState(false)
   /** 右侧主题构建器面板是否展开。默认收起，避免一进面板就挤占画布宽度。 */
   const [themeBuilderOpen, setThemeBuilderOpen] = useState(false)
+  /** 抽屉是否挂载：开关动画期间保持挂载，动画结束才卸载。 */
+  const [drawerMounted, setDrawerMounted] = useState(false)
+  /** 开关动画进行中：此时放宽主题面板的 minSize，setLayout 才能写到 0。 */
+  const [drawerAnimating, setDrawerAnimating] = useState(false)
+  const groupRef = useRef<GroupImperativeHandle | null>(null)
+  const drawerTweenRef = useRef<gsap.core.Tween | null>(null)
+
+  /** 主题抽屉的目标宽度（%），与打开动画的终点一致。 */
+  const drawerTargetSize = 22
+
+  /**
+   * 开关主题抽屉：GSAP 逐帧写布局百分比，抽屉从屏幕右缘挤入/挤出，
+   * 预览区和左侧栏随每帧 setLayout 同步让位，三者严格同帧。
+   */
+  const toggleThemeBuilder = () => {
+    const group = groupRef.current
+    // 拿不到 imperative handle 时退化成直接开关（理论上有 DOM 就有）。
+    if (!group) {
+      setThemeBuilderOpen((open) => !open)
+      setDrawerMounted((open) => !open)
+      return
+    }
+
+    drawerTweenRef.current?.kill()
+    const layout = group.getLayout()
+    const sidebar = layout.sidebar ?? 18
+
+    if (themeBuilderOpen) {
+      // 关闭：挤出到 0 宽后卸载。
+      const state = { size: layout['theme-builder'] ?? drawerTargetSize }
+      setDrawerAnimating(true)
+      drawerTweenRef.current = gsap.to(state, {
+        size: 0,
+        duration: 0.28,
+        ease: 'power3.in',
+        onUpdate: () => group.setLayout({ sidebar, preview: 100 - sidebar - state.size, 'theme-builder': state.size }),
+        onComplete: () => {
+          setThemeBuilderOpen(false)
+          setDrawerMounted(false)
+          setDrawerAnimating(false)
+        }
+      })
+      return
+    }
+
+    // 打开：先以 0 宽挂载，再挤入目标宽度。
+    const state = { size: layout['theme-builder'] ?? 0 }
+    setDrawerAnimating(true)
+    setDrawerMounted(true)
+    setThemeBuilderOpen(true)
+    // 等 Panel 挂载后再从当前宽度起跳，避免闪一帧目标宽度。
+    requestAnimationFrame(() => {
+      group.setLayout({ sidebar, preview: 100 - sidebar - state.size, 'theme-builder': state.size })
+      drawerTweenRef.current = gsap.to(state, {
+        size: drawerTargetSize,
+        duration: 0.35,
+        ease: 'power3.out',
+        onUpdate: () => group.setLayout({ sidebar, preview: 100 - sidebar - state.size, 'theme-builder': state.size }),
+        onComplete: () => setDrawerAnimating(false)
+      })
+    })
+  }
   const [screenshotUrl, setScreenshotUrl] = useState<string>()
   /** 截图弹窗的独立开关：关闭只翻标志位、不销毁截图内容，退出动画才能完整播放。 */
   const [screenshotOpen, setScreenshotOpen] = useState(false)
@@ -759,7 +810,7 @@ const App = () => {
       {/* Toast 挂在根布局 div 上，跟随面板主题换肤；从顶部向下弹出。 */}
       <Toast.Provider placement="top" />
       <div className="h-screen overflow-hidden bg-background text-foreground transition-colors duration-300">
-        <Group className="h-full w-full" orientation="horizontal">
+        <Group className="h-full w-full" groupRef={groupRef} orientation="horizontal">
           <Panel defaultSize="18%" id="sidebar" maxSize="28%" minSize="16%">
             <aside className="flex h-full min-w-0 flex-col border-r border-border">
               <div className="flex min-h-14 shrink-0 items-center border-b border-border px-4 py-2">
@@ -792,7 +843,7 @@ const App = () => {
                           onPress={() => window.open('https://github.com/KarinJS/karin', '_blank', 'noopener,noreferrer')}
                           variant="ghost"
                         >
-                          <GithubMark size={20} />
+                          <FaGithub className="text-foreground h-5 w-5" />
                         </Button>
                       </Tooltip.Trigger>
                       <Tooltip.Content showArrow>
@@ -883,11 +934,7 @@ const App = () => {
                       定位
                     </Button>
 
-                    <Button
-                      onPress={() => setThemeBuilderOpen((open) => !open)}
-                      size="sm"
-                      variant={themeBuilderOpen ? 'primary' : 'secondary'}
-                    >
+                    <Button onPress={toggleThemeBuilder} size="sm" variant={themeBuilderOpen ? 'primary' : 'secondary'}>
                       <Brush size={16} />
                       模板主题
                     </Button>
@@ -911,21 +958,35 @@ const App = () => {
             </section>
           </Panel>
 
-          {themeBuilderOpen && (
+          {drawerMounted && (
             <>
               <Separator className="ktr-resize-handle" />
 
-              <Panel defaultSize="22%" id="theme-builder" maxSize="34%" minSize="18%">
+              {/*
+                overflow 覆盖成 visible：主题抽屉的代码弹窗是绝对定位在抽屉左缘之外的
+                （absolute right-full），Panel 内层默认 overflow: auto 会把它裁掉。
+                抽屉自身的滚动由内部 ScrollShadow 承担，放开外层不会引入页面级滚动条。
+                开关动画期间 minSize 放宽到 0，GSAP 才能把宽度写到 0。
+              */}
+              <Panel
+                defaultSize="0%"
+                id="theme-builder"
+                maxSize="34%"
+                minSize={drawerAnimating ? '0%' : '18%'}
+                style={{ overflow: 'visible' }}
+              >
                 <ThemeBuilderPanel
-                  exportCss={themeBuilder.exportCss}
+                  getExportCss={themeBuilder.getExportCss}
                   isDark={templateDark}
                   isDefault={themeBuilder.isDefault}
                   knobs={themeBuilder.knobs}
                   customFonts={themeBuilder.customFonts}
                   lockedKnobs={themeBuilder.lockedKnobs}
+                  matchingPreset={themeBuilder.matchingPreset}
                   panelTheme={shellTheme}
                   panelThemeStyle={panelThemeStyle}
-                  onClose={() => setThemeBuilderOpen(false)}
+                  onApplyPreset={themeBuilder.applyPreset}
+                  onClose={toggleThemeBuilder}
                   onDarkChange={setTemplateDark}
                   onImportFont={themeBuilder.importFont}
                   onKnobsChange={themeBuilder.setKnobs}

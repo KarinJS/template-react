@@ -131,19 +131,22 @@ export const generateFontFace = (family: string, urlString: string): string => {
 }
 
 /**
- * 把错误码翻译成面向用户的中文提示。
+ * 把错误码翻译成面向用户的中文提示（与 HeroUI 官方主题构建器的文案一致）。
+ *
+ * @param error 错误码。
+ * @param name 「已导入」错误里已存在的字体名。
  */
-export const getFontUrlErrorMessage = (error: FontUrlError): string => {
+export const getFontUrlErrorMessage = (error: FontUrlError, name?: string): string => {
   switch (error) {
     case 'not-https':
       return 'URL 必须使用 https 协议'
     case 'not-allowed-cdn':
-      return 'URL 必须来自受支持的 CDN（Google Fonts、Fontsource、Fontshare、Bunny Fonts）'
+      return 'URL 必须来自受支持的 CDN（Google Fonts、Fontsource、Bunny Fonts 等）'
     case 'invalid-url':
       return '请输入有效的 URL'
     case 'cannot-detect-family':
-      return '无法从 URL 中识别字体，请确认它是有效的字体样式表'
+      return '无法从 URL 中识别字体，请检查 URL 格式。'
     case 'already-imported':
-      return '该字体已导入'
+      return `该字体已作为 "${name ?? ''}" 导入`
   }
 }

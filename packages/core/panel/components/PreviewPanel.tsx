@@ -361,7 +361,7 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
 
             {isCtrlPressed && (
               <div
-                className="pointer-events-none absolute inset-0 z-[9999]"
+                className="pointer-events-none absolute inset-0 z-9999"
                 style={{
                   cursor: 'default',
                   userSelect: 'text',

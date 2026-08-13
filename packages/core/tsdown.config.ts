@@ -1,5 +1,7 @@
 import { defineConfig } from 'tsdown'
 
+import { scaffoldExamplesPlugin } from './build/scaffold-examples.ts'
+
 export default defineConfig({
   entry: {
     client: 'src/client.ts',
@@ -7,6 +9,8 @@ export default defineConfig({
     cli: 'src/cli/index.ts',
     'registry-types': 'src/registry-types.ts'
   },
+  // 示例模板在构建时从 examples/ 扫描注入（虚拟模块，无签入生成物）。
+  plugins: [scaffoldExamplesPlugin()],
   format: ['esm'],
   platform: 'node',
   target: 'node18',

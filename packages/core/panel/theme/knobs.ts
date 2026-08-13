@@ -19,14 +19,18 @@ export interface ThemeKnobs {
   base: number
   /** 全局圆角基准值（CSS length）。 */
   radius: string
+  /** 表单元素圆角（CSS length），写进 --field-radius。 */
+  formRadius: string
   /** 正文字体栈，写进 --font-sans。 */
   fontSans: string
   /** 等宽字体栈，写进 --font-mono。 */
   fontMono: string
+  /** 鲜艳调色板：更饱和、对比更低的柔和前景色，直接烘进生成的 CSS（soft-foreground 统一 92% 色 + 8% 前景）。 */
+  vibrant: boolean
 }
 
 /** 可锁定的旋钮：锁上之后「随机配色」会跳过它。 */
-export type LockableKnob = 'accent' | 'base' | 'radius' | 'fontSans' | 'fontMono'
+export type LockableKnob = 'accent' | 'base' | 'radius' | 'formRadius' | 'fontSans' | 'fontMono'
 
 /** 单个离散选项。 */
 export interface KnobOption {
@@ -43,6 +47,25 @@ export interface KnobOption {
 }
 
 /**
+ * 跨平台系统正文字体栈。
+ *
+ * 顺序即优先级：先各系统的 UI 默认（macOS 的 SF、Windows 的 Segoe UI、
+ * Android/Linux 的 Roboto/Noto Sans），再按平台接中文黑体
+ * （macOS 苹方/冬青、Windows 雅黑、Linux 文泉驿/思源/Noto CJK），
+ * 最后通用 sans-serif 兜底。拉丁字形命中前段，中文自动落到对应平台的中文字体。
+ */
+const systemSansStack = `system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', 'Liberation Sans', Arial, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei', sans-serif`
+
+/**
+ * 跨平台系统等宽字体栈。
+ *
+ * 同样按平台铺开：macOS（SF Mono / Menlo / Monaco）、Windows（Consolas / Cascadia Mono）、
+ * Linux（Ubuntu Mono / DejaVu / Liberation / Noto Sans Mono）；中文等宽只有 Noto 出过
+ * Mono CJK，多数平台不存在，落到通用 monospace 时中文会按系统规则回退。
+ */
+const systemMonoStack = `ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Cascadia Mono', 'Ubuntu Mono', 'Liberation Mono', 'DejaVu Sans Mono', 'Noto Sans Mono', 'Noto Sans Mono CJK SC', 'Courier New', monospace`
+
+/**
  * 正文字体候选。
  *
  * ktr 不打包任何字体文件，所以除了「系统字体栈」这一项，其余都指向 CDN：
@@ -53,7 +76,7 @@ export const fontSansOptions: readonly KnobOption[] = [
   {
     id: 'system',
     label: '系统字体栈',
-    value: `system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`
+    value: systemSansStack
   },
   {
     id: 'noto-sans-sc',
@@ -98,7 +121,7 @@ export const fontMonoOptions: readonly KnobOption[] = [
   {
     id: 'system',
     label: '系统等宽',
-    value: `ui-monospace, SFMono-Regular, Consolas, monospace`
+    value: systemMonoStack
   },
   {
     id: 'jetbrains-mono',
@@ -133,18 +156,21 @@ export const fontMonoOptions: readonly KnobOption[] = [
 ]
 
 /**
- * 圆角候选。
+ * 圆角候选（全局 --radius 与表单 --field-radius 共用）。
  *
- * 只到 L：HeroUI 主题构建器的全局圆角同样止步于 0.75rem，
- * 更大的值会让小控件（徽标、输入框）变成胶囊，破坏整体比例。
+ * 档位与 HeroUI 官方主题构建器的表单圆角一致，含 XL（1rem）。
  */
 export const radiusOptions: readonly KnobOption[] = [
   { id: 'none', label: '无', abbr: '—', value: '0rem' },
   { id: 'xs', label: '超小', abbr: 'XS', value: '0.125rem' },
   { id: 'sm', label: '小', abbr: 'S', value: '0.25rem' },
   { id: 'md', label: '中', abbr: 'M', value: '0.5rem' },
-  { id: 'lg', label: '大', abbr: 'L', value: '0.75rem' }
+  { id: 'lg', label: '大', abbr: 'L', value: '0.75rem' },
+  { id: 'xl', label: '超大', abbr: 'XL', value: '1rem' }
 ]
+
+/** 表单圆角候选，写进 --field-radius；与全局圆角同一组档位。 */
+export const formRadiusOptions: readonly KnobOption[] = radiusOptions
 
 /** 全部预设字体的 CDN 地址，供沙盒一次性预加载（选中即生效，不必等网络）。 */
 export const presetFontCdnUrls: readonly string[] = [...fontSansOptions, ...fontMonoOptions]
@@ -158,8 +184,10 @@ export const defaultKnobs: ThemeKnobs = {
   lightness: defaultAccent.l,
   base: defaultBase,
   radius: '0.5rem',
+  formRadius: '0.75rem',
   fontSans: fontSansOptions[0]!.value,
-  fontMono: fontMonoOptions[0]!.value
+  fontMono: fontMonoOptions[0]!.value,
+  vibrant: false
 }
 
 /**
@@ -174,8 +202,10 @@ export const isDefaultKnobs = (knobs: ThemeKnobs): boolean =>
   Math.abs(knobs.lightness - defaultKnobs.lightness) < 1e-4 &&
   Math.abs(knobs.base - defaultKnobs.base) < 1e-4 &&
   knobs.radius === defaultKnobs.radius &&
+  knobs.formRadius === defaultKnobs.formRadius &&
   knobs.fontSans === defaultKnobs.fontSans &&
-  knobs.fontMono === defaultKnobs.fontMono
+  knobs.fontMono === defaultKnobs.fontMono &&
+  knobs.vibrant === defaultKnobs.vibrant
 
 /** 数值旋钮的夹取，非法输入回落到默认值。 */
 const clampNumber = (value: unknown, fallback: number, min: number, max: number): number =>
@@ -203,7 +233,10 @@ export const sanitizeKnobs = (input: unknown): ThemeKnobs => {
     lightness: clampNumber(raw.lightness, defaultKnobs.lightness, 0, 1),
     base: clampNumber(raw.base, defaultKnobs.base, 0, baseMax),
     radius: fallbackString(raw.radius, defaultKnobs.radius),
+    formRadius: fallbackString(raw.formRadius, defaultKnobs.formRadius),
     fontSans: fallbackString(raw.fontSans, defaultKnobs.fontSans),
-    fontMono: fallbackString(raw.fontMono, defaultKnobs.fontMono)
+    fontMono: fallbackString(raw.fontMono, defaultKnobs.fontMono),
+    // 布尔旋钮没有夹取一说：非布尔一律视为损坏，回落默认。
+    vibrant: typeof raw.vibrant === 'boolean' ? raw.vibrant : defaultKnobs.vibrant
   }
 }

@@ -35,12 +35,12 @@ npx @karinjs/template-react init
 
 它会用交互问答帮你把该配的东西一次配齐：
 
-- **模板样式怎么来**：选"ktr 自带"就直接继承 [HeroUI](https://heroui.com/cn/docs/react/getting-started/colors) 默认主题，`text-accent`、`bg-surface` 这类类名开箱就有颜色；选"HeroUI + 自定义换肤块"会额外生成一段注释好的 `:root` / `.dark` 覆盖块，方便以后换肤。
-- **是否生成示例模板**：生成 `template/hello/card/`，含组件和示例数据，可以直接看到效果。
-- **是否生成胶水层**：生成 `src/utils/render.ts`，把模板渲染接到 Karin 的截图能力上（就是下面第 4 步要用的东西）。
+- **选择模板样式方案**：选"使用 ktr 默认样式（继承 HeroUI 主题）"就直接继承 [HeroUI](https://heroui.com/cn/docs/react/getting-started/colors) 默认主题，`text-accent`、`bg-surface` 这类类名开箱就有颜色；选"HeroUI + 自定义主题块"会额外生成一段带注释的主题变量块（`:root` / `.dark`），方便以后自己改色。
+- **是否生成示例模板**：把官方 examples 的 7 个示例模板（问候卡片、成员榜单、宽屏仪表盘、竖屏故事图、社媒方图、长条小票、深层嵌套）复制到 `template/` 下，含组件和示例数据，可以直接看到效果、照着改写。
+- **是否生成 render.ts 辅助函数**：生成 `src/utils/render.ts`，把模板渲染接到 Karin 的截图能力上（就是下面第 4 步要用的东西）。
 - **开发面板端口**。
 
-**成功后**你会看到：项目里多了 `karin.template.ts`、`template/style.css`，以及你选择生成的示例模板和胶水层；`tsconfig.json` 补上了 `jsx: "react-jsx"`；`package.json` 补上了 react、`@karinjs/template-react` 等开发依赖和 `template` 脚本。终端最后会提示你执行安装命令。
+**成功后**你会看到：项目里多了 `karin.template.ts`、`template/style.css`，以及你选择生成的示例模板和 `src/utils/render.ts`；`tsconfig.json` 补上了 `jsx: "react-jsx"`；`package.json` 补上了 react、`@karinjs/template-react` 等开发依赖和 `template` 脚本。终端最后会提示你执行安装命令。
 
 按提示装依赖：
 
@@ -71,39 +71,61 @@ pnpm install
 <Step>
 ### 第 2 步：认识模板的写法
 
-上一步如果选了生成示例模板，`template/hello/card/index.tsx` 已经在那儿了，长这样：
+上一步如果选了生成示例模板，`template/hello/card/index.tsx` 已经在那儿了（另外还有 6 个不同场景的示例，都可以照着改）。它长这样：
 
-```tsx title="template/hello/card/index.tsx" twoslash
+```tsx title="template/hello/card/index.tsx"
+import { Card, Chip } from '@heroui/react'
+import { Braces, Layers3, Sparkles } from 'lucide-react'
+
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
-/** 卡片模板的数据结构。 */
-export interface HelloCardData {
+/** Hello 卡片模板的数据结构，适合固定宽度的信息摘要截图。 */
+type HelloCardData = {
   /** 主标题。 */
   title: string
-  /** 副标题。 */
+  /** 可选副标题。 */
   subtitle?: string
-  /** 键值对列表。 */
+  /** 展示在卡片内容区的键值对。 */
   items: Array<{ label: string; value: string }>
 }
 
 const HelloCard = ({ data }: TemplateProps<HelloCardData>) => (
-  <div className="w-155 overflow-hidden rounded-2xl bg-background p-8 text-foreground">
-    <h1 className="text-3xl font-bold">{data.title}</h1>
-    {data.subtitle && <p className="mt-2 text-sm text-muted">{data.subtitle}</p>}
-    <div className="mt-6 grid gap-3">
-      {data.items.map((item) => (
-        <div key={item.label} className="flex items-center justify-between rounded-xl bg-surface px-4 py-3">
-          <span className="text-sm text-muted">{item.label}</span>
-          <strong className="text-accent">{item.value}</strong>
+  <Card className="w-155 gap-0 overflow-hidden rounded-3xl border border-border bg-background p-0 text-foreground">
+    <Card.Header className="flex-row items-start justify-between gap-4 border-b border-border px-8 py-7">
+      <div className="min-w-0">
+        <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
+          <Sparkles size={16} />
+          Karin 模板示例
+        </div>
+        <Card.Title className="text-3xl font-bold tracking-normal">{data.title}</Card.Title>
+        {data.subtitle && <Card.Description className="mt-2 text-sm text-accent">{data.subtitle}</Card.Description>}
+      </div>
+
+      <Chip className="bg-accent text-accent-foreground" size="md" variant="tertiary">
+        <Layers3 size={14} />
+        HeroUI
+      </Chip>
+    </Card.Header>
+
+    <Card.Content className="grid gap-3 px-8 py-7">
+      {data.items.map((item, index) => (
+        <div key={item.label} className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent-soft text-accent">
+              {index === 0 ? <Braces size={16} /> : <Layers3 size={16} />}
+            </span>
+            <span className="truncate text-sm text-muted">{item.label}</span>
+          </div>
+          <strong className="text-base">{item.value}</strong>
         </div>
       ))}
-    </div>
-  </div>
+    </Card.Content>
+  </Card>
 )
 
 export default defineTemplate({
   name: '问候卡片',
-  description: '我的第一个 React 截图模板',
+  description: 'HeroUI + lucide-react 截图卡片',
   component: HelloCard
 })
 ```

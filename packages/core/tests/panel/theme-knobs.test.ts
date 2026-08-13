@@ -4,6 +4,7 @@ import {
   defaultKnobs,
   fontMonoOptions,
   fontSansOptions,
+  formRadiusOptions,
   isDefaultKnobs,
   presetFontCdnUrls,
   radiusOptions,
@@ -11,15 +12,25 @@ import {
 } from '../../panel/theme/knobs'
 
 describe('radiusOptions', () => {
-  it('只到 L，不提供 XL', () => {
-    // HeroUI 主题构建器的全局圆角同样止步 0.75rem：
-    // 更大的值会把徽标、输入框这类小控件挤成胶囊。
-    expect(radiusOptions.map((option) => option.id)).toEqual(['none', 'xs', 'sm', 'md', 'lg'])
-    expect(radiusOptions.at(-1)?.value).toBe('0.75rem')
+  it('全局圆角含 XL 档，到 1rem 为止', () => {
+    expect(radiusOptions.map((option) => option.id)).toEqual(['none', 'xs', 'sm', 'md', 'lg', 'xl'])
+    expect(radiusOptions.at(-1)?.value).toBe('1rem')
   })
 
   it('每项都带缩写，供网格卡片预览', () => {
     for (const option of radiusOptions) {
+      expect(option.abbr).toBeTruthy()
+    }
+  })
+})
+
+describe('formRadiusOptions', () => {
+  it('与全局圆角同一组档位', () => {
+    expect(formRadiusOptions).toBe(radiusOptions)
+  })
+
+  it('每项都带缩写，供网格卡片预览', () => {
+    for (const option of formRadiusOptions) {
       expect(option.abbr).toBeTruthy()
     }
   })
@@ -46,6 +57,13 @@ describe('字体候选', () => {
   })
 })
 
+describe('defaultKnobs', () => {
+  it('表单圆角默认「大」（0.75rem），鲜艳调色板默认关闭', () => {
+    expect(defaultKnobs.formRadius).toBe('0.75rem')
+    expect(defaultKnobs.vibrant).toBe(false)
+  })
+})
+
 describe('isDefaultKnobs', () => {
   it('默认值判定为默认', () => {
     expect(isDefaultKnobs(defaultKnobs)).toBe(true)
@@ -60,6 +78,8 @@ describe('isDefaultKnobs', () => {
   it('可感知的改动判定为非默认', () => {
     expect(isDefaultKnobs({ ...defaultKnobs, hue: defaultKnobs.hue + 1 })).toBe(false)
     expect(isDefaultKnobs({ ...defaultKnobs, radius: '0rem' })).toBe(false)
+    expect(isDefaultKnobs({ ...defaultKnobs, formRadius: '0rem' })).toBe(false)
+    expect(isDefaultKnobs({ ...defaultKnobs, vibrant: true })).toBe(false)
   })
 })
 
@@ -92,15 +112,29 @@ describe('sanitizeKnobs', () => {
   })
 
   it('空串或非字符串的字体、圆角回落到默认', () => {
-    const result = sanitizeKnobs({ radius: '', fontSans: 123, fontMono: null })
+    const result = sanitizeKnobs({ radius: '', formRadius: 42, fontSans: 123, fontMono: null })
     expect(result.radius).toBe(defaultKnobs.radius)
+    expect(result.formRadius).toBe(defaultKnobs.formRadius)
     expect(result.fontSans).toBe(defaultKnobs.fontSans)
     expect(result.fontMono).toBe(defaultKnobs.fontMono)
   })
 
+  it('非布尔的 vibrant 视为数据损坏，回落默认', () => {
+    expect(sanitizeKnobs({ vibrant: 'yes' }).vibrant).toBe(defaultKnobs.vibrant)
+    expect(sanitizeKnobs({ vibrant: true }).vibrant).toBe(true)
+  })
+
+  it('旧版本存储缺新旋钮时补默认值', () => {
+    // 旧存储里没有 formRadius / vibrant，不能产出 undefined 写进 CSS。
+    const result = sanitizeKnobs({ hue: 120 })
+    expect(result.formRadius).toBe(defaultKnobs.formRadius)
+    expect(result.vibrant).toBe(defaultKnobs.vibrant)
+  })
+
   it('合法值原样保留', () => {
-    const result = sanitizeKnobs({ hue: 120, radius: '0.25rem' })
+    const result = sanitizeKnobs({ hue: 120, radius: '0.25rem', formRadius: '1rem' })
     expect(result.hue).toBe(120)
     expect(result.radius).toBe('0.25rem')
+    expect(result.formRadius).toBe('1rem')
   })
 })

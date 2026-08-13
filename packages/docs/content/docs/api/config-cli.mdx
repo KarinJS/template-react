@@ -83,7 +83,7 @@ export default defineConfig({
 npx @karinjs/template-react init
 ```
 
-在**已有**的 Karin 插件项目里初始化模板开发环境。交互问答四项：样式方案（ktr 自带的 HeroUI 主题 / 额外带一段换肤覆盖块）、是否生成示例模板、是否生成 `src/utils/render.ts` 胶水层、开发面板端口。
+在**已有**的 Karin 插件项目里初始化模板开发环境。交互问答四项：模板样式方案（使用 ktr 默认样式（继承 HeroUI 主题）/ HeroUI + 自定义主题块，后者额外生成一段带注释的主题变量块）、是否生成示例模板（官方 examples 的 7 个模板）、是否生成 `src/utils/render.ts`（把模板渲染接到 Karin 截图的辅助函数）、开发面板端口。
 
 产出：`karin.template.ts`、`template/style.css`、可选的示例模板与胶水层；给 `tsconfig.json` 补 `jsx: "react-jsx"`；给 `package.json` 补开发依赖和 `template` / `template:build` 脚本。
 

@@ -68,7 +68,7 @@ body {
 
 ## 换肤
 
-改颜色不需要动 ktr 的基座，在自己的 `style.css` 里覆盖 HeroUI 的变量即可（`ktr init` 选"HeroUI + 自定义换肤块"会直接生成带注释的骨架）：
+改颜色不需要动 ktr 的基座，在自己的 `style.css` 里覆盖 HeroUI 的变量即可（`ktr init` 选"HeroUI + 自定义主题块"会直接生成带注释的骨架）：
 
 ```css title="template/style.css"
 @import 'tailwindcss';
@@ -88,6 +88,8 @@ body {
 
 `--accent` 一改，`bg-accent`、`text-accent`、`bg-accent-soft`（它是基于 `--accent` 的 `color-mix` 计算色）以及 HeroUI 组件的主色会一起跟着变。想整套换掉就照 [HeroUI Theming](https://heroui.com/cn/docs/react/getting-started/theming) 的变量表写。
 
+不想手写变量的话，开发面板的「模板主题」抽屉可以可视化调好整套主题（颜色、圆角、字体），点「查看代码」生成对应的 CSS——选中的 CDN 字体会一并生成 `@import` / `@font-face`，整段贴进 `style.css` 的 `@import` 之后即可（`@import` 必须位于所有规则之前）。
+
 ## 深色模式
 
 - **读 `ctx.theme.mode`**：值是 `'light'` 或 `'dark'`，在组件里写条件逻辑（如深色下换图、去投影）：`const isDark = ctx.theme?.mode === 'dark'`。
@@ -104,7 +106,7 @@ body {
 
 主题色的下发路径有两条，同时生效：
 
-- **面板调试时**："模板主题"弹窗里显式选了明暗模式或主色，面板把这些设置通过 `ctx.theme` 传给沙盒组件，同时把对应 CSS 变量写到预览页面上；没选过主色就是"组件库默认"。
+- **面板调试时**：在「模板主题」抽屉里显式调整了主题（明暗模式、预设、强调色等），面板把设置通过 `ctx.theme` 传给沙盒组件，同时把对应 CSS 变量写到预览页面上；没调过就是"组件库默认"。
 - **SSR 真实渲染时**：调用方在渲染选项里显式传了 `theme` 字段，框架把变量写到输出 HTML 的 `<body>` 上。因为桥接是 `@theme inline`，变量写在 body 这一级就会被所有后代继承到，token 类名在真实截图里随之跟随主题。
 
 `ThemeContext` 的字段名与 HeroUI 变量一一对应（`accent` → `--accent`、`accentForeground` → `--accent-foreground`、`background` → `--background`，以此类推），所以"传 theme"和"改 CSS 变量"是同一套东西的两种入口。

@@ -2,6 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "paths": {
       "@karinjs/template-react/registry-types": ["./src/registry-types.ts"]
     },

@@ -111,7 +111,7 @@ export const useSandboxThemeSync = (
     }
   }, [iframeRef, readyTick])
 
-  // css 或字体变化时重新写入，但不重建 load 监听：
+  // css、字体变化时重新写入，但不重建 load 监听：
   // 反复解绑重绑会让注入时序变得不可预期。
   useEffect(() => {
     // 合并到下一帧：拖滑块时 css 每帧都变，逐次写 DOM 会拖慢渲染。

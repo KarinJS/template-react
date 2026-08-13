@@ -4,7 +4,7 @@ import path from 'node:path'
 import { cancel, confirm, isCancel, log, note, select, text } from '@clack/prompts'
 
 import { existingFiles, patchPackageJson, patchTsconfigJsx, writeScaffoldFiles } from './apply'
-import { scaffoldFiles, type ScaffoldOptions, type ScaffoldStyle } from './files'
+import { scaffoldExampleDependencies, scaffoldFiles, type ScaffoldOptions, type ScaffoldStyle } from './files'
 
 /** 用户中断时统一退出，避免各处重复写 isCancel 分支。 */
 export const guard = <T>(value: T | symbol): T => {
@@ -31,24 +31,24 @@ export const assertInteractive = (): void => {
 export const askScaffoldOptions = async (defaults: { pluginName: string }): Promise<ScaffoldOptions> => {
   const style = guard(
     await select({
-      message: '模板样式怎么来？',
+      message: '选择模板样式方案',
       options: [
         {
           value: 'builtin',
-          label: 'ktr 自带（继承 HeroUI 默认主题）',
+          label: '使用 ktr 默认样式（继承 HeroUI 主题）',
           hint: '开箱即用，text-accent / bg-surface 等直接有颜色'
         },
         {
           value: 'custom',
-          label: 'HeroUI + 自定义换肤块',
-          hint: '同上，额外生成注释好的 :root / .dark 覆盖块'
+          label: 'HeroUI + 自定义主题块',
+          hint: '同上，额外生成一份带注释的主题变量块（:root / .dark），方便自己改色'
         }
       ]
     })
   ) as ScaffoldStyle
 
-  const withExample = guard(await confirm({ message: '生成示例模板 template/hello/card/？' }))
-  const withGlue = guard(await confirm({ message: '生成 src/utils/render.ts 胶水层（把模板渲染接到 Karin 截图）？' }))
+  const withExample = guard(await confirm({ message: '生成示例模板？（来自官方 examples 的 7 个模板，可参照改写）' }))
+  const withGlue = guard(await confirm({ message: '生成 src/utils/render.ts（把模板渲染接到 Karin 截图的辅助函数）？' }))
 
   const port = guard(
     await text({
@@ -127,7 +127,8 @@ export const runScaffold = async (root: string, options: ScaffoldOptions, skipCo
     log.warn('没找到 tsconfig.json（或格式无法自动修改），请手动加上 compilerOptions.jsx = "react-jsx"')
   }
 
-  const { addedDependencies, addedScripts } = patchPackageJson(root)
+  // 示例模板用了 lucide 图标，选了示例才把 lucide-react 一并补进下游依赖。
+  const { addedDependencies, addedScripts } = patchPackageJson(root, options.withExample ? scaffoldExampleDependencies : {})
   if (addedDependencies.length > 0) log.success(`package.json 新增依赖：${addedDependencies.join('、')}`)
   if (addedScripts.length > 0) log.success(`package.json 新增脚本：${addedScripts.join('、')}`)
 }
