@@ -14,43 +14,46 @@ description: 用一个完整示例学会 defineTemplate、目录约定和模板�
 框架"约定大于配置"：目录结构固定，模板按约定自动发现，不需要登记。
 
 <Files>
-  <Folder name="template" defaultOpen>
-    <Folder name="hello" defaultOpen>
-      <Folder name="card" defaultOpen>
-        <File name="index.tsx" />
-        <Folder name="components">
-          <File name="badge.tsx" />
-          <File name="format.ts" />
+  <Folder name="ktr" defaultOpen>
+    <Folder name="template" defaultOpen>
+      <Folder name="hello" defaultOpen>
+        <Folder name="card" defaultOpen>
+          <File name="index.tsx" />
+          <Folder name="components">
+            <File name="badge.tsx" />
+            <File name="format.ts" />
+          </Folder>
+          <Folder name="data">
+            <File name="default.json" />
+            <File name="captured.json" />
+          </Folder>
         </Folder>
-        <Folder name="data">
-          <File name="default.json" />
-          <File name="captured.json" />
+        <Folder name="list">
+          <File name="index.tsx" />
+          <File name="mock.ts" />
         </Folder>
       </Folder>
-      <Folder name="list">
-        <File name="index.tsx" />
-        <File name="mock.ts" />
-      </Folder>
+      <File name="style.css" />
     </Folder>
-    <File name="style.css" />
+    <Folder name="public" />
   </Folder>
 </Files>
 
-- `template/<板块>/<模板>/index.tsx`：模板组件文件。板块（如 `hello`）是分组，模板（如 `card`）是具体模板，拼起来就是路由 `hello/card`。
-- `template/<板块>/<模板>/components/`：模板的内部组件和普通 ts 逻辑文件的固定存放目录（可选），**不会**被注册成路由——复杂模板把拆出来的子组件和工具函数放这里，`index.tsx` 只做总装。
-- `template/<板块>/<模板>/mock.ts`：TypeScript 写的 mock 数据（固定文件名），详见 [mock 数据](./data)。
-- `template/<板块>/<模板>/data/*.json`：JSON mock 数据，必须放在 `data/` 子目录。
-- `template/style.css`：所有模板共用的样式入口，详见 [样式与主题](./styling)。
+- `ktr/template/<板块>/<模板>/index.tsx`：模板组件文件。板块（如 `hello`）是分组，模板（如 `card`）是具体模板，拼起来就是路由 `hello/card`。
+- `ktr/template/<板块>/<模板>/components/`：模板的内部组件和普通 ts 逻辑文件的固定存放目录（可选），**不会**被注册成路由——复杂模板把拆出来的子组件和工具函数放这里，`index.tsx` 只做总装。
+- `ktr/template/<板块>/<模板>/mock.ts`：TypeScript 写的 mock 数据（固定文件名），详见 [mock 数据](./data)。
+- `ktr/template/<板块>/<模板>/data/*.json`：JSON mock 数据，必须放在 `data/` 子目录。
+- `ktr/template/style.css`：所有模板共用的样式入口，详见 [样式与主题](./styling)。
 
 <Callout type="warn">
-组件必须写在 `template/<板块>/<模板>/index.tsx` 才会被注册。直接裸写一个 `.tsx`（比如 `template/hello/card.tsx`）不会被当成模板。
+组件必须写在 `ktr/template/<板块>/<模板>/index.tsx` 才会被注册。直接裸写一个 `.tsx`（比如 `ktr/template/hello/card.tsx`）不会被当成模板。
 </Callout>
 
 ## 模板变复杂了怎么办
 
 `index.tsx` 只放总装逻辑；拆出去的子组件、格式化函数、数据加工等都收进 `components/`：
 
-```tsx title="template/hello/card/index.tsx" twoslash
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
 // @filename: ./components/badge.tsx
 /** 示例徽标子组件。 */
 export default function Badge({ label }: { label: string }) {
@@ -73,7 +76,7 @@ import { formatScore } from './components/format'
 
 ### 第一步：定义数据结构
 
-```tsx title="template/hello/card/index.tsx" twoslash
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
 /** Hello 卡片模板的数据结构，适合固定宽度的信息摘要截图。 */
 type HelloCardData = {
   /** 主标题。 */
@@ -89,7 +92,7 @@ type HelloCardData = {
 
 ### 第二步：写组件
 
-```tsx title="template/hello/card/index.tsx" twoslash
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
 /** Hello 卡片模板的数据结构，适合固定宽度的信息摘要截图。 */
 type HelloCardData = {
   /** 主标题。 */
@@ -146,7 +149,7 @@ const HelloCard = ({ data }: TemplateProps<HelloCardData>) => (
 
 ### 第三步：用 defineTemplate 导出
 
-```tsx title="template/hello/card/index.tsx" twoslash
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
 import { defineTemplate } from '@karinjs/template-react'
 import type { FC } from 'react'
 import type { TemplateProps } from '@karinjs/template-react'
@@ -175,7 +178,7 @@ export default defineTemplate({
 - `component`：上一步写的组件。
 - `validate`（可选）：运行时数据校验函数。数据来源不可靠（用户输入、动态路由）时，SSR 渲染前先调用它检查，校验失败直接报错而不是渲染出坏图：
 
-```tsx title="template/mobile/story/index.tsx" twoslash
+```tsx title="ktr/template/mobile/story/index.tsx" twoslash
 import { defineTemplate } from '@karinjs/template-react'
 import type { FC } from 'react'
 import type { TemplateProps } from '@karinjs/template-react'

@@ -45,9 +45,9 @@ pnpm add -D @karinjs/template-react react react-dom @types/react @types/react-do
 
 ### 新建 karin.template.ts
 
-先在 `tsconfig.json` 的 `compilerOptions` 里补一项 `"jsx": "react-jsx"`（写 `.tsx` 组件的前提，自动运行时，组件里不需要 `import React`）；如果配置了 `include`，确认它覆盖 `src`、`template`、`.ktr` 三个目录。
+先在 `tsconfig.json` 的 `compilerOptions` 里补一项 `"jsx": "react-jsx"`（写 `.tsx` 组件的前提，自动运行时，组件里不需要 `import React`）；如果配置了 `include`，确认它覆盖 `src`、`ktr`、`.ktr` 三个目录。
 
-然后在项目根目录新建 `karin.template.ts`。它只配置工具链自身行为，模板清单不用手写——模板、mock、JSON 数据全部按 `template/` 目录约定自动发现：
+然后在项目根目录新建 `karin.template.ts`。它只配置工具链自身行为，模板清单不用手写——模板、mock、JSON 数据全部按 `ktr/template/` 目录约定自动发现：
 
 ```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
@@ -69,7 +69,7 @@ export default defineConfig({
 
 ### 把一个 art 模板改写成 React 组件
 
-新方案"目录即路由"：`template/<板块>/<模板>/index.tsx` 默认导出 `defineTemplate({...})`，注册为路由 `<板块>/<模板>`。只有 `index.tsx` 这个固定文件名会注册，裸写的其他 `.tsx` 不会。
+新方案"目录即路由"：`ktr/template/<板块>/<模板>/index.tsx` 默认导出 `defineTemplate({...})`，注册为路由 `<板块>/<模板>`。只有 `index.tsx` 这个固定文件名会注册，裸写的其他 `.tsx` 不会。
 
 <Tabs items={['art-template（旧写法）', 'JSX 组件（新写法）']}>
 <Tab value="art-template（旧写法）">
@@ -91,7 +91,7 @@ export default defineConfig({
 </Tab>
 <Tab value="JSX 组件（新写法）">
 
-```tsx title="template/hello/card/index.tsx" twoslash
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
 /** 卡片模板的数据结构。 */
@@ -154,7 +154,7 @@ art 语法和 JSX 的对照表，改写时照着查：
 
 - **TS mock**：固定文件名 `mock.ts`，具名导出，可在插件代码里 import 复用；面板中只读。
 
-```ts title="template/hello/list/mock.ts" twoslash
+```ts title="ktr/template/hello/list/mock.ts" twoslash
 // @filename: ./index.ts
 export interface HelloListData {
   title: string
@@ -176,7 +176,7 @@ export const team = {
 
 - **JSON mock**：必须放在 `data/` 子目录，可在面板里筛选、编辑、保存。
 
-```json title="template/hello/card/data/default.json"
+```json title="ktr/template/hello/card/data/default.json"
 {
   "title": "Karin Template React",
   "subtitle": "React + Tailwind CSS + TypeScript",

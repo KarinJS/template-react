@@ -36,11 +36,11 @@ npx @karinjs/template-react init
 它会用交互问答帮你把该配的东西一次配齐：
 
 - **选择模板样式方案**：选"使用 ktr 默认样式（继承 HeroUI 主题）"就直接继承 [HeroUI](https://heroui.com/cn/docs/react/getting-started/colors) 默认主题，`text-accent`、`bg-surface` 这类类名开箱就有颜色；选"HeroUI + 自定义主题块"会额外生成一段带注释的主题变量块（`:root` / `.dark`），方便以后自己改色。
-- **是否生成示例模板**：把官方 examples 的 7 个示例模板（问候卡片、成员榜单、宽屏仪表盘、竖屏故事图、社媒方图、长条小票、深层嵌套）复制到 `template/` 下，含组件和示例数据，可以直接看到效果、照着改写。
+- **是否生成示例模板**：把官方 examples 的 7 个示例模板（问候卡片、成员榜单、宽屏仪表盘、竖屏故事图、社媒方图、长条小票、深层嵌套）复制到 `ktr/template/` 下，含组件和示例数据，可以直接看到效果、照着改写。
 - **是否生成 render.ts 辅助函数**：生成 `src/utils/render.ts`，把模板渲染接到 Karin 的截图能力上（就是下面第 4 步要用的东西）。
 - **开发面板端口**。
 
-**成功后**你会看到：项目里多了 `karin.template.ts`、`template/style.css`，以及你选择生成的示例模板和 `src/utils/render.ts`；`tsconfig.json` 补上了 `jsx: "react-jsx"`；`package.json` 补上了 react、`@karinjs/template-react` 等开发依赖和 `template` 脚本。终端最后会提示你执行安装命令。
+**成功后**你会看到：项目里多了 `karin.template.ts`、`ktr/template/style.css`，以及你选择生成的示例模板和 `src/utils/render.ts`；`tsconfig.json` 补上了 `jsx: "react-jsx"`；`package.json` 补上了 react、`@karinjs/template-react` 等开发依赖和 `template` 脚本。终端最后会提示你执行安装命令。
 
 按提示装依赖：
 
@@ -60,7 +60,7 @@ pnpm install
 
 <Callout type="error">
   **`jsx: "react-jsx"` 是写 `.tsx` 模板的前提**，少了它编辑器里 JSX 全是红线。`init` 会自动补上；如果你的 `tsconfig.json`
-  格式特殊没被改到，手动加一下。另外：如果 `tsconfig.json` 写了 `include`，确认它覆盖 `src`、`template`、`.ktr` 三个目录——`renderImage`
+  格式特殊没被改到，手动加一下。另外：如果 `tsconfig.json` 写了 `include`，确认它覆盖 `src`、`ktr`、`.ktr` 三个目录——`renderImage`
   的逐路由精确类型来自 `.ktr/registry-types.d.ts` 的模块增强，不被 include 就失效了；没写 `include` 则默认全包含，不用动。
 </Callout>
 
@@ -71,9 +71,9 @@ pnpm install
 <Step>
 ### 第 2 步：认识模板的写法
 
-上一步如果选了生成示例模板，`template/hello/card/index.tsx` 已经在那儿了（另外还有 6 个不同场景的示例，都可以照着改）。它长这样：
+上一步如果选了生成示例模板，`ktr/template/hello/card/index.tsx` 已经在那儿了（另外还有 6 个不同场景的示例，都可以照着改）。它长这样：
 
-```tsx title="template/hello/card/index.tsx"
+```tsx title="ktr/template/hello/card/index.tsx"
 import { Card, Chip } from '@heroui/react'
 import { Braces, Layers3, Sparkles } from 'lucide-react'
 
@@ -132,9 +132,9 @@ export default defineTemplate({
 
 三个要点：
 
-- **路径是强约定**：模板组件必须写在 `template/<板块>/<模板>/index.tsx`，目录就是路由（这个模板的路由是 `hello/card`），文件名固定叫 `index.tsx`。直接写 `template/hello/card.tsx` 这种裸文件**不会**被注册。
+- **路径是强约定**：模板组件必须写在 `ktr/template/<板块>/<模板>/index.tsx`，目录就是路由（这个模板的路由是 `hello/card`），文件名固定叫 `index.tsx`。直接写 `ktr/template/hello/card.tsx` 这种裸文件**不会**被注册。
 - **颜色用语义化类名**：`bg-background`、`text-muted`、`text-accent` 这些来自继承的 HeroUI 主题，换肤和明暗切换时会自动跟随。别写 `bg-white`、`text-zinc-500` 这类固定颜色。细节见[样式与主题](/docs/guide/styling)。
-- **数据放 `data/` 子目录**：示例数据在 `template/hello/card/data/default.json`，直接放在 `hello/card/` 根部不会被识别。
+- **数据放 `data/` 子目录**：示例数据在 `ktr/template/hello/card/data/default.json`，直接放在 `hello/card/` 根部不会被识别。
 
 **成功后**：文件都在，保存后没有报错。
 
@@ -147,7 +147,7 @@ export default defineTemplate({
 pnpm template
 ```
 
-这条脚本是 `init` 帮你写进 `package.json` 的，等价于 `ktr sync && ktr dev`。`ktr sync` 会扫描 `template/` 并在隐藏的 `.ktr/` 目录生成注册表和类型声明（框架产物，不要手动改、不要 import 它）。
+这条脚本是 `init` 帮你写进 `package.json` 的，等价于 `ktr sync && ktr dev`。`ktr sync` 会扫描 `ktr/template/` 并在隐藏的 `.ktr/` 目录生成注册表和类型声明（框架产物，不要手动改、不要 import 它）。
 
 **成功后**：终端清屏并打印面板地址和模板数量，浏览器自动打开面板，左侧能看到"问候卡片"，中间就是它的实时预览。改 `index.tsx` 或 `default.json` 保存，预览秒级更新——这就是你以后调样式的主战场。
 
@@ -263,7 +263,7 @@ vite build
 
 前提是 `vite.config.ts` 里挂了 `ktrBuildPlugin()`（来自 `@karinjs/template-react/plugin`）——它会在打包前自动刷新 `.ktr` 注册表（替代 `ktr sync`）、打包后把 Tailwind CSS 编译到 vite 自己的 `outDir`（替代 `ktr build --outDir lib`）。
 
-**成功后**：`lib/` 里能看到 `apps/*.js`、`template-registry.js`、`mock-registry.js`、`style.css`。发布后的插件不需要 `template/` 源码目录也能渲染。
+**成功后**：`lib/` 里能看到 `apps/*.js`、`template-registry.js`、`mock-registry.js`、`style.css`。发布后的插件不需要 `ktr/template/` 源码目录也能渲染。
 
 <Callout type="info">
   `vite.config.ts` 还没配过？去 [构建与打包](/docs/guide/building) 复制完整配置（含逐段注释），那里也有 tsdown 备选方案和最常见的三个坑。
@@ -301,7 +301,7 @@ pnpm add -D @karinjs/template-react react react-dom @types/react @types/react-do
 ```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
 
-// 这里只保留 @karinjs/template-react 自身配置；模板、mock 和 JSON 数据全部按 template/ 约定自动发现。
+// 这里只保留 @karinjs/template-react 自身配置；模板、mock 和 JSON 数据全部按 ktr/template/ 约定自动发现。
 export default defineConfig({
   dev: {
     port: 5180,
@@ -311,13 +311,13 @@ export default defineConfig({
 })
 ```
 
-```css title="template/style.css"
+```css title="ktr/template/style.css"
 @import 'tailwindcss';
 @import '@karinjs/template-react/styles';
 @source './**/*.{ts,tsx}';
 ```
 
-`template/style.css` 不写也能跑——首次启动时 ktr 会自动补一份同样内容的入口。样式入口每一行的含义和换肤方式见[样式与主题](/docs/guide/styling)。
+`ktr/template/style.css` 不写也能跑——首次启动时 ktr 会自动补一份同样内容的入口。样式入口每一行的含义和换肤方式见[样式与主题](/docs/guide/styling)。
 
 ## 接下来读什么
 

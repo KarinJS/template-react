@@ -5,7 +5,7 @@ description: karin.template.ts 的全部配置项，以及 ktr sync / dev / buil
 
 ## 配置文件 karin.template.ts
 
-`karin.template.ts` 放在项目根目录，只配置工具链自身行为；模板、mock、JSON 数据按 `template/` 约定自动发现，**不要**手写模板清单。启动时按 `.ts` → `.mts` → `.js` → `.mjs` 顺序查找 `karin.template` 配置，取第一个存在的。用 `defineConfig` 包裹获得类型提示：
+`karin.template.ts` 放在项目根目录，只配置工具链自身行为；模板、mock、JSON 数据按 `ktr/template/` 约定自动发现，**不要**手写模板清单。启动时按 `.ts` → `.mts` → `.js` → `.mjs` 顺序查找 `karin.template` 配置，取第一个存在的。用 `defineConfig` 包裹获得类型提示：
 
 ```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
@@ -25,12 +25,12 @@ export default defineConfig({
 
 | 配置项            | 类型       | 默认值             | 说明                                                                                 |
 | ----------------- | ---------- | ------------------ | ------------------------------------------------------------------------------------ |
-| `templateDir`     | `string`   | `'template'`       | 模板根目录，组件、mock、JSON 数据和 `style.css` 都放在这里。                         |
-| `cacheDir`        | `string`   | `'.ktr'`           | 框架产物缓存目录，不要手动编辑、不要提交。                                           |
-| `mockDataDir`     | `string`   | 等于 `templateDir` | mock 数据目录，扫描 `mock.ts` 和 `data/*.json` 的位置。                              |
-| `assetsDir`       | `string`   | `'template/public'` | 静态资源目录（跟随 `templateDir`）；dev server 把它当 publicDir 服务，`ktr build` 时复制到 `<outDir>/assets`。 |
-| `outDir`          | `string`   | `'dist/template'`  | 构建输出目录；SSR HTML 默认写到 `<outDir>/html`。                                    |
-| `cssEntry`        | `string`   | 自动探测           | Tailwind 入口；默认优先 `template/style.css`，否则取 `templateDir` 下第一个 `.css`。 |
+| `dir.template`    | `string`   | `'ktr/template'`    | 模板根目录，组件、mock、JSON 数据和 `style.css` 都放在这里。                          |
+| `dir.cache`       | `string`   | `'.ktr'`            | 框架产物缓存目录，不要手动编辑、不要提交。                                            |
+| `dir.mockData`    | `string`   | 等于 `dir.template` | mock 数据目录，扫描 `mock.ts` 和 `data/*.json` 的位置。                               |
+| `dir.assets`      | `string`   | `'ktr/public'`      | 静态资源目录（默认 `ktr/public`，模板目录同级）；dev server 把它当 publicDir 服务，`ktr build` 时复制到 `<dir.out>/assets`。 |
+| `dir.out`         | `string`   | `'dist/template'`   | 构建输出目录；SSR HTML 默认写到 `<dir.out>/html`。                                    |
+| `dir.cssEntry`    | `string`   | 自动探测            | Tailwind 入口；默认优先 `<dir.template>/style.css`，否则取 `dir.template` 下第一个 `.css`。 |
 | `extraStylePaths` | `string[]` | `[]`               | 额外注入 SSR HTML 的样式文件。                                                       |
 | `dev.port`        | `number`   | `5180`             | `ktr dev` 监听端口。                                                                 |
 | `dev.host`        | `string`   | `'localhost'`      | `ktr dev` 监听主机。                                                                 |
@@ -85,7 +85,7 @@ npx @karinjs/template-react init
 
 在**已有**的 Karin 插件项目里初始化模板开发环境。交互问答四项：模板样式方案（使用 ktr 默认样式（继承 HeroUI 主题）/ HeroUI + 自定义主题块，后者额外生成一段带注释的主题变量块）、是否生成示例模板（官方 examples 的 7 个模板）、是否生成 `src/utils/render.ts`（把模板渲染接到 Karin 截图的辅助函数）、开发面板端口。
 
-产出：`karin.template.ts`、`template/style.css`、可选的示例模板与胶水层；给 `tsconfig.json` 补 `jsx: "react-jsx"`；给 `package.json` 补开发依赖和 `template` / `template:build` 脚本。
+产出：`karin.template.ts`、`ktr/template/style.css`、可选的示例模板与胶水层；给 `tsconfig.json` 补 `jsx: "react-jsx"`；给 `package.json` 补开发依赖和 `template` / `template:build` 脚本。
 
 **成功后你会看到**：终端逐条列出新建/覆盖/保留了哪些文件，最后提示该执行的安装命令。
 
@@ -115,7 +115,7 @@ npx @karinjs/template-react create <项目名>
 pnpm ktr sync
 ```
 
-扫描 `template/`，生成（或刷新）`.ktr/` 三个产物：`template-registry.ts`（路由注册表）、`mock-registry.ts`（TS mock 导出 + JSON 清单）、`registry-types.d.ts`（逐路由类型的模块增强）。**成功后你会看到**：终端输出 `模板注册表已就绪：N 个模板 -> <注册表路径>`。
+扫描 `ktr/template/`，生成（或刷新）`.ktr/` 三个产物：`template-registry.ts`（路由注册表）、`mock-registry.ts`（TS mock 导出 + JSON 清单）、`registry-types.d.ts`（逐路由类型的模块增强）。**成功后你会看到**：终端输出 `模板注册表已就绪：N 个模板 -> <注册表路径>`。
 
 **什么时候要跑**：新增、删除、移动模板或 mock 之后，以及 `typecheck`、`build` 之前。如果打包配置里挂了 `ktrBuildPlugin()`（`@karinjs/template-react/plugin`），打包时会自动同步，不需要单独跑。
 
@@ -143,7 +143,7 @@ pnpm ktr dev --port 5180 --host localhost --open
 pnpm ktr build --outDir dist/template
 ```
 
-构建模板 CSS：先再次 `sync`，再把 `cssEntry` 编译为 `<outDir>/style.css`（引用资源进 `<outDir>/assets`）。**成功后你会看到**：终端输出构建统计，`<outDir>/style.css` 已生成。
+构建模板 CSS：先再次 `sync`，再把 `dir.cssEntry` 编译为 `<dir.out>/style.css`（引用资源进 `<dir.out>/assets`）。**成功后你会看到**：终端输出构建统计，`<dir.out>/style.css` 已生成。
 
 <Callout>
   打包配置里挂了 `ktrBuildPlugin()` 就不用单独跑这一步——插件会在 `closeBundle` 阶段把 CSS 编译到打包器自己的 outDir。用 tsdown

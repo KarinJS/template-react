@@ -26,7 +26,7 @@ http://localhost:5180/__ktr/panel/
 ```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
 
-// 这里只保留 @karinjs/template-react 自身配置；模板、mock 和 JSON 数据全部按 template/ 约定自动发现。
+// 这里只保留 @karinjs/template-react 自身配置；模板、mock 和 JSON 数据全部按 ktr/template/ 约定自动发现。
 export default defineConfig({
   dev: {
     port: 5180,
@@ -94,7 +94,7 @@ export default defineConfig({
   - **圆角 / 表单圆角**：分别影响整体 UI（卡片、菜单、弹窗）和表单元素（输入框、选择器）。
   - **字体**：一个弹层里左栏选正文字体、右栏选等宽字体，两栏各有「从 CDN 添加」入口，粘贴字体 URL 即可导入。
   - 每个字段标签上可以**锁定数值**：点头部「随机生成」时锁定的项不会被改动。随机和恢复默认都有确认弹窗。
-  - **查看代码**：在抽屉左侧滑出代码弹窗，打开期间实时跟随调整生成 CSS，复制后贴进 `template/style.css` 即可固化——选中的 CDN 字体会自动带上 `@import` / `@font-face`。
+  - **查看代码**：在抽屉左侧滑出代码弹窗，打开期间实时跟随调整生成 CSS，复制后贴进 `ktr/template/style.css` 即可固化——选中的 CDN 字体会自动带上 `@import` / `@font-face`。
 
 <Callout type="info">
   模板主题色**只有显式调整后才下发**给模板（通过 `ctx.theme` 和 CSS

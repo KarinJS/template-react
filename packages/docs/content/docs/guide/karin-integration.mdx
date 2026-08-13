@@ -101,7 +101,7 @@ export const renderImage = async <K extends keyof Registry & string>(
 
 ## 编写机器人指令
 
-`src/apps/template.ts` 演示了三个指令。文件开头的公共准备：`loadTemplateRegistry()` 加载注册表并缓存成共享 Promise（回调里统一 `await`）；`tsMockByRoute` 把路由映射到对应 `mock.ts` 的导出。示例数据的解析顺序：**TS mock 优先，其次 `template/<路由>/data/default.json`**；`captured.json` 是真实渲染的捕获产物，不作示例数据。
+`src/apps/template.ts` 演示了三个指令。文件开头的公共准备：`loadTemplateRegistry()` 加载注册表并缓存成共享 Promise（回调里统一 `await`）；`tsMockByRoute` 把路由映射到对应 `mock.ts` 的导出。示例数据的解析顺序：**TS mock 优先，其次 `ktr/template/<路由>/data/default.json`**；`captured.json` 是真实渲染的捕获产物，不作示例数据。
 
 ### 指令一：`#模板列表`
 

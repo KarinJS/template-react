@@ -29,9 +29,9 @@ const defineTemplate: <D>(def: Omit<TemplateDef<D>, '__data'>) => TemplateDef<D>
 | `component`   | `React.ComponentType<TemplateProps<D>>` | 是   | 实际渲染截图的组件，异步组件也可以。           |
 | `validate`    | `(data: unknown) => data is D`          | 否   | 运行时数据校验，返回 `false` 时 SSR 直接报错。 |
 
-**示例一：常规写法（泛型自动推断）**，`template/hello/list/index.tsx`：
+**示例一：常规写法（泛型自动推断）**，`ktr/template/hello/list/index.tsx`：
 
-```tsx title="template/hello/list/index.tsx" twoslash
+```tsx title="ktr/template/hello/list/index.tsx" twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
 /** Hello 列表模板的数据结构。 */
@@ -56,9 +56,9 @@ export default defineTemplate({
 
 只有 `index.tsx` 里**默认导出** `defineTemplate(...)` 这一种固定写法会注册为 `<板块>/<模板>` 路由；裸写的 `.tsx` 组件不会被扫描。
 
-**示例二：带运行时校验**，`template/receipt/tall/index.tsx`：
+**示例二：带运行时校验**，`ktr/template/receipt/tall/index.tsx`：
 
-```tsx title="template/receipt/tall/index.tsx" twoslash
+```tsx title="ktr/template/receipt/tall/index.tsx" twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
 /** 长条小票模板的数据结构。 */
@@ -95,7 +95,7 @@ const defineMock: <D>(data: D) => D
 <Tabs items={['satisfies 写法', 'defineMock 写法']}>
 <Tab value="satisfies 写法">
 
-```ts title="template/hello/list/mock.ts" twoslash
+```ts title="ktr/template/hello/list/mock.ts" twoslash
 // @filename: ./index.ts
 export interface HelloListData {
   title: string
@@ -120,7 +120,7 @@ export const team = {
 </Tab>
 <Tab value="defineMock 写法">
 
-```ts title="template/hello/list/mock.ts" twoslash
+```ts title="ktr/template/hello/list/mock.ts" twoslash
 interface HelloListData {
   title: string
   users: Array<{ name: string; role: string; score: number }>

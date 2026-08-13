@@ -13,7 +13,7 @@ description: 把含 JSX/TS/CSS 的插件项目打包成 karin 生产可用的纯
 | ------------- | ----------------------------------- | --------------- |
 | 插件逻辑 JS   | `src/**/*.ts`                       | `lib/`          |
 | 模板注册表 JS | `.ktr/*.ts`（先跑 `ktr sync` 生成） | `lib/`          |
-| 模板样式 CSS  | `template/style.css`                | `lib/style.css` |
+| 模板样式 CSS  | `ktr/template/style.css`            | `lib/style.css` |
 
 <Callout type="warn">
   **注册表必须在打包前是最新的**：不挂插件时先手动 `ktr sync`；挂了 `ktrBuildPlugin` 则由插件在 buildStart 自动刷新。漏了它构建出来的包找不到任何模板。

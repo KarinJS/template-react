@@ -1,6 +1,6 @@
 ---
 title: 样式与主题
-description: template/style.css 的结构、继承自 HeroUI 的颜色 token、换肤方式与主题变量下发机制
+description: ktr/template/style.css 的结构、继承自 HeroUI 的颜色 token、换肤方式与主题变量下发机制
 ---
 
 模板用 Tailwind CSS v4 写样式，颜色体系直接继承 [HeroUI v3](https://heroui.com/cn/docs/react/getting-started/colors) 的默认主题。这一页讲清样式入口每一行的作用、有哪些颜色类名可以直接用、怎么换肤，以及主题变量什么时候会（不会）被注入。
@@ -9,11 +9,11 @@ description: template/style.css 的结构、继承自 HeroUI 的颜色 token、�
   不熟 Tailwind 的"类名即样式"写法？先翻翻 [Tailwind CSS 文档](https://tailwindcss.com/docs)，学会查类名就够了。
 </Callout>
 
-## 样式入口：template/style.css
+## 样式入口：ktr/template/style.css
 
 所有模板共用一份样式入口，`ktr init` 会替你生成，零配置项目首次启动时也会自动补上：
 
-```css title="template/style.css"
+```css title="ktr/template/style.css"
 @import 'tailwindcss';
 @import '@karinjs/template-react/styles';
 @source './**/*.{ts,tsx}';
@@ -23,7 +23,7 @@ description: template/style.css 的结构、继承自 HeroUI 的颜色 token、�
 
 - `@import 'tailwindcss'`：Tailwind v4 本体。
 - `@import '@karinjs/template-react/styles'`：ktr 的样式基座，里面引入了 HeroUI v3 全套样式——基础重置、组件样式、默认主题变量，以及把语义色桥接到 Tailwind token 的那段声明。**HeroUI 由 ktr 自带**，你不需要单独装 `@heroui/styles`。
-- `@source './**/*.{ts,tsx}'`：让 Tailwind 扫描 `template/` 下所有 TS/TSX 的类名（v4 按需生成，只产出真正用到的类）。
+- `@source './**/*.{ts,tsx}'`：让 Tailwind 扫描 `ktr/template/` 下所有 TS/TSX 的类名（v4 按需生成，只产出真正用到的类）。
 
 <Callout type="error">
   **不要再写 `@theme { --color-accent: var(--accent); ... }` 这类颜色映射块。** HeroUI 已经用 `@theme inline`
@@ -34,7 +34,7 @@ description: template/style.css 的结构、继承自 HeroUI 的颜色 token、�
 
 需要加字体、加自定义 token 时，在这三行之后继续写就行：
 
-```css title="template/style.css"
+```css title="ktr/template/style.css"
 @import 'tailwindcss';
 @import '@karinjs/template-react/styles';
 @source './**/*.{ts,tsx}';
@@ -70,7 +70,7 @@ body {
 
 改颜色不需要动 ktr 的基座，在自己的 `style.css` 里覆盖 HeroUI 的变量即可（`ktr init` 选"HeroUI + 自定义主题块"会直接生成带注释的骨架）：
 
-```css title="template/style.css"
+```css title="ktr/template/style.css"
 @import 'tailwindcss';
 @import '@karinjs/template-react/styles';
 @source './**/*.{ts,tsx}';

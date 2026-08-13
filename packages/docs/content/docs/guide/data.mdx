@@ -9,15 +9,15 @@ description: 三类数据源（TS mock、JSON mock、真实渲染捕获）的区
 
 | 数据源    | 位置                                        | 类型安全               | 面板里能编辑吗         | 适合场景                                 |
 | --------- | ------------------------------------------- | ---------------------- | ---------------------- | ---------------------------------------- |
-| TS mock   | `template/<板块>/<模板>/mock.ts`            | 有（`satisfies` 校验） | 只读                   | 固定示例数据，想在插件代码里 import 复用 |
-| JSON mock | `template/<板块>/<模板>/data/*.json`        | 无                     | 可以（筛选/编辑/保存） | 多组对照数据，边调样式边改               |
-| 捕获数据  | `template/<板块>/<模板>/data/captured.json` | 无                     | 可以（本质是 JSON）    | 机器人真实渲染时自动记录的数据           |
+| TS mock   | `ktr/template/<板块>/<模板>/mock.ts`            | 有（`satisfies` 校验） | 只读                   | 固定示例数据，想在插件代码里 import 复用 |
+| JSON mock | `ktr/template/<板块>/<模板>/data/*.json`        | 无                     | 可以（筛选/编辑/保存） | 多组对照数据，边调样式边改               |
+| 捕获数据  | `ktr/template/<板块>/<模板>/data/captured.json` | 无                     | 可以（本质是 JSON）    | 机器人真实渲染时自动记录的数据           |
 
 三者可以并存。面板左侧的数据卡片会列出同一模板下的 TS mock 和 JSON 文件，点一下就切换预览数据。常见搭配：TS mock 当"标准示例"，JSON 当随手改的对照数据，captured.json 交给框架自动写。
 
 ## TS mock：mock.ts
 
-```ts title="template/hello/list/mock.ts" twoslash
+```ts title="ktr/template/hello/list/mock.ts" twoslash
 // @filename: ./index.ts
 export interface HelloListData {
   title: string
@@ -40,7 +40,7 @@ export const team = {
 
 - **固定文件名** `mock.ts`，与 `index.tsx` 同级，用**具名导出**（导出名即面板里显示的数据名）。
 - 末尾的 `satisfies HelloListData` 是 TypeScript 校验写法："数据必须满足该类型，否则编译报错"。TS mock 因此是唯一有编译期类型保护的数据源。
-- 就是普通 TS 文件，插件代码可以直接 `import { team } from '../../template/hello/list/mock'` 复用。
+- 就是普通 TS 文件，插件代码可以直接 `import { team } from '../../ktr/template/hello/list/mock'` 复用。
 
 <Callout type="warn">TS mock 在面板里是**只读**的（数据卡片带只读标记）。想改就回到编辑器改 `mock.ts` 源文件，保存后面板热更新。</Callout>
 
@@ -48,7 +48,7 @@ export const team = {
 
 JSON mock 是普通 `.json` 文件，统一收在模板目录的 `data/` 子目录：
 
-```json title="template/hello/card/data/default.json"
+```json title="ktr/template/hello/card/data/default.json"
 {
   "title": "Karin Template React",
   "subtitle": "React + Tailwind CSS + TypeScript",
@@ -65,7 +65,7 @@ JSON mock 是面板里唯一可完整管理的数据源：左侧数据区支持*
 新建和删除 JSON 只有两个途径：**面板按钮**或**直接操作文件系统**，插件运行时代码不会创建它们（`#渲染模板` 这类命令读示例数据时，按"先 TS mock、再 `data/default.json`"的顺序只读取用）。
 
 <Callout type="info">
-JSON mock **必须放在 `data/` 子目录**（`template/<板块>/<模板>/data/xxx.json`），直接放在模板目录根部不会被识别。
+JSON mock **必须放在 `data/` 子目录**（`ktr/template/<板块>/<模板>/data/xxx.json`），直接放在模板目录根部不会被识别。
 </Callout>
 
 ## 捕获数据：captured.json
