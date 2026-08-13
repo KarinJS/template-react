@@ -2,8 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { defu } from 'defu'
-import { createJiti } from 'jiti'
 
+import { importTsModule } from '../ts-import'
 import type { KtrConfig, ResolvedKtrConfig, ResolveConfigOptions } from '../types'
 
 // 按优先级查找的配置文件名，TS 版本优先于 JS 版本。
@@ -41,7 +41,7 @@ const findConfigFile = (cwd: string, configFile?: string): string | undefined =>
 }
 
 /**
- * 通过 jiti 加载 TS/JS 配置，避免要求下游先编译配置文件。
+ * 通过 tsx 加载 TS/JS 配置，避免要求下游先编译配置文件。
  * @param cwd 项目根目录。
  * @param configFile 可选的显式配置文件路径。
  * @returns 用户配置对象，没有配置文件时返回空对象。
@@ -53,16 +53,13 @@ const loadUserConfig = async (cwd: string, configFile?: string): Promise<KtrConf
   }
 
   try {
-    // moduleCache 关闭以便重复加载时拿到最新配置，interopDefault 兼容 CJS/ESM 默认导出。
-    const jiti = createJiti(import.meta.url, {
-      moduleCache: false,
-      interopDefault: true
-    })
-    const config = await jiti.import<KtrConfig>(filePath, { default: true })
-    return config ?? {}
+    // tsx 惰性加载：只有真的存在 TS 配置文件才需要它，生产产物里没有配置文件，
+    // 顶层不 import 就不会成为运行时的硬依赖。
+    const mod = await importTsModule<{ default?: KtrConfig }>(filePath)
+    return mod.default ?? {}
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
-    throw new Error(`Failed to load karin template config at ${filePath}: ${detail}`, { cause: error })
+    throw new Error(`加载 karin 模板配置失败（${filePath}）：${detail}`, { cause: error })
   }
 }
 

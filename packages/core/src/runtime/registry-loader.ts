@@ -1,10 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
-
-import { createJiti } from 'jiti'
+import { pathToFileURL } from 'node:url'
 
 import { resolveConfig, type ResolveConfigOptions } from '../config'
 import { mockRegistryPath, templateRegistryPath } from '../conventions/registry'
+import { importTsModule } from '../ts-import'
 import type { LoadedRegistry } from '../types'
 
 /** 约定注册表的加载选项。 */
@@ -83,7 +83,7 @@ const findBundledRegistry = (root: string, fileName: string, bundledDir?: string
 }
 
 /**
- * 挑选实际加载的注册表文件：.ktr 源文件存在时永远优先（开发态由 tsx/jiti 加载源码组件，
+ * 挑选实际加载的注册表文件：.ktr 源文件存在时永远优先（开发态由 tsx 加载源码组件，
  * 与外部渲染器共享 node_modules 里的同一份 React）；.ktr 不存在时（生产环境）回退到
  * 随插件打包的产物（此时渲染器也已内联在同一份 bundle 中），产物目录由 findBundledRegistry 发现。
  * 不能按 mtime 取新——构建后产物比 .ktr 新，但开发态必须用源码注册表，否则包内 React 与
@@ -112,19 +112,20 @@ const pickRegistryFile = (root: string, sourcePath: string, bundledDir?: string)
 }
 
 /**
- * 用 jiti 加载约定生成的注册表文件并返回模块命名空间。
+ * 加载约定生成的注册表文件并返回模块命名空间。
+ *
+ * 两条路径：`.ktr` 源文件（TS + JSX）走 tsx 即时转译——tsx 惰性注册，
+ * 只在开发态触发；生产产物是纯 ESM JS，直接原生 import，不引入任何 TS 运行时，
+ * 因此下游打包含 tsx 也是安全的（生产永远不会执行到它）。
  * @param filePath 注册表文件的绝对路径。
  * @returns 注册表模块的命名空间对象。
  */
 const importRegistryModule = async <T>(filePath: string): Promise<T> => {
-  // moduleCache 关闭保证开发期每次读到最新注册表，interopDefault 兼容 CJS/ESM 导出；
-  // 模板组件含 JSX，开启 JSX 转换，automatic 运行时与 tsconfig 的 react-jsx 及面板 Vite 管道一致。
-  const jiti = createJiti(import.meta.url, {
-    moduleCache: false,
-    interopDefault: true,
-    jsx: { runtime: 'automatic' }
-  })
-  return jiti.import<T>(filePath)
+  if (!filePath.endsWith('.ts')) {
+    return import(pathToFileURL(filePath).href) as Promise<T>
+  }
+
+  return importTsModule<T>(filePath)
 }
 
 /**

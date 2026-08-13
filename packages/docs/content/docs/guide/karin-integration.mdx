@@ -200,5 +200,5 @@ export const templateRender = karin.command('^(#)?渲染模板', async (event) =
   **全部放进 `devDependencies`，构建时整体打进 `lib/`**——包括 `react`/`react-dom` 和 `@karinjs/template-react` 运行时。 React 的 hooks
   依赖全局唯一的 dispatcher（「调度总台」），整包后渲染器和组件共用产物内的同一份 React，SSR 才能正常工作。
   真正会崩的是**只包一半**：组件打进了包、渲染器却外部引用（或反过来），两份 React 并存，hooks 一执行就是 `Invalid hook call`。
-  保持外部的只有两个：`node-karin`（宿主 karin 提供）和 `jiti`（它按相对路径读自己包里的文件，打进包里必崩）。
+  保持外部的只有 `node-karin`（宿主 karin 提供）；tsx 可以打进产物——ktr 只在开发态惰性调用它，生产永远不会执行到。
 </Callout>

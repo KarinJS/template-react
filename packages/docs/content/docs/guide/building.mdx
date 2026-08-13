@@ -40,11 +40,11 @@ export default defineConfig({
   // ktrBuildPlugin 在 buildStart 刷新 .ktr 注册表（替代 ktr sync）、
   // 在 closeBundle 把模板 CSS 编译到 vite 自己的 outDir（产出 lib/style.css）。
   plugins: [react(), tailwindcss(), ktrBuildPlugin()],
-  // 整包模式：除 node-karin（宿主提供）和 jiti 外全部内联，生产环境零安装。
-  // jiti 必须外部化——它按相对路径读自己包里的文件，打进包里必崩。
+  // 整包模式：除 node-karin（宿主提供）外全部内联，生产环境零安装。
+  // tsx 不需要特殊处理：ktr 只在开发态惰性调用它（读 TS 配置和 .ktr 源注册表），生产产物永远不会执行到。
   ssr: {
     noExternal: true,
-    external: ['node-karin', 'jiti']
+    external: ['node-karin']
   },
   build: {
     // 产物跑在 karin 宿主（Node），不是浏览器
@@ -110,8 +110,8 @@ export default defineConfig({
   // 注册表发现约定按 .js 文件名查找，ESM 产物也要固定为 .js，不要用默认的 .mjs
   outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
   deps: {
-    // 只有 node-karin（宿主提供）和 jiti（同上，不能内联）保持外部
-    neverBundle: ['node-karin', 'jiti']
+    // 只有 node-karin（宿主提供）保持外部
+    neverBundle: ['node-karin']
   }
 })
 ```
@@ -127,8 +127,9 @@ tsdown
 构建完成后，在 karin 里触发一次你的模板渲染命令，能正常出图就说明链路完整。
 
 <Callout type="warn">
-  **三个最常见的坑**：① 忘了先 `ktr sync`，包里一个模板都没有；② 把 `node-karin` 打进产物——它必须由 karin 宿主提供，打进去会冲突；③ 把
-  `jiti` 打进产物——它按相对路径读自己包里的文件，打包后路径失效必崩。两套配置里都已经替你处理好了。
+  **三个最常见的坑**：① 忘了先 `ktr sync`，包里一个模板都没有；② 把 `node-karin` 打进产物——它必须由 karin 宿主提供，打进去会冲突；③
+  让包里出现两份 React（比如 link 本地 ktr 开发时它自带的 react 被当成独立副本），SSR hooks 会直接崩——用 `resolve.dedupe: ['react',
+  'react-dom']` 强制去重。
 </Callout>
 
 ## 渲染器怎么找到这些产物

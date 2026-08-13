@@ -22,7 +22,7 @@ import { registerSandboxMiddleware, sandboxPlugin } from './sandbox'
 /**
  * 解析 ktr 浏览器端入口（dist/client.mjs）的绝对路径。
  * sandbox 里的用户组件在浏览器环境评估，必须命中包 exports 的 browser 入口；
- * 部分 vite 版本的依赖预打包不应用 browser 条件，会把 node 入口（jiti/node:os 等）打进浏览器包，
+ * 部分 vite 版本的依赖预打包不应用 browser 条件，会把 node 入口（tsx/node:os 等）打进浏览器包，
  * 模块求值即崩溃（面板表现为一直「等待模板注册」）。这里在 dev server 内部用 alias 显式钉住，下游零处理。
  * @returns 浏览器端入口文件的绝对路径。
  */

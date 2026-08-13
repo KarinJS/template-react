@@ -1,10 +1,13 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
 import { loadMockRegistry, loadTemplateRegistry } from '../../src/runtime'
+
+const testDir = path.dirname(fileURLToPath(import.meta.url))
 
 // 手写一份最小的约定注册表，避免测试依赖完整的 ktr sync 流程。
 const writeRegistries = (cacheDir: string): void => {
@@ -92,7 +95,15 @@ describe('registry loader', () => {
 
   it('loads registries that import real JSX components and renders them', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-registry-jsx-'))
-    // 注册表引用的组件含 JSX，验证 jiti 的 JSX 转换在真实加载链上生效。
+    // 注册表引用的组件含 JSX，验证 tsx 的 JSX 转换在真实加载链上生效。
+    // 钉住 jsx: react-jsx，并把 react/react-dom 链接进临时项目（模拟下游有 node_modules），
+    // 否则 tsx 按探测结果可能走 jsx-dev-runtime，且临时目录里没有 react 可解析。
+    fs.writeFileSync(path.join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'react-jsx' } }), 'utf-8')
+    const repoModules = path.resolve(testDir, '../../node_modules')
+    fs.mkdirSync(path.join(root, 'node_modules'), { recursive: true })
+    for (const pkg of ['react', 'react-dom']) {
+      fs.symlinkSync(path.join(repoModules, pkg), path.join(root, 'node_modules', pkg), 'junction')
+    }
     const componentDir = path.join(root, 'ktr', 'template', 'hello', 'card')
     fs.mkdirSync(componentDir, { recursive: true })
     fs.writeFileSync(
