@@ -23,20 +23,20 @@ export default defineConfig({
 
 ## 配置项一览
 
-| 配置项            | 类型       | 默认值             | 说明                                                                                 |
-| ----------------- | ---------- | ------------------ | ------------------------------------------------------------------------------------ |
-| `dir.template`    | `string`   | `'ktr/template'`    | 模板根目录，组件、mock、JSON 数据和 `style.css` 都放在这里。                          |
-| `dir.cache`       | `string`   | `'.ktr'`            | 框架产物缓存目录，不要手动编辑、不要提交。                                            |
-| `dir.mockData`    | `string`   | 等于 `dir.template` | mock 数据目录，扫描 `mock.ts` 和 `data/*.json` 的位置。                               |
+| 配置项            | 类型       | 默认值              | 说明                                                                                                                         |
+| ----------------- | ---------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `dir.template`    | `string`   | `'ktr/template'`    | 模板根目录，组件、mock、JSON 数据和 `style.css` 都放在这里。                                                                 |
+| `dir.cache`       | `string`   | `'.ktr'`            | 框架产物缓存目录，不要手动编辑、不要提交。                                                                                   |
+| `dir.mockData`    | `string`   | 等于 `dir.template` | mock 数据目录，扫描 `mock.ts` 和 `data/*.json` 的位置。                                                                      |
 | `dir.assets`      | `string`   | `'ktr/public'`      | 静态资源目录（默认 `ktr/public`，模板目录同级）；dev server 把它当 publicDir 服务，`ktr build` 时复制到 `<dir.out>/assets`。 |
-| `dir.out`         | `string`   | `'dist/template'`   | 构建输出目录；SSR HTML 默认写到 `<dir.out>/html`。                                    |
-| `dir.cssEntry`    | `string`   | 自动探测            | Tailwind 入口；默认优先 `<dir.template>/style.css`，否则取 `dir.template` 下第一个 `.css`。 |
-| `extraStylePaths` | `string[]` | `[]`               | 额外注入 SSR HTML 的样式文件。                                                       |
-| `dev.port`        | `number`   | `5180`             | `ktr dev` 监听端口。                                                                 |
-| `dev.host`        | `string`   | `'localhost'`      | `ktr dev` 监听主机。                                                                 |
-| `dev.open`        | `boolean`  | `true`             | 启动后是否自动打开浏览器。                                                           |
-| `html.headExtra`  | `string`   | `''`               | 追加到 SSR HTML `<head>` 的原始 HTML。                                               |
-| `vite`            | 对象或函数 | 无                 | 合并到内部 Vite dev/build 配置，见下。                                               |
+| `dir.out`         | `string`   | `'dist/template'`   | 构建输出目录；SSR HTML 默认写到 `<dir.out>/html`。                                                                           |
+| `dir.cssEntry`    | `string`   | 自动探测            | Tailwind 入口；默认优先 `<dir.template>/style.css`，否则取 `dir.template` 下第一个 `.css`。                                  |
+| `extraStylePaths` | `string[]` | `[]`                | 额外注入 SSR HTML 的样式文件。                                                                                               |
+| `dev.port`        | `number`   | `5180`              | `ktr dev` 监听端口。                                                                                                         |
+| `dev.host`        | `string`   | `'localhost'`       | `ktr dev` 监听主机。                                                                                                         |
+| `dev.open`        | `boolean`  | `true`              | 启动后是否自动打开浏览器。                                                                                                   |
+| `html.headExtra`  | `string`   | `''`                | 追加到 SSR HTML `<head>` 的原始 HTML。                                                                                       |
+| `vite`            | 对象或函数 | 无                  | 合并到内部 Vite dev/build 配置，见下。                                                                                       |
 
 ### vite 扩展配置
 
@@ -146,6 +146,6 @@ pnpm ktr build --outDir dist/template
 构建模板 CSS：先再次 `sync`，再把 `dir.cssEntry` 编译为 `<dir.out>/style.css`（引用资源进 `<dir.out>/assets`）。**成功后你会看到**：终端输出构建统计，`<dir.out>/style.css` 已生成。
 
 <Callout>
-  打包配置里挂了 `ktrBuildPlugin()` 就不用单独跑这一步——插件会在 `closeBundle` 阶段把 CSS 编译到打包器自己的 outDir。用 tsdown
-  且 CSS 走 tailwind 插件的项目同样不需要。两种方式见 [构建与打包](/docs/guide/building)。
+  打包配置里挂了 `ktrBuildPlugin()` 就不用单独跑这一步——插件会在 `closeBundle` 阶段把 CSS 编译到打包器自己的 outDir。用 tsdown 且 CSS 走
+  tailwind 插件的项目同样不需要。两种方式见 [构建与打包](/docs/guide/building)。
 </Callout>

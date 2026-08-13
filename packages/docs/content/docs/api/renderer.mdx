@@ -83,15 +83,15 @@ const createRenderer: <R extends Record<keyof R, TemplateDef<any>>>(
 
 把注册表渲染成独立 HTML 文件的底层渲染器。返回值 `RenderResult`：`success`（是否成功）、`htmlPath`（成功时的 HTML 路径，失败为空串）、`error?`（失败原因）。
 
-| 参数              | 类型                                                           | 必填               | 说明                                                                   |
-| ----------------- | -------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------- |
-| `cssPath`         | `string`                                                       | 是                 | 模板 CSS 文件路径，通常来自 `resolveTemplateStyle`。                   |
-| `outputDir`       | `string`                                                       | 是                 | SSR 生成的 HTML 输出目录（自动创建）。                                 |
-| `extraStylePaths` | `string[]`                                                     | 否                 | 额外注入 HTML 的样式文件，按顺序内联。                                 |
-| `plugins`         | `RenderPlugin[]`                                               | 否                 | SSR 渲染插件，见文末。                                                 |
+| 参数              | 类型                                                           | 必填               | 说明                                                                       |
+| ----------------- | -------------------------------------------------------------- | ------------------ | -------------------------------------------------------------------------- |
+| `cssPath`         | `string`                                                       | 是                 | 模板 CSS 文件路径，通常来自 `resolveTemplateStyle`。                       |
+| `outputDir`       | `string`                                                       | 是                 | SSR 生成的 HTML 输出目录（自动创建）。                                     |
+| `extraStylePaths` | `string[]`                                                     | 否                 | 额外注入 HTML 的样式文件，按顺序内联。                                     |
+| `plugins`         | `RenderPlugin[]`                                               | 否                 | SSR 渲染插件，见文末。                                                     |
 | `captureDir`      | `string`                                                       | 否                 | 捕获目录，**显式传入才捕获**；未传时仅开发环境默认捕获到 `ktr/template/`。 |
-| `htmlFileName`    | `'fixed' \| 'timestamp' \| ((templatePath: string) => string)` | 否，默认 `'fixed'` | 输出 HTML 文件命名方式。                                               |
-| `html.headExtra`  | `string`                                                       | 否                 | 追加到 `<head>` 的原始 HTML。                                          |
+| `htmlFileName`    | `'fixed' \| 'timestamp' \| ((templatePath: string) => string)` | 否，默认 `'fixed'` | 输出 HTML 文件命名方式。                                                   |
+| `html.headExtra`  | `string`                                                       | 否                 | 追加到 `<head>` 的原始 HTML。                                              |
 
 `htmlFileName` 三种取值：`'fixed'` 每模板固定一个文件覆盖写（`hello/card` → `hello_card.html`）；`'timestamp'` 输出 `hello_card_<时间戳>.html`（并发渲染同模板时可选）；传函数则收路由、返回不含扩展名的文件主名。
 
