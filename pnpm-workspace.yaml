@@ -1,6 +1,10 @@
 packages:
   - packages/*
   - packages/core/examples
+# vite 8 锁 postcss 8.5.25 而 @fullhuman/postcss-purgecss v8 带 8.5.26，
+# 两份 postcss 的类型互不兼容（twoslash 示例里 plugins 数组直接类型冲突），统一到一个版本。
+overrides:
+  postcss: 8.5.26
 allowBuilds:
   core-js: false
   esbuild: true
@@ -49,3 +53,19 @@ minimumReleaseAgeExclude:
   - oxfmt@0.62.0
   - oxlint@1.77.0
   - node-karin@1.17.0
+  - '@fumadocs/base-ui@16.14.4'
+  - '@fumari/image-size@0.1.0'
+  - '@next/env@16.3.1'
+  - '@next/swc-darwin-arm64@16.3.1'
+  - '@next/swc-darwin-x64@16.3.1'
+  - '@next/swc-linux-arm64-gnu@16.3.1'
+  - '@next/swc-linux-arm64-musl@16.3.1'
+  - '@next/swc-linux-x64-gnu@16.3.1'
+  - '@next/swc-linux-x64-musl@16.3.1'
+  - '@next/swc-win32-arm64-msvc@16.3.1'
+  - '@next/swc-win32-x64-msvc@16.3.1'
+  - fumadocs-core@16.14.4
+  - next@16.3.1
+  - puppeteer-core@25.7.0
+  - puppeteer@25.7.0
+  - rollup-plugin-visualizer@7.1.1

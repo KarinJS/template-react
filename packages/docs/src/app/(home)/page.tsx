@@ -1,6 +1,8 @@
 import { Camera, Database, Package, PanelsTopLeft } from 'lucide-react'
 import Link from 'next/link'
 
+import { HeroParticleText } from '@/components/hero-particle-text'
+
 const features = [
   {
     icon: PanelsTopLeft,
@@ -20,18 +22,25 @@ const features = [
   {
     icon: Package,
     title: '构建零安装',
-    description: '整包进 lib/，生产环境零依赖安装。'
+    description: '整包进产物，生产环境零依赖安装。'
   }
 ] as const
+
+/** 主视觉文案（粒子聚合效果渲染）；特性卡里有对应的展开说明。 */
+const heroTagline = '类型安全 · 实时预览 · 数据捕获'
 
 export default function HomePage() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-14 px-6 py-16 text-center">
-      <div>
+      <div className="flex w-full flex-col items-center">
         <p className="mb-4 text-sm font-semibold tracking-widest text-fd-muted-foreground">@karinjs/template-react</p>
-        <h1 className="mb-4 text-4xl font-bold">用 React 写 Karin 截图模板</h1>
-        <p className="mx-auto mb-8 max-w-xl text-fd-muted-foreground">全链路类型 · 面板实时预览 · 数据自动捕获</p>
-        <div className="flex justify-center gap-3">
+        <h1 className="mb-2 text-3xl font-bold">用 React 写 Karin 截图模板</h1>
+        {/* 主视觉：PC 上约占屏幕 80% 宽度；小屏回退为纯文本 */}
+        <div className="hidden w-full md:block">
+          <HeroParticleText text={heroTagline} />
+        </div>
+        <p className="mx-auto mb-8 mt-4 max-w-xl text-lg font-medium text-fd-muted-foreground md:hidden">{heroTagline}</p>
+        <div className="mt-4 flex justify-center gap-3 md:mt-0">
           <Link href="/docs/quick-start" className="rounded-lg bg-fd-primary px-5 py-2.5 font-medium text-fd-primary-foreground">
             快速开始
           </Link>

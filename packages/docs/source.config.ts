@@ -9,6 +9,10 @@ export default defineConfig({
     rehypeCodeOptions: {
       // fumadocs 默认的明暗双主题，自定义 transformers 时需要显式补全
       themes: { light: 'github-light', dark: 'github-dark' },
+      // twoslash 悬浮弹窗里的 Markdown 代码示例只会用预加载的语言高亮，缺了会告警；
+      // 显式给出全量语言并给 console 注册 shellsession 别名
+      langs: ['ts', 'tsx', 'js', 'jsx', 'json', 'jsonc', 'bash', 'shellsession', 'http', 'css', 'yaml', 'mdx'],
+      langAlias: { console: 'shellsession' },
       transformers: [
         transformerTwoslash({
           twoslashOptions: {
