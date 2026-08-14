@@ -1,0 +1,844 @@
+---
+title: 数据流
+description: 从定义到渲染的完整链路——开发态与生产态的数据流向
+---
+
+本页详细讲解 ktr 框架中数据的完整流转路径，覆盖开发态和生产态两种场景。
+
+## 完整数据链路概览
+
+```
+模板定义（defineTemplate）
+       ↓
+注册表生成（.ktr/）
+       ↓
+  ┌─────────┴─────────┐
+  ↓                   ↓
+开发态               生产态
+面板→沙盒→渲染       SSR→HTML→截图
+```
+
+## 开发态数据流
+
+开发态的数据流经过**面板 → 沙盒 → 渲染**三个环节。
+
+### 1. 用户操作触发
+
+```
+用户点击模板 'hello/card'
+       ↓
+用户选择数据源 'basic'
+       ↓
+面板发起 API 请求
+```
+
+### 2. Mock API 响应
+
+面板通过 RESTful API 获取数据：
+
+```typescript twoslash
+// 面板前端代码（React）
+async function loadTemplateData(path: string, dataName: string) {
+  // GET /__ktr/api/data?path=hello/card&name=basic
+  const response = await fetch(`/__ktr/api/data?path=${path}&name=${dataName}`)
+
+  return await response.json()
+}
+```
+
+服务端 Mock API 处理逻辑：
+
+```typescript twoslash
+// dev/mock-api.ts（简化示意）
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+
+declare const config: { mockDataDir: string }
+declare const loadTsMocks: (templatePath: string) => Promise<Array<{ name: string; data: unknown }>>
+declare const json: (res: any, status: number, body: unknown) => void
+// ---cut---
+export async function handleDataRequest(req: any, res: any) {
+  // GET /__ktr/api/data?path=hello/card&name=default
+  const url = new URL(req.url, 'http://localhost')
+  const templatePath = url.searchParams.get('path')!
+  const name = url.searchParams.get('name')!
+
+  // 优先级 1：JSON mock（面板可编辑）
+  const jsonPath = path.join(config.mockDataDir, templatePath, 'data', `${name}.json`)
+  if (fs.existsSync(jsonPath)) {
+    const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'))
+    return json(res, 200, { name, source: 'json', readonly: false, data })
+  }
+
+  // 优先级 2：TS mock（面板只读）
+  const tsMock = (await loadTsMocks(templatePath)).find((mock) => mock.name === name)
+  if (tsMock) {
+    return json(res, 200, { name, source: 'ts', readonly: true, data: tsMock.data })
+  }
+
+  // 未找到
+  json(res, 404, { error: 'Data entry not found' })
+}
+```
+
+数据源优先级：**JSON mock > TS mock**（同名时 JSON 优先，TS mock 在面板中只读）
+
+### 3. 面板下发数据
+
+面板通过 `postMessage` 将数据发送到沙盒 iframe：
+
+```typescript twoslash
+// 面板代码
+function renderTemplate(path: string, data: any, ctx?: any) {
+  const iframe = document.querySelector('#sandbox-iframe') as HTMLIFrameElement
+
+  iframe.contentWindow?.postMessage(
+    {
+      source: 'ktr-panel',
+      type: 'ktr:data',
+      payload: { path, data, ctx }
+    },
+    '*'
+  )
+}
+```
+
+消息协议：
+
+```typescript twoslash
+// dev/protocol.ts
+import type { ThemeContext } from '@karinjs/template-react'
+// ---cut---
+// 面板 → 沙盒消息类型
+type PanelMessage =
+  | { source: 'ktr-panel'; type: 'ktr:select'; payload: { path: string } }
+  | { source: 'ktr-panel'; type: 'ktr:data'; payload: { path: string; data: unknown; ctx?: Record<string, unknown> } }
+  | { source: 'ktr-panel'; type: 'ktr:theme'; payload: { theme?: Partial<ThemeContext> } }
+  | { source: 'ktr-panel'; type: 'ktr:scale'; payload: { scale: number } }
+  | { source: 'ktr-panel'; type: 'ktr:inspect'; payload: { enabled: boolean } }
+
+// 沙盒 → 面板消息类型
+type SandboxMessage =
+  | { source: 'ktr-sandbox'; type: 'ktr:ready'; payload: { templates: Array<{ path: string; name?: string }> } }
+  | { source: 'ktr-sandbox'; type: 'ktr:register-progress'; payload: { loaded: number; total: number; path: string } }
+  | { source: 'ktr-sandbox'; type: 'ktr:rendered'; payload: { path: string; elapsed: number; size?: { width: number; height: number } } }
+  | { source: 'ktr-sandbox'; type: 'ktr:error'; payload: { path?: string; message: string } }
+```
+
+### 4. 沙盒渲染组件
+
+沙盒 iframe 加载虚拟模块 `virtual:ktr-sandbox`，监听面板消息并渲染：
+
+```tsx twoslash
+// dev/sandbox.ts 生成的虚拟模块（简化示意）
+import { createRoot } from 'react-dom/client'
+import type { Root } from 'react-dom/client'
+
+declare function loadTemplateModule(path: string): Promise<{ default: any }>
+// ---cut---
+// 1. 预加载所有模板组件
+const templates: Record<string, any> = {}
+
+// 逐个动态导入（串行，可见进度）
+const templatePaths = ['hello/card', 'user/profile']
+
+for (let i = 0; i < templatePaths.length; i++) {
+  const path = templatePaths[i]
+  templates[path] = (await loadTemplateModule(path)).default
+
+  // 上报加载进度
+  window.parent.postMessage(
+    {
+      source: 'ktr-sandbox',
+      type: 'ktr:register-progress',
+      payload: { loaded: i + 1, total: templatePaths.length, path }
+    },
+    '*'
+  )
+}
+
+// 通知面板加载完成
+window.parent.postMessage(
+  {
+    source: 'ktr-sandbox',
+    type: 'ktr:ready',
+    payload: { templates: templatePaths.map((path) => ({ path })) }
+  },
+  '*'
+)
+
+// 2. 监听面板消息
+let currentRoot: Root | null = null
+
+window.addEventListener('message', (event) => {
+  if (event.data.type === 'ktr:data') {
+    const { path, data, ctx } = event.data.payload
+    renderTemplate(path, data, ctx)
+  }
+})
+
+// 3. 渲染函数
+async function renderTemplate(path: string, data: any, ctx?: any) {
+  const Component = templates[path]
+  if (!Component) {
+    console.error(`Template not found: ${path}`)
+    return
+  }
+
+  const container = document.getElementById('container')
+  if (!container) return
+
+  // 创建或复用 React root
+  if (!currentRoot) {
+    currentRoot = createRoot(container)
+  }
+
+  // 渲染组件
+  currentRoot.render(<Component data={data} ctx={ctx} />)
+
+  // 4. 等待渲染稳定，测量尺寸
+  await waitForStableSize(container)
+
+  const { width, height } = container.getBoundingClientRect()
+
+  // 5. 上报渲染完成
+  window.parent.postMessage(
+    {
+      source: 'ktr-sandbox',
+      type: 'ktr:rendered',
+      payload: { path, elapsed: 0, size: { width, height } }
+    },
+    '*'
+  )
+}
+
+// 等待元素尺寸稳定（连续 3 帧无变化）
+async function waitForStableSize(element: HTMLElement) {
+  let stableCount = 0
+  let lastSize = { width: 0, height: 0 }
+
+  while (stableCount < 3) {
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+
+    const { width, height } = element.getBoundingClientRect()
+
+    if (width === lastSize.width && height === lastSize.height) {
+      stableCount++
+    } else {
+      stableCount = 0
+    }
+
+    lastSize = { width, height }
+  }
+}
+```
+
+### 5. 面板更新画布
+
+面板接收沙盒上报的尺寸，调整 iframe 显示：
+
+```typescript twoslash
+// 面板代码
+window.addEventListener('message', (event) => {
+  if (event.data.type === 'ktr:rendered') {
+    const { path, size } = event.data.payload
+
+    // 更新画布尺寸显示
+    updateCanvasSize(size.width, size.height)
+
+    // 自动适应视口
+    fitToViewport()
+  }
+})
+
+function updateCanvasSize(width: number, height: number) {
+  const iframe = document.querySelector('#sandbox-iframe') as HTMLIFrameElement
+  iframe.style.width = `${width}px`
+  iframe.style.height = `${height}px`
+}
+
+function fitToViewport() {
+  const canvas = document.querySelector('.canvas-container') as HTMLElement
+  const iframe = canvas.querySelector('iframe') as HTMLIFrameElement
+
+  const canvasRect = canvas.getBoundingClientRect()
+  const iframeRect = iframe.getBoundingClientRect()
+
+  // 计算缩放比例（留 20px 边距）
+  const scaleX = (canvasRect.width - 40) / iframeRect.width
+  const scaleY = (canvasRect.height - 40) / iframeRect.height
+  const scale = Math.min(scaleX, scaleY, 1)
+
+  iframe.style.transform = `scale(${scale})`
+}
+```
+
+### 开发态数据流图
+
+```
+┌─────────────────────┐
+│   用户操作           │ 选择模板 'hello/card' + 数据 'basic'
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│   开发面板           │ GET /__ktr/api/data?path=hello/card&name=basic
+│   (React)           │
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│   Mock API          │ 1. 优先读取 data/basic.json
+│   (Vite 中间件)     │ 2. 回退到 mock.ts 的 basic 导出
+│                     │ 3. 返回 JSON 数据
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│   面板前端           │ postMessage({ type: 'ktr:data', payload: { path, data, ctx } })
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│   沙盒 iframe        │ 1. 接收消息
+│   (React 环境)      │ 2. 动态 import 组件
+│                     │ 3. root.render(<Component data={data} ctx={ctx} />)
+│                     │ 4. 测量尺寸
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│   沙盒回传           │ postMessage({ type: 'ktr:rendered', size: { width, height } })
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│   面板画布           │ 1. 更新 iframe 尺寸
+│                     │ 2. 缩放适应视口
+│                     │ 3. 显示完成状态
+└─────────────────────┘
+```
+
+## 生产态数据流
+
+生产态的数据流经过 **SSR → HTML → 截图**三个环节。
+
+### 1. Karin 插件调用
+
+```typescript twoslash
+// @filename: virtual.d.ts
+import type { TemplateDef } from '@karinjs/template-react'
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': TemplateDef<{ title: string; items: Array<{ label: string; value: string }> }>
+  }
+}
+// @filename: utils/render.ts
+import type { DataOf, LoadedRegistry, RenderContextInput } from '@karinjs/template-react'
+import type { ImageElement } from 'node-karin'
+
+// 插件胶水层封装的渲染函数（快速上手一节有完整实现）
+export declare const renderImage: <K extends keyof LoadedRegistry & string>(
+  templatePath: K,
+  data: DataOf<LoadedRegistry[K]>,
+  ctx?: RenderContextInput
+) => Promise<ImageElement[]>
+// @filename: index.ts
+// ---cut---
+// 用户插件代码
+import { renderImage } from './utils/render'
+
+// Karin 指令处理函数
+export async function handleCommand(e: any) {
+  const images = await renderImage(
+    'hello/card',
+    {
+      title: 'Karin Template React',
+      items: [
+        { label: '渲染方式', value: 'SSR HTML' },
+        { label: '框架', value: 'React 19' }
+      ]
+    },
+    {
+      theme: { mode: 'dark', accent: 'oklch(0.62 0.19 254)' }
+    }
+  )
+
+  await e.reply(images)
+}
+```
+
+### 2. 渲染器初始化
+
+`renderImage` 内部调用 `createTemplateRenderer`：
+
+```typescript twoslash
+// runtime/template-renderer.ts（简化示意）
+import { createRenderer, loadTemplateRegistry, resolveConfig, resolveTemplateStyle } from '@karinjs/template-react'
+
+declare const findPackageRoot: (callerUrl: string) => string
+// ---cut---
+export function createTemplateRenderer(callerUrl: string) {
+  // 1. 定位包根（从 import.meta.url 向上找 package.json）
+  const root = findPackageRoot(callerUrl)
+
+  // 惰性初始化：首次渲染时才解析配置、加载注册表
+  let rendererPromise: Promise<ReturnType<typeof createRenderer>> | undefined
+
+  return async (templatePath: string, data: any, ctx?: any) => {
+    rendererPromise ??= (async () => {
+      // 2. 加载配置（karin.template.ts + 默认值）
+      const config = await resolveConfig({ cwd: root })
+
+      // 3. 加载注册表（优先 .ktr/ 源文件，回退到打包产物）
+      const templates = await loadTemplateRegistry({ root })
+
+      // 4. 创建渲染器（CSS 开发态用缓存、生产态用打包产物）
+      return createRenderer(templates, {
+        cssPath: resolveTemplateStyle(),
+        outputDir: `${config.outDir}/html`,
+        captureDir: config.templateDir
+      })
+    })()
+
+    const render = await rendererPromise
+    return render(templatePath, data, ctx)
+  }
+}
+```
+
+### 3. SSR 渲染生成 HTML
+
+```typescript twoslash
+// runtime/renderer.ts（简化示意）
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import React from 'react'
+import { renderToReadableStream } from 'react-dom/server'
+
+declare const wrapHtml: (html: string, ctx: any) => string
+declare const runBeforeHooks: (plugins: any[], ctx: any) => Promise<void>
+declare const runAfterHooks: (plugins: any[], html: string, ctx: any) => Promise<string>
+// ---cut---
+export function createRenderer(templates: Record<string, any>, options: any) {
+  const { outputDir, plugins = [] } = options
+
+  return async function render(templatePath: string, data: any, ctx?: any) {
+    // 1. 获取模板定义
+    const template = templates[templatePath]
+    if (!template) {
+      return { success: false, htmlPath: '', error: `Template is not registered: ${templatePath}` }
+    }
+
+    // 2. 执行 beforeRender 钩子
+    await runBeforeHooks(plugins, { path: templatePath, data, ctx })
+
+    // 3. React 流式 SSR：等 allReady 后一次性读出完整 HTML
+    const stream = await renderToReadableStream(React.createElement(template.component, { data, ctx }))
+    await stream.allReady
+    const bodyHtml = await new Response(stream).text()
+
+    // 4. 执行 afterRender 钩子（可加工 HTML）
+    const html = await runAfterHooks(plugins, bodyHtml, { path: templatePath, data, ctx })
+
+    // 5. 包装 HTML 外壳（内联 CSS + 主题变量），写入文件
+    const filename = templatePath.replace(/\//g, '_') + '.html'
+    const htmlPath = path.join(outputDir, filename)
+    fs.mkdirSync(outputDir, { recursive: true })
+    fs.writeFileSync(htmlPath, wrapHtml(html, ctx), 'utf-8')
+
+    return { success: true, htmlPath }
+  }
+}
+```
+
+### 4. HTML 包装器
+
+```typescript twoslash
+// runtime/html-wrapper.ts（简化示意）
+import type { ThemeContext } from '@karinjs/template-react'
+
+declare const inlineCss: string
+// ---cut---
+export function wrapHtml(bodyHtml: string, options: { theme?: Partial<ThemeContext> }): string {
+  const { theme } = options
+
+  // 只注入显式提供的主题字段；未提供时不输出任何变量，组件库自身主题生效
+  const themeVars = theme ? generateThemeVariables(theme) : ''
+  const mode = theme?.mode
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <style>${inlineCss}</style>
+</head>
+<body class="${mode === 'dark' ? 'dark' : ''}"${mode ? ` data-theme="${mode}"` : ''} style="${themeVars}">
+  <div id="container">${bodyHtml}</div>
+</body>
+</html>`
+}
+
+function generateThemeVariables(theme: Partial<ThemeContext>): string {
+  const vars: string[] = []
+
+  // 变量名与 HeroUI 语义色一一对应，只输出显式提供的字段
+  if (theme.accent) vars.push(`--accent: ${theme.accent}`)
+  if (theme.background) vars.push(`--background: ${theme.background}`)
+  if (theme.foreground) vars.push(`--foreground: ${theme.foreground}`)
+  if (theme.surface) vars.push(`--surface: ${theme.surface}`)
+  if (theme.border) vars.push(`--border: ${theme.border}`)
+  // 其余语义色同理，theme.vars 里的任意变量追加在最后
+
+  return vars.join('; ')
+}
+```
+
+### 5. Puppeteer 截图
+
+Karin 框架接收 HTML 路径，使用 Puppeteer 截图：
+
+```typescript twoslash
+// Karin 框架内部代码（示意）
+import puppeteer from 'puppeteer'
+
+export async function screenshot(htmlPath: string): Promise<Uint8Array> {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  })
+
+  const page = await browser.newPage()
+
+  // 加载 HTML 文件
+  await page.goto(`file://${htmlPath}`, {
+    waitUntil: 'networkidle0'
+  })
+
+  // 获取 #container 元素尺寸
+  const element = await page.$('#container')
+  if (!element) {
+    throw new Error('Container element not found')
+  }
+
+  // 截图
+  const image = await element.screenshot({
+    type: 'png',
+    omitBackground: true // 透明背景
+  })
+
+  await browser.close()
+
+  return image
+}
+```
+
+### 生产态数据流图
+
+```
+┌─────────────────────────┐
+│ Karin 插件调用           │ renderImage('hello/card', data, ctx)
+└──────────┬──────────────┘
+           ↓
+┌─────────────────────────┐
+│ createTemplateRenderer   │ 1. 定位包根
+│                          │ 2. 加载配置
+│                          │ 3. 加载注册表（.ktr/ 或打包产物）
+│                          │ 4. 解析 CSS 路径
+└──────────┬──────────────┘
+           ↓
+┌─────────────────────────┐
+│ createRenderer           │ 1. 获取模板组件
+│                          │ 2. 执行 beforeRender 钩子
+└──────────┬──────────────┘
+           ↓
+┌─────────────────────────┐
+│ React SSR                │ renderToReadableStream(<Component data={data} ctx={ctx} />)
+│                          │ → 生成 HTML 片段
+└──────────┬──────────────┘
+           ↓
+┌─────────────────────────┐
+│ HTML 包装器              │ 1. 内联 CSS
+│                          │ 2. 注入主题变量到 <body> style
+│                          │ 3. 添加 <html>、<head>、<meta>
+└──────────┬──────────────┘
+           ↓
+┌─────────────────────────┐
+│ 插件钩子                 │ afterRender() → 可修改 HTML
+└──────────┬──────────────┘
+           ↓
+┌─────────────────────────┐
+│ 写入文件                 │ dist/template/html/hello_card.html
+└──────────┬──────────────┘
+           ↓
+┌─────────────────────────┐
+│ Puppeteer 截图           │ 1. 加载 HTML
+│                          │ 2. 查找 #container
+│                          │ 3. 截取元素截图
+│                          │ 4. 返回 PNG Buffer
+└─────────────────────────┘
+```
+
+## Mock 数据的三种来源
+
+### 1. TS mock（`mock.ts`）
+
+```typescript twoslash
+// @filename: ./index.tsx
+export interface HelloCardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+// @filename: ./mock.ts
+// ---cut---
+// ktr/template/hello/card/mock.ts
+import type { HelloCardData } from './index'
+
+export const basic = {
+  title: 'Karin Template React',
+  items: [{ label: '渲染方式', value: 'SSR HTML' }]
+} satisfies HelloCardData
+
+export const empty = {
+  title: '空状态',
+  items: []
+} satisfies HelloCardData
+```
+
+特点：
+
+- ✅ **类型安全**：`satisfies` 编译期校验
+- ✅ **代码复用**：插件代码可直接 import
+- ❌ **面板只读**：不可在面板编辑
+- 📍 **适合场景**：固定示例数据，作为标准参考
+
+### 2. JSON mock（`data/*.json`）
+
+```json title="ktr/template/hello/card/data/default.json"
+{
+  "title": "Karin Template React",
+  "items": [
+    { "label": "渲染方式", "value": "SSR HTML" },
+    { "label": "样式方案", "value": "Tailwind CSS v4" }
+  ]
+}
+```
+
+特点：
+
+- ❌ **无类型校验**：运行时解析
+- ✅ **面板可编辑**：新建/编辑/删除/保存
+- ✅ **快速调试**：边改数据边看效果
+- 📍 **适合场景**：多组对照数据，快速迭代样式
+
+### 3. 捕获数据（`data/captured.json`）
+
+自动生成，无需手写：
+
+```typescript twoslash
+// runtime/capture.ts（简化示意）
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+
+export function captureRenderData(templatePath: string, data: any, ctx: any, templateDir: string) {
+  const captureDir = path.join(templateDir, templatePath, 'data')
+
+  // 目录不存在时自动创建
+  fs.mkdirSync(captureDir, { recursive: true })
+
+  // 写入 { data, ctx } 完整快照（覆盖，只保留最近一次）
+  fs.writeFileSync(path.join(captureDir, 'captured.json'), JSON.stringify({ data, ctx }, null, 2))
+}
+```
+
+特点：
+
+- 🤖 **自动记录**：每次真实渲染自动写入
+- 📡 **实时推送**：SSE 推送给面板，自动刷新
+- 🐛 **问题复现**：拿线上真实数据调试
+- 📍 **适合场景**：排查渲染问题，验证边缘情况
+
+### 数据源优先级
+
+Mock API 的加载优先级：**JSON mock > TS mock**
+
+```typescript twoslash
+// dev/mock-api.ts（简化示意）
+import * as fs from 'node:fs'
+
+declare function loadTsMocks(templatePath: string): Promise<Record<string, unknown>>
+// ---cut---
+async function loadData(templatePath: string, dataName: string) {
+  // 1. 优先 JSON mock（面板可编辑）
+  const jsonFile = `${templatePath}/data/${dataName}.json`
+  if (fs.existsSync(jsonFile)) {
+    return JSON.parse(fs.readFileSync(jsonFile, 'utf-8'))
+  }
+
+  // 2. 回退 TS mock（面板只读）
+  const tsMocks = await loadTsMocks(templatePath)
+  if (tsMocks[dataName]) {
+    return tsMocks[dataName]
+  }
+
+  throw new Error('Data entry not found')
+}
+```
+
+同名时 JSON mock 优先；TS mock 在面板中显示只读标记。
+
+## 主题变量下发机制
+
+### 开发态：面板调整主题
+
+```
+用户调整主题抽屉
+       ↓
+面板更新本地状态
+       ↓
+postMessage({ type: 'ktr:theme', payload: { theme } })
+       ↓
+沙盒接收并重新渲染
+       ↓
+组件通过 ctx.theme 访问主题
+```
+
+```typescript twoslash
+// 面板代码
+declare const iframe: HTMLIFrameElement
+declare function setCurrentTheme(theme: any): void
+// ---cut---
+function handleThemeChange(theme: any) {
+  // 发送给沙盒
+  iframe.contentWindow?.postMessage(
+    {
+      source: 'ktr-panel',
+      type: 'ktr:theme',
+      payload: { theme }
+    },
+    '*'
+  )
+
+  // 同时更新面板本地状态
+  setCurrentTheme(theme)
+}
+```
+
+```typescript twoslash
+// 沙盒代码
+declare const currentPath: string
+declare const currentData: unknown
+declare const currentCtx: Record<string, unknown>
+declare function renderTemplate(path: string, data: unknown, ctx: Record<string, unknown>): void
+// ---cut---
+window.addEventListener('message', (event) => {
+  if (event.data.type === 'ktr:theme') {
+    const { theme } = event.data.payload
+
+    // 重新渲染当前模板，传入新主题
+    renderTemplate(currentPath, currentData, { ...currentCtx, theme })
+  }
+})
+```
+
+### 生产态：渲染选项传入
+
+```typescript twoslash
+// @filename: utils/render.ts
+import type { DataOf, LoadedRegistry, RenderContextInput } from '@karinjs/template-react'
+import type { ImageElement } from 'node-karin'
+
+// 插件胶水层封装的渲染函数（快速上手一节有完整实现）
+export declare const renderImage: <K extends keyof LoadedRegistry & string>(
+  templatePath: K,
+  data: DataOf<LoadedRegistry[K]>,
+  ctx?: RenderContextInput
+) => Promise<ImageElement[]>
+// @filename: index.ts
+import { renderImage } from './utils/render'
+
+declare const data: { title: string; items: Array<{ label: string; value: string }> }
+// ---cut---
+await renderImage('hello/card', data, {
+  theme: {
+    mode: 'dark',
+    accent: 'oklch(0.62 0.19 254)',
+    background: 'oklch(0.15 0.01 254)',
+    foreground: 'oklch(0.95 0.01 254)'
+  }
+})
+```
+
+框架将主题变量写入 HTML 的 `<body>` 样式：
+
+```html
+<body
+  class="dark"
+  data-theme="dark"
+  style="--accent: oklch(0.62 0.19 254); --background: oklch(0.15 0.01 254); --foreground: oklch(0.95 0.01 254)"
+>
+  <div id="container">
+    <!-- 组件内容 -->
+  </div>
+</body>
+```
+
+所有后代元素继承 CSS 变量，HeroUI 组件自动应用主题。
+
+### 框架不发明默认主题
+
+<Callout type="warn">
+  **重要**：框架不发明默认主题色。`ctx.theme` 只包含调用方显式提供的字段；没人显式设置时，SSR
+  和面板沙盒都不注入任何颜色变量，组件库按自身默认主题渲染。
+</Callout>
+
+```typescript twoslash
+// runtime/html-wrapper.ts（示意）
+function generateThemeVariables(theme?: any): string {
+  if (!theme) return '' // 未提供主题，不注入任何变量
+
+  const vars: string[] = []
+
+  // 只输出显式提供的字段
+  if (theme.accent !== undefined) vars.push(`--accent: ${theme.accent}`)
+  if (theme.background !== undefined) vars.push(`--background: ${theme.background}`)
+  // ... 其他字段
+
+  return vars.join('; ')
+}
+```
+
+## 数据流调试技巧
+
+### 1. 查看 Mock API 响应
+
+```bash
+# 开发服务器启动后
+curl "http://localhost:5180/__ktr/api/data?path=hello/card&name=basic"
+```
+
+### 2. 监听 postMessage 通信
+
+```javascript
+// 浏览器控制台
+window.addEventListener('message', (event) => {
+  console.log('[postMessage]', event.data)
+})
+```
+
+### 3. 检查生成的 HTML
+
+```bash
+# 生产渲染后
+cat dist/template/html/hello_card.html
+```
+
+### 4. 捕获数据实时查看
+
+```bash
+# 监听 captured.json 变化
+watch -n 1 cat ktr/template/hello/card/data/captured.json
+```
+
+## 下一步
+
+<Cards>
+  <Card title="开发面板架构" href="./dev-panel-architecture" description="面板 + 沙盒的分离设计和通信协议" />
+  <Card title="主题系统" href="./theming" description="HeroUI 主题变量体系和自定义主题" />
+  <Card title="mock 数据" href="/docs/guide/data" description="三类数据源的详细用法" />
+</Cards>

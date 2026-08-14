@@ -1,0 +1,621 @@
+---
+title: 运行时错误详解
+description: Template data validation failed、模板渲染失败、截图失败、CSS 加载失败等运行时错误的完整排查
+---
+
+# 运行时错误详解
+
+运行时错误发生在开发面板预览或真实渲染（Karin 指令触发）时。本页覆盖数据校验失败、SSR 渲染错误、截图失败、CSS 加载失败等场景。
+
+## Template data validation failed
+
+### 症状
+
+开发面板预览或真实渲染时报错：
+
+```text
+Error: Template data validation failed
+```
+
+或者：
+
+```text
+模板渲染失败 hello/card：Template data validation failed
+```
+
+### 原因
+
+传入的 data 没有通过模板定义的 `validate` 函数检查。
+
+### 解决方案
+
+**1. 检查模板的 validate 函数**
+
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+declare const Card: React.FC<TemplateProps<CardData>>
+// ---cut---
+export default defineTemplate({
+  component: Card,
+  validate: (data): data is CardData =>
+    typeof data === 'object' && data !== null && typeof (data as CardData).title === 'string' && Array.isArray((data as CardData).items)
+})
+```
+
+**2. 检查传入的数据**
+
+真实渲染时：
+
+```ts title="src/apps/template.ts" twoslash
+// @filename: ../utils/render.ts
+import type { ImageElement } from 'node-karin'
+
+export declare function renderImage(
+  templatePath: 'hello/card',
+  data: { title: string; items: Array<{ label: string; value: string }> }
+): Promise<ImageElement[]>
+// @filename: index.ts
+// @errors: 2345
+import { renderImage } from '../utils/render'
+
+// ---cut---
+// ❌ 错误：缺少 items 字段
+await renderImage('hello/card', {
+  title: '卡片标题'
+  // 缺少 items
+})
+
+// ✅ 正确：所有必填字段都提供
+await renderImage('hello/card', {
+  title: '卡片标题',
+  items: [{ label: '状态', value: '正常' }]
+})
+```
+
+开发面板预览时，检查 `data/*.json` 或 `mock.ts` 的数据结构。
+
+**3. 改进 validate 提供详细错误信息**
+
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+declare const Card: React.FC<TemplateProps<CardData>>
+// ---cut---
+export default defineTemplate({
+  component: Card,
+  validate: (data): data is CardData => {
+    if (typeof data !== 'object' || data === null) {
+      console.error('[validate] data 不是对象:', data)
+      return false
+    }
+    const d = data as CardData
+    if (typeof d.title !== 'string') {
+      console.error('[validate] title 不是字符串:', d.title)
+      return false
+    }
+    if (!Array.isArray(d.items)) {
+      console.error('[validate] items 不是数组:', d.items)
+      return false
+    }
+    return true
+  }
+})
+```
+
+控制台会打印具体哪个字段不符合预期。
+
+**4. 临时禁用 validate 调试**
+
+注释掉 `validate` 字段，看组件能否正常渲染：
+
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+interface CardData {
+  title: string
+  items: any[]
+}
+declare const Card: React.FC<TemplateProps<CardData>>
+// ---cut---
+export default defineTemplate({
+  component: Card
+  // validate: ... ← 临时注释
+})
+```
+
+如果渲染成功，说明是 validate 逻辑过严；如果仍然失败，说明是组件本身的问题。
+
+---
+
+## 模板渲染失败：React 组件错误
+
+### 症状
+
+```text
+Error: Objects are not valid as a React child (found: object with keys {x, y})
+```
+
+或者：
+
+```text
+TypeError: Cannot read properties of undefined (reading 'map')
+```
+
+### 原因
+
+组件代码访问了不存在的字段、或直接渲染了对象（React 不支持）。
+
+### 解决方案
+
+**1. 检查字段访问**
+
+```tsx title="ktr/template/hello/card/index.tsx（错误）" twoslash
+// @errors: 18048
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+  items?: Array<{ label: string; value: string }>
+}
+
+// ❌ items 可能是 undefined
+const Card = ({ data }: TemplateProps<CardData>) => (
+  <div>
+    {data.items.map((item) => (
+      <div key={item.label}>{item.label}</div>
+    ))}
+  </div>
+)
+
+export default defineTemplate({ component: Card })
+```
+
+修复：
+
+```tsx title="ktr/template/hello/card/index.tsx（正确）" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+  items?: Array<{ label: string; value: string }>
+}
+
+// ✅ 可选字段加可选链或默认值
+const Card = ({ data }: TemplateProps<CardData>) => (
+  <div>{data.items?.map((item) => <div key={item.label}>{item.label}</div>) ?? <div>暂无数据</div>}</div>
+)
+
+export default defineTemplate({ component: Card })
+```
+
+**2. 避免直接渲染对象**
+
+```tsx title="ktr/template/hello/card/index.tsx（错误）" twoslash
+// @errors: 2322
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  user: { name: string; age: number }
+}
+
+// ❌ 直接渲染对象
+const Card = ({ data }: TemplateProps<CardData>) => <div>{data.user}</div>
+
+export default defineTemplate({ component: Card })
+```
+
+修复：
+
+```tsx title="ktr/template/hello/card/index.tsx（正确）" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  user: { name: string; age: number }
+}
+
+// ✅ 只渲染字符串或数字
+const Card = ({ data }: TemplateProps<CardData>) => (
+  <div>
+    {data.user.name} ({data.user.age}岁)
+  </div>
+)
+
+export default defineTemplate({ component: Card })
+```
+
+**3. 在开发面板调试**
+
+开发面板会展示完整的 React 错误栈，打开浏览器 DevTools Console 查看详细错误信息。
+
+---
+
+## 截图失败：Puppeteer 超时
+
+### 症状
+
+```text
+Error: Navigation timeout of 30000 ms exceeded
+```
+
+或者：
+
+```text
+Error: Execution context was destroyed, most likely because of a navigation
+```
+
+### 原因
+
+Puppeteer 打开 HTML 超时、或页面加载过慢、或 SSR 生成的 HTML 有 JavaScript 错误。
+
+### 解决方案
+
+**1. 增加截图超时时间**
+
+```ts title="src/utils/render.ts" twoslash
+import { render, segment, type ImageElement } from 'node-karin'
+import type { LoadedRegistry, DataOf } from '@karinjs/template-react'
+type Registry = LoadedRegistry
+declare const dir: { pluginName: string }
+declare const renderTemplate: (route: string, data: any) => Promise<{ success: boolean; htmlPath: string }>
+// ---cut---
+export const renderImage = async <K extends keyof Registry & string>(
+  templatePath: K,
+  data: DataOf<Registry[K]>,
+  options?: Record<string, unknown>
+): Promise<ImageElement[]> => {
+  const { success, htmlPath } = await renderTemplate(templatePath, data)
+  if (!success) throw new Error('渲染失败')
+
+  const result = await render.render({
+    name: `plugin/${templatePath}`,
+    file: htmlPath,
+    selector: '#container',
+    type: 'png',
+    omitBackground: true,
+    timeout: 60000, // ← 增加到 60 秒
+    ...options
+  })
+
+  const list = Array.isArray(result) ? result : [result]
+  return list.map((img) => segment.image(`base64://${img}`))
+}
+```
+
+**2. 检查 HTML 是否能正常打开**
+
+找到 SSR 生成的 HTML 文件（通常在 `karinPathHtml/<插件名>/` 下），用浏览器直接打开，看是否有 JavaScript 错误。
+
+**3. 检查网络资源**
+
+如果模板引用了外部图片或字体（CDN），确保网络可达：
+
+```tsx title="ktr/template/hello/card/index.tsx（错误）" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+// ❌ 外部图片可能加载慢或失败
+const Card = ({ data }: TemplateProps<any>) => (
+  <div>
+    <img src="https://example.com/slow-image.png" alt="" />
+  </div>
+)
+
+export default defineTemplate({ component: Card })
+```
+
+改用本地静态资源：
+
+```tsx title="ktr/template/hello/card/index.tsx（正确）" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+// ✅ 本地静态资源
+const Card = ({ data }: TemplateProps<any>) => (
+  <div>
+    <img src="/logo.png" alt="" />
+  </div>
+)
+
+export default defineTemplate({ component: Card })
+```
+
+**4. 禁用 JavaScript（SSR 不应依赖客户端 JS）**
+
+SSR 生成的 HTML 应该是完全静态的，不依赖浏览器执行 JavaScript。检查组件是否误用了浏览器 API：
+
+```tsx title="ktr/template/hello/card/index.tsx（错误）" twoslash
+// @errors: 2304
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+// ❌ SSR 时 window 不存在
+const Card = ({ data }: TemplateProps<any>) => {
+  const width = window.innerWidth
+  return <div style={{ width }}>内容</div>
+}
+
+export default defineTemplate({ component: Card })
+```
+
+修复：
+
+```tsx title="ktr/template/hello/card/index.tsx（正确）" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+// ✅ 写死尺寸或从 data 传入
+const Card = ({ data }: TemplateProps<{ width: number }>) => <div style={{ width: data.width }}>内容</div>
+
+export default defineTemplate({ component: Card })
+```
+
+---
+
+## CSS 加载失败或样式不生效
+
+### 症状
+
+真实渲染的截图里，所有 Tailwind 类名（如 `bg-background`、`text-foreground`）都不生效，但开发面板预览正常。
+
+### 原因
+
+生产环境的 CSS 路径配置错误、或产物目录中的 `style.css` 未生成。
+
+### 解决方案
+
+**1. 检查构建产物**
+
+确保产物目录里 `style.css` 存在（`createTemplateRenderer` 默认按 `lib/style.css` 发现，自定义 outDir 时用 `renderer.cssPath` 显式指定）：
+
+```bash
+ls -la lib/style.css
+```
+
+缺失时检查 `ktrBuildPlugin` 配置（见 [构建问题详解 - CSS 未生成](/docs/troubleshooting/build-issues#css-未生成到产物目录)）。
+
+**2. 检查 CSS 是否内联到 HTML**
+
+SSR 生成的 HTML 应该包含内联的 `<style>` 标签：
+
+```bash
+# 找到 SSR 生成的 HTML 文件
+find ~/.karin/temp/html -name "*.html" -type f | head -1 | xargs head -50
+```
+
+输出应包含：
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      /* Tailwind reset + HeroUI 样式 + 实际用到的类 */
+      *,
+      ::before,
+      ::after {
+        box-sizing: border-box;
+      }
+      /* ... */
+    </style>
+  </head>
+  <body>
+    <div id="container"><!-- 模板内容 --></div>
+  </body>
+</html>
+```
+
+如果 `<style>` 标签是空的或不存在，说明 CSS 注入失败。
+
+**3. 检查 extraStylePaths 配置**
+
+如果自定义了额外样式路径，确保文件存在：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  extraStylePaths: [
+    'ktr/template/custom.css' // ← 确保文件存在
+  ]
+})
+```
+
+**4. 清理缓存重新构建**
+
+```bash
+rm -rf node_modules/.vite lib/
+pnpm install
+vite build
+```
+
+---
+
+## 截图透明背景失效
+
+### 症状
+
+模板给根元素设置了 `rounded-3xl`，但截图还是直角矩形，或者透明背景变成了白色。
+
+### 原因
+
+`render.render` 的 `omitBackground` 未设置或模板根元素有不透明背景色。
+
+### 解决方案
+
+**1. 确保 omitBackground: true**
+
+```ts title="src/utils/render.ts" twoslash
+import { render } from 'node-karin'
+declare const htmlPath: string
+declare const dir: { pluginName: string }
+// ---cut---
+const result = await render.render({
+  name: `${dir.pluginName}/hello/card`,
+  file: htmlPath,
+  selector: '#container',
+  type: 'png',
+  omitBackground: true // ✅ 必须启用
+})
+```
+
+**2. 模板根元素不要设置不透明背景**
+
+```tsx title="ktr/template/hello/card/index.tsx（错误）" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+// ❌ bg-white 是不透明的
+const Card = ({ data }: TemplateProps<any>) => <div className="rounded-3xl bg-white p-8">内容</div>
+
+export default defineTemplate({ component: Card })
+```
+
+修复：
+
+```tsx title="ktr/template/hello/card/index.tsx（正确）" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+// ✅ 用语义类 bg-background，继承主题
+const Card = ({ data }: TemplateProps<any>) => <div className="rounded-3xl bg-background p-8">内容</div>
+
+export default defineTemplate({ component: Card })
+```
+
+**3. 需要裁剪内部内容时加 overflow-hidden**
+
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+// ✅ overflow-hidden 确保内部内容不超出圆角
+const Card = ({ data }: TemplateProps<any>) => (
+  <div className="overflow-hidden rounded-3xl bg-background p-8">
+    <img src="/wide-image.png" alt="" className="w-full" />
+  </div>
+)
+
+export default defineTemplate({ component: Card })
+```
+
+---
+
+## 开发面板 WebSocket 连接失败
+
+### 症状
+
+开发面板浏览器 Console 报错：
+
+```text
+[vite] failed to connect to websocket.
+[vite] WebSocket connection to 'ws://localhost:5180/' failed
+```
+
+修改模板或数据后预览不更新。
+
+### 原因
+
+Vite HMR WebSocket 被阻断、或代理配置错误。
+
+### 解决方案
+
+详见 [常见问题 - 热更新不工作](/docs/troubleshooting/common-issues#热更新不工作)。
+
+---
+
+## renderImage 调用成功但 reply 不显示图片
+
+### 症状
+
+```ts title="src/apps/template.ts"
+const images = await renderImage('hello/card', {/* ... */})
+await event.reply(images)
+// 指令执行成功但群里没有图片
+```
+
+Karin 日志显示指令执行成功，但用户收不到图片。
+
+### 原因
+
+`renderImage` 返回的图片元素格式错误、或 base64 编码问题。
+
+### 解决方案
+
+**1. 检查返回值结构**
+
+```ts title="src/utils/render.ts" twoslash
+import { render, segment, type ImageElement } from 'node-karin'
+declare const result: string | string[]
+// ---cut---
+// ✅ 确保返回 ImageElement[]
+const list = Array.isArray(result) ? result : [result]
+const images: ImageElement[] = list.map((img) => segment.image(`base64://${img}`))
+```
+
+**2. 打印调试信息**
+
+```ts title="src/apps/template.ts" twoslash
+// @filename: ../utils/render.ts
+import type { ImageElement } from 'node-karin'
+
+export declare function renderImage(
+  templatePath: 'hello/card',
+  data: { title: string; items: Array<{ label: string; value: string }> }
+): Promise<ImageElement[]>
+// @filename: index.ts
+import { renderImage } from '../utils/render'
+declare const event: any
+
+// ---cut---
+const images = await renderImage('hello/card', { title: '测试', items: [] })
+console.log('渲染结果:', images)
+console.log('图片数量:', images.length)
+console.log('第一张图片类型:', images[0]?.type)
+
+await event.reply(images)
+```
+
+输出应该类似：
+
+```text
+渲染结果: [ { type: 'image', file: 'base64://iVBORw0KGgo...' } ]
+图片数量: 1
+第一张图片类型: image
+```
+
+**3. 检查 base64 前缀**
+
+```ts title="src/utils/render.ts"
+// ✅ 正确：base64:// 双斜杠
+segment.image(`base64://${img}`)
+
+// ❌ 错误：单斜杠
+// segment.image(`base64:/${img}`)
+```
+
+**4. 测试直接回复 base64**
+
+```ts title="src/apps/template.ts" twoslash
+import { karin, segment } from 'node-karin'
+
+// 测试 karin 的图片发送是否正常
+export const testImage = karin.command('^#测试图片$', async (event) => {
+  // 1x1 透明 PNG 的 base64
+  const testBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+  await event.reply([segment.image(`base64://${testBase64}`)])
+  return true
+})
+```
+
+如果测试图片能发送，说明是 `renderImage` 的问题；如果测试图片也发不出，说明是 Karin 配置或网络问题。
+
+---
+
+## 相关资源
+
+<Cards>
+  <Card title="常见问题" href="/docs/troubleshooting/common-issues" description="高频问题快速诊断" />
+  <Card title="构建问题详解" href="/docs/troubleshooting/build-issues" description="CSS 未生成、注册表未同步" />
+  <Card title="类型问题详解" href="/docs/troubleshooting/type-issues" description="模块增强不生效、类型丢失" />
+</Cards>

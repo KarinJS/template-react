@@ -1,0 +1,618 @@
+---
+title: 类型问题详解
+description: .ktr/registry-types.d.ts 不生效、renderImage 类型丢失、TemplateProps 推导失败、tsx 配置问题的完整排查
+---
+
+# 类型问题详解
+
+TypeScript 类型系统是 ktr 的核心优势——路由补全、data 字段检查全靠模块增强声明。本页讲类型失效的所有可能原因与解决方案。
+
+## .ktr/registry-types.d.ts 不生效
+
+### 症状
+
+`renderImage` 的第一个参数（路由）没有自动补全，第二个参数（data）类型是 `any`：
+
+```ts title="src/apps/template.ts"
+// ❌ 'hello/card' 没有提示，data 类型丢失
+await renderImage('hello/card', {/* 任意字段都不报错 */})
+```
+
+或者 VSCode 报红：
+
+```text
+Cannot find module '@karinjs/template-react/registry-types' or its corresponding type declarations.
+```
+
+### 原因
+
+`.ktr/registry-types.d.ts` 未生成、生成后 TypeScript 编译器未加载、或模块增强声明被 `exclude` 排除。
+
+### 解决方案
+
+**1. 执行 sync 生成类型文件**
+
+```bash
+pnpm ktr sync
+```
+
+检查 `.ktr/` 目录是否有三个文件：
+
+```bash
+ls -la .ktr/
+# 应输出：
+# template-registry.ts
+# mock-registry.ts
+# registry-types.d.ts  ← 类型增强声明
+```
+
+`registry-types.d.ts` 的结构示例：
+
+```ts title=".ktr/registry-types.d.ts" twoslash
+// @filename: ../ktr/template/hello/card/index.tsx
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface HelloCardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+
+const Card = ({ data }: TemplateProps<HelloCardData>) => null
+
+export default defineTemplate({ component: Card })
+// @filename: ../ktr/template/hello/list/index.tsx
+import { defineTemplate } from '@karinjs/template-react'
+export default defineTemplate({ component: () => null })
+// @filename: index.ts
+import type {} from '@karinjs/template-react/registry-types'
+// ---cut---
+// .ktr/registry-types.d.ts（框架自动生成）
+export {}
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': typeof import('../ktr/template/hello/card/index.tsx').default
+    'hello/list': typeof import('../ktr/template/hello/list/index.tsx').default
+  }
+}
+```
+
+缺失时执行 `pnpm ktr sync`；存在但内容为空时检查 `ktr/template/` 是否有模板文件。
+
+**2. 重启 TypeScript 服务器**
+
+VSCode 按 `Ctrl+Shift+P`（macOS `Cmd+Shift+P`），运行 `TypeScript: Restart TS Server`。
+
+或者重启 IDE。
+
+**3. 检查 tsconfig.json**
+
+确保 `.ktr/` 没有被 `exclude` 排除：
+
+```json title="tsconfig.json" twoslash
+// @errors: 18046
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "types": []
+  },
+  "include": ["src", "ktr", ".ktr"],
+  "exclude": ["node_modules", "lib"]
+}
+```
+
+<Callout type="error">
+  **不要**把 `.ktr/` 加到 `files` 或 `include` 数组——类型增强声明是全局的（`declare module`），TypeScript 编译器会自动发现。显式 include
+  反而可能导致重复声明错误。
+</Callout>
+
+实际上正确的做法是**完全不管** `.ktr/`，让 TypeScript 自己发现：
+
+```json title="tsconfig.json（推荐）" twoslash
+{
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "include": ["src", "ktr"],
+  "exclude": ["node_modules", "lib", ".ktr"]
+}
+```
+
+模块增强声明通过 `.d.ts` 文件自动生效，不需要 import。
+
+**4. 检查 types 字段**
+
+`tsconfig.json` 的 `compilerOptions.types` 如果是空数组，会禁用所有自动类型发现：
+
+```json title="tsconfig.json（错误）"
+{
+  "compilerOptions": {
+    "types": [] // ← 禁用自动类型发现
+  }
+}
+```
+
+删掉该字段，或显式加上包名（不推荐）：
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "types": ["node", "@karinjs/template-react"]
+  }
+}
+```
+
+最佳实践是删掉 `types` 字段，让 TypeScript 自动发现。
+
+---
+
+## renderImage 类型丢失
+
+### 症状
+
+`renderImage` 调用时路由和 data 都没有类型提示，IDE 不报错但运行时渲染失败：
+
+```ts title="src/apps/template.ts" twoslash
+// @filename: ../utils/render.ts
+// 错误示范：签名没用注册表类型，路由和 data 都是宽松类型
+export declare function renderImage(templatePath: string, data: any): Promise<any>
+// @filename: index.ts
+// ---cut---
+import { renderImage } from '../utils/render'
+
+// ❌ 路由字符串任意写，data 结构错误也不报红
+await renderImage('hello/card', { wrongField: 123 })
+```
+
+### 原因
+
+`renderImage` 函数签名未使用 `LoadedRegistry` 类型，或 `DataOf` 工具类型未正确提取数据类型。
+
+### 解决方案
+
+检查 `src/utils/render.ts` 的类型声明：
+
+```ts title="src/utils/render.ts（正确）" twoslash
+import { render, segment, type ImageElement } from 'node-karin'
+import { createTemplateRenderer, type DataOf, type LoadedRegistry } from '@karinjs/template-react'
+
+declare const dir: { pluginName: string }
+declare const renderTemplate: ReturnType<typeof createTemplateRenderer>
+
+// ---cut---
+/** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
+type Registry = LoadedRegistry
+
+/**
+ * 渲染模板并交给 Karin Puppeteer 截图，返回可直接 reply 的图片消息元素。
+ */
+export const renderImage = async <K extends keyof Registry & string>(
+  templatePath: K,
+  data: DataOf<Registry[K]>,
+  options?: Record<string, unknown>
+): Promise<ImageElement[]> => {
+  const { success, htmlPath, error } = await renderTemplate(templatePath, data)
+  if (!success) {
+    throw new Error(`模板渲染失败 ${templatePath}：${error}`)
+  }
+
+  const result = await render.render({
+    name: `${dir.pluginName}/${templatePath}`,
+    file: htmlPath,
+    selector: '#container',
+    type: 'png',
+    omitBackground: true,
+    ...options
+  })
+
+  const list = Array.isArray(result) ? result : [result]
+  return list.map((img) => segment.image(`base64://${img}`))
+}
+```
+
+关键点：
+
+1. `type Registry = LoadedRegistry` —— 拿到模块增强后的注册表类型
+2. `<K extends keyof Registry & string>` —— 路由必须是注册表的键
+3. `data: DataOf<Registry[K]>` —— 从对应模板定义里提取 data 类型
+
+**常见错误**：
+
+```ts title="src/utils/render.ts（错误）" twoslash
+// ❌ 泛型约束丢失：路由是任意 string，data 是 any
+export const renderImage = async (templatePath: string, data: any) => {
+  /* ... */
+}
+
+// ❌ 这样也不算数：keyof any 等于没有约束
+// export const renderImage = async <K extends keyof any>(templatePath: K, data: any) => { ... }
+```
+
+---
+
+## TemplateProps 推导失败
+
+### 症状
+
+模板组件的 props 没有类型提示，`data` 是 `any`：
+
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+
+// ❌ data 类型丢失：泛型写成了 any
+const Card = ({ data }: TemplateProps<any>) => (
+  <div>{data.title}</div>
+  //      ^?
+)
+```
+
+### 原因
+
+`TemplateProps` 的泛型参数写成了 `any`（或 props 完全没标注），`data` 退化为 `any`。
+
+### 解决方案
+
+显式传入数据类型：
+
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+
+// ✅ 显式传入泛型参数
+const Card = ({ data }: TemplateProps<CardData>) => (
+  <div>{data.title}</div>
+  //         ^? (property) title: string
+)
+
+export default defineTemplate({ component: Card })
+```
+
+或者用组件泛型（React 18.3+）：
+
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+
+// ✅ 组件泛型自动推导
+const Card = <D extends CardData>({ data }: TemplateProps<D>) => <div>{data.title}</div>
+
+export default defineTemplate({ component: Card })
+```
+
+---
+
+## tsx 配置问题
+
+### 症状
+
+`.tsx` 文件报错：
+
+```text
+Cannot use JSX unless the '--jsx' flag is provided.
+```
+
+或者运行时报错：
+
+```text
+ReferenceError: React is not defined
+```
+
+### 原因
+
+`tsconfig.json` 的 `jsx` 字段未设置或设置为 `preserve`，导致 TypeScript 不转换 JSX 语法，或转换后需要手动 import React。
+
+### 解决方案
+
+在 `tsconfig.json` 里设置 `jsx: "react-jsx"`：
+
+```json title="tsconfig.json" twoslash
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
+  }
+}
+```
+
+`react-jsx` 模式下不需要手动 `import React`，组件直接写：
+
+```tsx title="ktr/template/hello/card/index.tsx"
+// ✅ 不需要 import React
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+const Card = ({ data }: TemplateProps<any>) => <div>Hello</div>
+
+export default defineTemplate({ component: Card })
+```
+
+**常见错误配置**：
+
+```json title="tsconfig.json（错误）"
+{
+  "compilerOptions": {
+    "jsx": "preserve" // ← 不转换 JSX，留给 Babel，但 ktr 没有 Babel
+  }
+}
+```
+
+```json title="tsconfig.json（错误）"
+{
+  "compilerOptions": {
+    "jsx": "react" // ← 旧模式，需要手动 import React
+  }
+}
+```
+
+`ktr init` 会自动给 `tsconfig.json` 补上 `jsx: "react-jsx"`，手动创建项目时容易遗漏。
+
+---
+
+## 动态路由无类型提示
+
+### 症状
+
+路由来自用户输入（如指令参数），`renderImage` 无法推导类型：
+
+```ts title="src/apps/template.ts" twoslash
+// @filename: ../utils/render.ts
+import type { ImageElement } from 'node-karin'
+
+export declare function renderImage(
+  templatePath: 'hello/card',
+  data: { title: string; items: Array<{ label: string; value: string }> }
+): Promise<ImageElement[]>
+// @filename: index.ts
+// @errors: 2345
+import { renderImage } from '../utils/render'
+declare const event: { msg: string }
+// ---cut---
+// ❌ route 类型是 string，不是字面量类型，无法匹配模板路由
+const route = event.msg.replace('#渲染 ', '')
+await renderImage(route, {/* 任意字段 */})
+```
+
+### 原因
+
+泛型约束 `K extends keyof Registry & string` 要求字面量类型，变量 `route` 是宽泛的 `string`，类型推导失败。
+
+### 解决方案
+
+**方案 1：类型断言（不安全）**
+
+```ts title="src/apps/template.ts" twoslash
+import type { LoadedRegistry } from '@karinjs/template-react'
+type Registry = LoadedRegistry
+declare function renderImage<K extends keyof Registry & string>(templatePath: K, data: any): Promise<any>
+declare const event: { msg: string }
+// ---cut---
+const route = event.msg.replace('#渲染 ', '') as keyof Registry
+await renderImage(route, {/* data 类型仍是 any */})
+```
+
+类型断言只骗过编译器，data 类型仍无法推导。
+
+**方案 2：运行时枚举（推荐）**
+
+白名单模式，用 switch 或 Map 把路由映射到类型安全的调用：
+
+```ts title="src/apps/template.ts" twoslash
+// @filename: ../utils/render.ts
+import type { ImageElement } from 'node-karin'
+
+export declare function renderImage(
+  templatePath: 'hello/card',
+  data: { title: string; items: Array<{ label: string; value: string }> }
+): Promise<ImageElement[]>
+export declare function renderImage(
+  templatePath: 'hello/list',
+  data: { title: string; users: Array<{ name: string; role: string; score: number }> }
+): Promise<ImageElement[]>
+// @filename: index.ts
+import { renderImage } from '../utils/render'
+declare const event: { msg: string; reply: (img: any) => Promise<void> }
+// ---cut---
+const route = event.msg.replace('#渲染 ', '')
+
+switch (route) {
+  case 'hello/card':
+    await event.reply(
+      await renderImage('hello/card', {
+        title: '卡片标题',
+        items: [{ label: '状态', value: '正常' }]
+      })
+    )
+    break
+  case 'hello/list':
+    await event.reply(
+      await renderImage('hello/list', {
+        title: '列表标题',
+        users: [{ name: '用户1', role: '角色1', score: 100 }]
+      })
+    )
+    break
+  default:
+    await event.reply('未知模板路由')
+}
+```
+
+每个 case 里的 `renderImage` 调用都有完整类型检查。
+
+**方案 3：validate 兜底（半安全）**
+
+放宽类型约束，靠模板的 `validate` 函数做运行时兜底：
+
+```ts title="src/apps/template.ts" twoslash
+import type { LoadedRegistry } from '@karinjs/template-react'
+type Registry = LoadedRegistry
+declare function renderTemplate(route: string, data: unknown): Promise<{ success: boolean; error?: string }>
+declare const event: { msg: string }
+// ---cut---
+const route = event.msg.replace('#渲染 ', '')
+
+// 类型不安全，data 是 unknown
+const result = await renderTemplate(route, {/* 任意数据 */})
+
+if (!result.success) {
+  throw new Error(`渲染失败：${result.error}`)
+}
+```
+
+模板定义时必须写 `validate`：
+
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+declare const Card: React.FC<TemplateProps<CardData>>
+// ---cut---
+export default defineTemplate({
+  component: Card,
+  validate: (data): data is CardData =>
+    typeof data === 'object' && data !== null && typeof (data as CardData).title === 'string' && Array.isArray((data as CardData).items)
+})
+```
+
+validate 返回 `false` 时 SSR 直接报错 `Template data validation failed`，不会生成 HTML。
+
+---
+
+## monorepo 里类型失效
+
+### 症状
+
+在 monorepo（pnpm workspace、Turborepo、Nx）里，类型增强声明完全不生效，`LoadedRegistry` 始终是空接口。
+
+### 原因
+
+TypeScript 的模块解析策略在 monorepo 里可能找不到 `.ktr/registry-types.d.ts`，或 workspace 协议导致包路径解析错误。
+
+### 解决方案
+
+**1. 确保 tsconfig.json 在插件包根目录**
+
+```text
+packages/my-plugin/
+├── tsconfig.json  ← 必须在这里
+├── ktr/
+│   └── template/
+└── .ktr/
+    └── registry-types.d.ts
+```
+
+**2. 检查 TypeScript 项目引用**
+
+如果用了 TypeScript 项目引用（`references`），确保插件包的 `tsconfig.json` 没有被父配置覆盖：
+
+```json title="packages/my-plugin/tsconfig.json"
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "composite": false // ← 禁用复合项目模式
+  },
+  "include": ["src", "ktr"]
+}
+```
+
+**3. 重新生成类型声明**
+
+```bash
+cd packages/my-plugin
+pnpm ktr sync
+```
+
+检查 `.ktr/registry-types.d.ts` 的 `declare module` 路径是否正确：
+
+```ts title=".ktr/registry-types.d.ts"
+// ✅ 正确：绝对路径
+declare module '@karinjs/template-react/registry-types' {
+  interface LoadedRegistry {
+    /* ... */
+  }
+}
+
+// ❌ 错误：相对路径
+declare module '../node_modules/@karinjs/template-react/registry-types' {
+  interface LoadedRegistry {
+    /* ... */
+  }
+}
+```
+
+相对路径说明 ktr 的包根定位失败，检查依赖是否安装在插件包自己的 `node_modules` 里（见 [依赖问题详解 - monorepo](/docs/troubleshooting/dependency-issues#monorepo)）。
+
+---
+
+## VSCode 重启后类型又失效
+
+### 症状
+
+每次打开项目都要手动 `Restart TS Server` 才能恢复类型提示。
+
+### 原因
+
+VSCode 的 TypeScript 插件缓存了旧的类型状态，`.ktr/` 更新后没有自动失效。
+
+### 解决方案
+
+**1. 清理 VSCode 缓存**
+
+关闭 VSCode，删除项目的 `.vscode` 缓存：
+
+```bash
+rm -rf .vscode
+```
+
+**2. 启用 TypeScript 的 watchOptions**
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "watchOptions": {
+    "watchFile": "useFsEvents",
+    "watchDirectory": "useFsEvents"
+  }
+}
+```
+
+**3. 在 package.json scripts 里加钩子**
+
+每次启动开发服务器时先 sync：
+
+```json title="package.json"
+{
+  "scripts": {
+    "dev": "ktr sync && karin dev",
+    "template": "ktr sync && ktr dev"
+  }
+}
+```
+
+---
+
+## 相关资源
+
+<Cards>
+  <Card title="常见问题" href="/docs/troubleshooting/common-issues" description="高频问题快速诊断" />
+  <Card title="依赖问题详解" href="/docs/troubleshooting/dependency-issues" description="React 版本冲突、monorepo 场景" />
+  <Card title="模板定义 API" href="/docs/api/define-template" description="defineTemplate、TemplateProps、DataOf" />
+</Cards>

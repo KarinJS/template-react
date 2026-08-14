@@ -1,0 +1,338 @@
+---
+title: 常见问题
+description: 依赖安装失败、类型不生效、样式不生效、热更新不工作、构建失败等高频问题的快速诊断与解决
+---
+
+# 常见问题
+
+本页汇总 React + Tailwind + TypeScript 模板开发中最高频的问题，每个问题都给出症状、原因和完整解决方案。
+
+## 依赖安装失败
+
+### 症状
+
+```bash
+pnpm install
+# ERR_PNPM_PEER_DEP_ISSUES  Unmet peer dependencies
+```
+
+或者 `npm install` 报 `ERESOLVE unable to resolve dependency tree`。
+
+### 原因
+
+React 版本冲突或 peer dependencies 不匹配。`@karinjs/template-react` 要求 React 18.3+，如果项目里已有旧版 React 或其他包锁定了不兼容的版本，包管理器拒绝安装。
+
+### 解决方案
+
+**1. 检查现有 React 版本**
+
+```bash
+pnpm list react react-dom
+```
+
+如果版本低于 18.3，先升级：
+
+```json title="package.json" twoslash
+{
+  "devDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
+```
+
+**2. 清理缓存重装**
+
+```bash
+rm -rf node_modules pnpm-lock.yaml
+pnpm install
+```
+
+**3. pnpm 用户：允许 peer 警告**
+
+```bash
+pnpm install --no-strict-peer-dependencies
+```
+
+或在 `.npmrc` 里永久设置：
+
+```ini title=".npmrc"
+strict-peer-dependencies=false
+```
+
+<Callout type="warn">
+  monorepo 场景见 [依赖问题详解](/docs/troubleshooting/dependency-issues#monorepo)，workspace 协议和 hoisting 配置需要额外处理。
+</Callout>
+
+---
+
+## 类型不生效
+
+### 症状
+
+`renderImage` 的路由和 data 参数失去类型提示，或 VSCode 报 `Cannot find module '@karinjs/template-react/registry-types'`。
+
+### 原因
+
+`.ktr/registry-types.d.ts` 未生成或 TypeScript 编译器未加载模块增强声明。
+
+### 解决方案
+
+**1. 执行 sync 生成类型文件**
+
+```bash
+pnpm ktr sync
+```
+
+成功后 `.ktr/` 目录应该有三个文件：
+
+```text
+.ktr/
+├── template-registry.ts
+├── mock-registry.ts
+└── registry-types.d.ts  ← 类型增强声明
+```
+
+**2. 重启 TypeScript 服务器**
+
+VSCode 按 `Ctrl+Shift+P`（macOS `Cmd+Shift+P`），运行 `TypeScript: Restart TS Server`。
+
+**3. 检查 tsconfig.json**
+
+确保 `.ktr/` 没有被 `exclude` 排除：
+
+```json title="tsconfig.json" twoslash
+// @errors: 18046
+{
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "include": ["src", "ktr", ".ktr"],
+  "exclude": ["node_modules", "lib"]
+}
+```
+
+<Callout>
+  模块增强声明对 `@karinjs/template-react` 主包生效，不需要 import `.ktr/` 里的任何文件。类型「不灵了」时先跑一次 `pnpm ktr sync`。
+</Callout>
+
+完整排查见 [类型问题详解](/docs/troubleshooting/type-issues)。
+
+---
+
+## 样式不生效
+
+### 症状
+
+开发面板或真实渲染的截图里，所有 Tailwind 类名（如 `bg-background`、`text-foreground`）都不生效，元素呈现浏览器默认样式。
+
+### 原因
+
+`ktr/template/style.css` 缺失、入口路径配置错误、或 Tailwind 扫描路径不包含模板目录。
+
+### 解决方案
+
+**1. 检查 CSS 入口文件**
+
+确保 `ktr/template/style.css` 存在且内容正确：
+
+```css title="ktr/template/style.css"
+@import 'tailwindcss';
+@import '@karinjs/template-react/styles';
+@source './**/*.{ts,tsx}';
+```
+
+缺失时手动创建，或重新执行 `pnpm ktr init` 选择生成。
+
+**2. 验证扫描路径**
+
+`@source './**/*.{ts,tsx}'` 告诉 Tailwind 扫描 `ktr/template/` 下的所有 `.ts` 和 `.tsx` 文件。如果模板放在别的目录，调整为相对 `style.css` 的路径。
+
+**3. 清理 Vite 缓存**
+
+```bash
+rm -rf node_modules/.vite
+pnpm ktr dev
+```
+
+**4. 检查主题覆盖**
+
+如果自己写了 `@theme { ... }` 块，删掉改用变量覆盖：
+
+```css title="ktr/template/style.css"
+@import 'tailwindcss';
+@import '@karinjs/template-react/styles';
+@source './**/*.{ts,tsx}';
+
+/* ✅ 正确：覆盖变量 */
+:root {
+  --accent: oklch(0.62 0.19 254);
+}
+
+/* ❌ 错误：会盖掉 HeroUI 的 @theme inline */
+/* @theme { --color-accent: var(--accent); } */
+```
+
+---
+
+## 热更新不工作
+
+### 症状
+
+修改模板组件或 `data/*.json` 保存后，开发面板预览没有自动刷新，必须手动刷新浏览器。
+
+### 原因
+
+Vite HMR 连接断开、WebSocket 被代理或防火墙阻断、或文件监听失败。
+
+### 解决方案
+
+**1. 检查控制台错误**
+
+浏览器 DevTools Console 里看是否有 WebSocket 连接失败：
+
+```text
+[vite] failed to connect to websocket.
+[vite] WebSocket connection to 'ws://localhost:5180/' failed
+```
+
+**2. 代理场景配置 WebSocket**
+
+如果通过 Nginx 或其他代理访问面板，确保代理转发 WebSocket：
+
+```nginx
+location / {
+  proxy_pass http://localhost:5180;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+}
+```
+
+**3. WSL / 虚拟机场景**
+
+Vite 默认用 `localhost`，WSL 或虚拟机里可能监听不到宿主机访问。改为监听所有接口：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dev: {
+    host: '0.0.0.0',
+    port: 5180
+  }
+})
+```
+
+**4. 文件系统监听问题**
+
+某些 Linux 发行版默认的 inotify 限制太低：
+
+```bash
+# 临时提升
+sudo sysctl fs.inotify.max_user_watches=524288
+
+# 永久生效
+echo "fs.inotify.max_user_watches=524288" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
+
+---
+
+## 构建失败
+
+### 症状
+
+```bash
+vite build
+# Error: Cannot find module '.ktr/template-registry'
+```
+
+或者构建成功但产物目录（如 `lib/`）缺少 `style.css`。
+
+### 原因
+
+打包配置未挂 `ktrBuildPlugin()`，或注册表入口未加到 `build.lib.entry`。
+
+### 解决方案
+
+**1. 检查 Vite 配置**
+
+确保 `vite.config.ts` 包含以下关键配置：
+
+```ts title="vite.config.ts" twoslash
+import tailwindcss from '@tailwindcss/vite'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(),
+    ktrBuildPlugin() // ← buildStart 自动 sync，closeBundle 编译 CSS
+  ],
+  ssr: {
+    noExternal: true,
+    external: ['node-karin']
+  },
+  build: {
+    ssr: true,
+    target: 'node18',
+    outDir: 'lib',
+    lib: {
+      entry: {
+        'apps/template': 'src/apps/template.ts',
+        // ↓ 注册表入口必须包含
+        'template-registry': '.ktr/template-registry.ts',
+        'mock-registry': '.ktr/mock-registry.ts'
+      },
+      formats: ['es']
+    },
+    rollupOptions: {
+      external: [/^node:/, 'node-karin']
+    }
+  }
+})
+```
+
+**2. 手动执行 sync**
+
+`ktrBuildPlugin` 会在 `buildStart` 自动同步，但如果插件加载失败，手动跑一次：
+
+```bash
+pnpm ktr sync
+vite build
+```
+
+**3. 验证产物**
+
+构建成功后 `lib/` 应包含：
+
+```text
+lib/
+├── apps/
+│   └── template.js
+├── template-registry.js
+├── mock-registry.js
+└── style.css  ← CSS 编译产物
+```
+
+缺少 `style.css` 时检查 `ktrBuildPlugin` 是否在插件列表里、是否传了 `{ css: false }`。
+
+完整排查见 [构建问题详解](/docs/troubleshooting/build-issues)。
+
+---
+
+## 下一步
+
+<Cards>
+  <Card title="依赖问题详解" href="/docs/troubleshooting/dependency-issues" description="pnpm vs npm、React 版本冲突、monorepo 场景" />
+  <Card title="类型问题详解" href="/docs/troubleshooting/type-issues" description="模块增强不生效、renderImage 类型丢失、tsx 配置" />
+  <Card title="构建问题详解" href="/docs/troubleshooting/build-issues" description="Vite build 失败、CSS 未生成、注册表未同步" />
+  <Card
+    title="运行时错误详解"
+    href="/docs/troubleshooting/runtime-errors"
+    description="Template data validation failed、渲染失败、截图失败"
+  />
+</Cards>

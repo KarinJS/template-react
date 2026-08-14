@@ -1,0 +1,426 @@
+---
+title: 依赖问题详解
+description: pnpm vs npm vs yarn、React 版本冲突、peer dependencies、monorepo 场景的完整排查与解决方案
+---
+
+# 依赖问题详解
+
+依赖安装和版本管理是模板项目最常见的问题来源。本页覆盖包管理器差异、React 版本冲突、peer dependencies 警告、以及 monorepo 特殊场景。
+
+## 包管理器选择：pnpm vs npm vs yarn
+
+### 推荐：pnpm
+
+`@karinjs/template-react` 开发和测试均使用 pnpm，推荐插件项目也用 pnpm：
+
+```bash
+npm install -g pnpm
+pnpm install
+```
+
+**优势**：
+
+- 严格的依赖隔离，避免幽灵依赖（访问未声明的包）
+- 磁盘占用更小（全局 content-addressable store）
+- 安装速度更快
+
+### 使用 npm 的注意事项
+
+npm 7+ 对 peer dependencies 更严格，可能报 `ERESOLVE` 错误：
+
+```bash
+npm install --legacy-peer-deps
+```
+
+或在 `.npmrc` 里永久设置：
+
+```ini title=".npmrc"
+legacy-peer-deps=true
+```
+
+<Callout type="warn">
+  `--legacy-peer-deps` 会跳过 peer 版本检查，可能导致运行时不兼容。优先升级依赖版本解决冲突，只在无法升级时才用此选项。
+</Callout>
+
+### 使用 Yarn 的注意事项
+
+Yarn 1.x (classic) 的 PnP 模式与 ktr 的约定发现机制不兼容，必须用 `nodeLinker: node-modules` 模式：
+
+```yaml title=".yarnrc.yml"
+nodeLinker: node-modules
+```
+
+Yarn 2+ (Berry) 未经测试，遇到问题时切换到 pnpm 或 npm。
+
+---
+
+## React 版本冲突
+
+### 症状
+
+```bash
+npm ERR! Could not resolve dependency:
+npm ERR! peer react@"^18.3.1" from @karinjs/template-react@x.x.x
+npm ERR! node_modules/@karinjs/template-react
+```
+
+或者安装成功但运行时报错：
+
+```text
+Error: Invalid hook call. Hooks can only be called inside the body of a function component.
+```
+
+### 原因
+
+项目里已有 React 17.x 或更旧版本，或其他依赖（如 UI 组件库）锁定了不兼容的 React 版本。运行时报 hooks 错误通常是因为产物里存在**两份 React**（源码一份、打包产物一份），hooks 状态无法共享。
+
+### 解决方案
+
+**1. 检查所有 React 版本**
+
+```bash
+pnpm list react react-dom
+# 或
+npm ls react react-dom
+```
+
+输出示例：
+
+```text
+karin-plugin-example@1.0.0
+├─┬ @karinjs/template-react@0.1.0
+│ ├── react@18.3.1
+│ └── react-dom@18.3.1
+└─┬ some-ui-library@2.0.0
+  ├── react@17.0.2  ← 冲突源头
+  └── react-dom@17.0.2
+```
+
+**2. 升级到 React 18.3+**
+
+```json title="package.json" twoslash
+{
+  "devDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1"
+  }
+}
+```
+
+```bash
+pnpm install
+```
+
+**3. 强制去重（pnpm）**
+
+如果某个深层依赖仍然引入旧版 React，在 `package.json` 里显式覆盖：
+
+```json title="package.json"
+{
+  "pnpm": {
+    "overrides": {
+      "react": "^18.3.1",
+      "react-dom": "^18.3.1"
+    }
+  }
+}
+```
+
+**4. 强制去重（npm / yarn）**
+
+npm 使用 `overrides`，yarn 使用 `resolutions`：
+
+```json title="package.json"
+{
+  "overrides": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
+```
+
+**5. 打包时确保只有一份 React**
+
+Vite 配置里加 `resolve.dedupe`：
+
+```ts title="vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+// ---cut---
+export default defineConfig({
+  resolve: {
+    dedupe: ['react', 'react-dom']
+  }
+})
+```
+
+<Callout type="error">
+  **构建时必须把 React 整体打进产物**（`ssr.noExternal: true`），只有 `node-karin` 保持外部。组件和渲染器必须共用同一份 React，否则 hooks
+  崩溃。
+</Callout>
+
+---
+
+## Peer Dependencies 警告
+
+### 症状
+
+pnpm 报 `WARN  Issues with peer dependencies found`，列出一堆不匹配的包：
+
+```text
+ WARN  Issues with peer dependencies found
+.
+└─┬ @karinjs/template-react
+  └── ✕ unmet peer react@"^18.3.1": found 18.2.0
+```
+
+npm 报 `npm WARN peer dep missing`。
+
+### 原因
+
+peer dependencies 声明的是"宿主项目应该提供的版本"，用于确保插件和宿主用同一份依赖。`@karinjs/template-react` 声明了 `react@^18.3.1` 作为 peer，如果项目安装的版本不匹配就会警告。
+
+### 解决方案
+
+**1. 升级到匹配版本（推荐）**
+
+```bash
+pnpm add -D react@^18.3.1 react-dom@^18.3.1
+```
+
+**2. 允许不匹配（pnpm）**
+
+```ini title=".npmrc"
+strict-peer-dependencies=false
+```
+
+或单次安装：
+
+```bash
+pnpm install --no-strict-peer-dependencies
+```
+
+**3. 允许不匹配（npm）**
+
+```bash
+npm install --legacy-peer-deps
+```
+
+<Callout>
+  警告不会阻止安装，但可能导致运行时错误。优先升级依赖版本，只在确认兼容但版本号不匹配（如 `18.2.0` vs `^18.3.1`）时才忽略警告。
+</Callout>
+
+---
+
+## Monorepo 场景
+
+### 症状
+
+在 monorepo（如 pnpm workspace、Turborepo、Nx）里，`ktr dev` 或构建时报错：
+
+```text
+Error: Cannot find package '@karinjs/template-react' imported from <插件包路径>
+```
+
+或者 `renderImage` 类型失效、注册表加载失败。
+
+### 原因
+
+Workspace 协议（`workspace:*`）、依赖提升（hoisting）、以及符号链接（symlink）导致包解析路径与 ktr 约定发现的假设不符。
+
+### 解决方案
+
+**1. 确保依赖安装在插件包自己的 node_modules**
+
+pnpm workspace 默认会提升依赖到 monorepo 根目录。ktr 按 `import.meta.url` 向上找 `package.json` 定位包根，如果 `node_modules` 在外层，相对路径解析会失败。
+
+在插件包的 `package.json` 里显式声明：
+
+```json title="packages/my-plugin/package.json"
+{
+  "devDependencies": {
+    "@karinjs/template-react": "^0.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
+```
+
+在 monorepo 根目录的 `pnpm-workspace.yaml` 里禁用该包的 hoisting：
+
+```yaml title="pnpm-workspace.yaml"
+packages:
+  - 'packages/*'
+
+# 禁用 hoisting 以确保每个包有独立的 node_modules
+public-hoist-pattern: []
+```
+
+或者只针对 ktr 相关的包：
+
+```yaml title=".npmrc"
+public-hoist-pattern[]='!@karinjs/template-react'
+public-hoist-pattern[]='!react'
+public-hoist-pattern[]='!react-dom'
+```
+
+**2. 使用 workspace 协议时指定具体版本**
+
+```json title="packages/my-plugin/package.json"
+{
+  "devDependencies": {
+    "@karinjs/template-react": "workspace:^0.1.0"
+  }
+}
+```
+
+**3. 检查 tsconfig.json 路径**
+
+monorepo 里常用 `paths` 映射模块路径，确保 `.ktr/` 和 `ktr/` 不被映射到别的位置：
+
+```json title="packages/my-plugin/tsconfig.json" twoslash
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./src/*"]
+      // 不要映射 .ktr 或 ktr
+    }
+  },
+  "include": ["src", "ktr", ".ktr"]
+}
+```
+
+**4. 验证包根定位**
+
+在 `src/utils/render.ts` 里打印包根路径调试：
+
+```ts title="src/utils/render.ts" twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+console.log('Current file URL:', import.meta.url)
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: { outputDir: './temp' }
+})
+```
+
+运行后检查日志，确认包根定位到插件包自己的目录（包含 `package.json` 和 `ktr/` 的那一层）。
+
+---
+
+## 安装后无法找到 ktr 命令
+
+### 症状
+
+```bash
+pnpm ktr dev
+# command not found: ktr
+```
+
+### 原因
+
+`@karinjs/template-react` 未安装到项目本地，或 pnpm bin 路径未加到 `PATH`。
+
+### 解决方案
+
+**1. 确认包已安装**
+
+```bash
+pnpm list @karinjs/template-react
+```
+
+未安装时执行：
+
+```bash
+pnpm add -D @karinjs/template-react
+```
+
+**2. 通过 package.json scripts 调用**
+
+```json title="package.json"
+{
+  "scripts": {
+    "template": "ktr sync && ktr dev"
+  }
+}
+```
+
+```bash
+pnpm template
+```
+
+**3. 使用 pnpm exec**
+
+```bash
+pnpm exec ktr dev
+```
+
+**4. 全局安装（不推荐）**
+
+```bash
+pnpm add -g @karinjs/template-react
+ktr dev
+```
+
+全局安装会导致版本不跟随项目，团队协作时容易出现版本不一致问题，仅限个人快速测试使用。
+
+---
+
+## 依赖安装慢或超时
+
+### 症状
+
+```bash
+pnpm install
+# 长时间卡在 "Resolving dependencies..." 或网络超时
+```
+
+### 原因
+
+国内网络访问 npm registry 慢，或某些包（如 Puppeteer）下载二进制文件时超时。
+
+### 解决方案
+
+**1. 使用国内镜像**
+
+```bash
+# pnpm
+pnpm config set registry https://registry.npmmirror.com
+
+# npm
+npm config set registry https://registry.npmmirror.com
+
+# yarn
+yarn config set registry https://registry.npmmirror.com
+```
+
+**2. 代理设置**
+
+```bash
+# HTTP 代理
+pnpm config set proxy http://127.0.0.1:7890
+pnpm config set https-proxy http://127.0.0.1:7890
+
+# 清除代理
+pnpm config delete proxy
+pnpm config delete https-proxy
+```
+
+**3. Puppeteer 国内加速**
+
+node-karin 依赖 Puppeteer 截图，二进制下载可能很慢。在 `.npmrc` 里指定国内镜像：
+
+```ini title=".npmrc"
+puppeteer_download_host=https://cdn.npmmirror.com/binaries/chrome-for-testing
+```
+
+---
+
+## 相关资源
+
+<Cards>
+  <Card title="常见问题" href="/docs/troubleshooting/common-issues" description="高频问题快速诊断" />
+  <Card title="构建问题详解" href="/docs/troubleshooting/build-issues" description="Vite build 失败、注册表未同步" />
+  <Card title="类型问题详解" href="/docs/troubleshooting/type-issues" description="模块增强不生效、类型丢失" />
+</Cards>

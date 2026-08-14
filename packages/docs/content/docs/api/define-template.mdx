@@ -9,9 +9,8 @@ description: defineTemplate、defineMock、TemplateProps、TemplateDef、DataOf 
 
 ```ts twoslash
 import type { TemplateDef } from '@karinjs/template-react'
-// @errors: 1155
 // ---cut---
-const defineTemplate: <D>(def: Omit<TemplateDef<D>, '__data'>) => TemplateDef<D>
+declare const defineTemplate: <D>(def: Omit<TemplateDef<D>, '__data'>) => TemplateDef<D>
 ```
 
 把「一个 React 组件 + 展示元信息」登记成模板。运行时不做加工、原样返回——价值在类型：数据类型 `D` 留在返回值里供一路推导。组件 props 已标注 `TemplateProps<D>` 时泛型自动推断；内联匿名组件再显式写 `defineTemplate<D>({...})`。
@@ -73,9 +72,8 @@ export default defineTemplate({
 ## defineMock
 
 ```ts twoslash
-// @errors: 1155
 // ---cut---
-const defineMock: <D>(data: D) => D
+declare const defineMock: <D>(data: D) => D
 ```
 
 定义一份类型安全的 TS mock，原样返回。写在模板的 `mock.ts`（固定文件名）里具名导出，面板中只读。与 `satisfies` 写法效果相同：

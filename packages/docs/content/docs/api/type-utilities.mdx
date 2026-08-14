@@ -1,0 +1,431 @@
+---
+title: 类型工具
+description: DataOf、TemplateProps、LoadedRegistry、TemplateDef 的类型机制与模块增强原理
+---
+
+框架提供的类型工具全部基于 TypeScript 的类型推导和模块增强，让模板路由和数据类型在调用侧自动补全和校验。
+
+## DataOf
+
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+// ---cut---
+type DataOf<T> = T extends TemplateDef<infer D> ? D : never
+```
+
+从模板定义类型里提取数据类型 `D`，核心价值是**类型传递**：模板定义时标注的泛型 `D` 可以一路流动到渲染调用侧。
+
+### 基本用法
+
+```tsx twoslash
+import { defineTemplate, type DataOf, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+  score: number
+}
+
+const cardTemplate = defineTemplate({
+  component: ({ data }: TemplateProps<CardData>) => <div>{data.title}</div>
+})
+
+// 提取数据类型
+type ExtractedData = DataOf<typeof cardTemplate>
+//   ^?
+```
+
+`ExtractedData` 自动推导为 `CardData`，无需手写类型注解。
+
+### 配合注册表使用
+
+最典型的应用是渲染函数封装，配合 `LoadedRegistry` 实现逐路由类型推导：
+
+```ts twoslash
+// @filename: virtual.d.ts
+import type { TemplateDef } from '@karinjs/template-react'
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': TemplateDef<{ title: string; items: Array<{ label: string; value: string }> }>
+  }
+}
+// @filename: index.ts
+import type { DataOf, LoadedRegistry } from '@karinjs/template-react'
+
+type Registry = LoadedRegistry
+
+const renderImage = async <K extends keyof Registry & string>(templatePath: K, data: DataOf<Registry[K]>) => {
+  // data 类型自动匹配 templatePath 对应的模板数据类型
+}
+// ---cut---
+// 调用时自动推导
+renderImage('hello/card', { title: 'Hello', items: [{ label: '分数', value: '95' }] })
+//  ^?
+```
+
+`K` 是路由字面量（如 `'hello/card'`），`Registry[K]` 取到该路由的模板定义，`DataOf<Registry[K]>` 提取其数据类型。
+
+### 工作原理
+
+`DataOf` 利用 TypeScript 的条件类型 + `infer` 关键字：
+
+1. `T extends TemplateDef<infer D>` 判断 `T` 是否符合 `TemplateDef<D>` 的结构。
+2. 若符合，`infer D` 捕获泛型参数 `D`，返回 `D`。
+3. 若不符合，返回 `never`。
+
+`TemplateDef` 内部有隐藏字段 `__data?: D`（运行时从不使用），唯一作用是把 `D` 保留在类型上供 `infer` 提取：
+
+```ts twoslash
+import type { ComponentType } from 'react'
+// ---cut---
+interface TemplateDef<D> {
+  name?: string
+  description?: string
+  component: ComponentType<any>
+  validate?: (data: unknown) => data is D
+  __data?: D // 类型占位符，运行时不存在
+}
+```
+
+## TemplateProps
+
+```ts twoslash
+import type { RenderContext } from '@karinjs/template-react'
+// ---cut---
+interface TemplateProps<D> {
+  /** 当前模板使用的数据，类型由 defineTemplate 的泛型决定。 */
+  data: D
+  /** ktr 注入的运行时上下文。 */
+  ctx: RenderContext
+}
+```
+
+每个模板组件的 props 类型，泛型 `D` 是数据类型。
+
+### 完整示例
+
+```tsx twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+/** 排行榜模板的数据结构。 */
+export interface RankData {
+  title: string
+  users: Array<{ name: string; score: number; rank: number }>
+}
+
+const RankList = ({ data, ctx }: TemplateProps<RankData>) => {
+  const isDark = ctx.theme?.mode === 'dark'
+
+  return (
+    <div className={`w-[640px] p-6 ${isDark ? 'dark' : 'light'}`}>
+      <h1 className="text-2xl font-bold mb-4">{data.title}</h1>
+      <ul className="space-y-2">
+        {data.users.map((u) => (
+          <li key={u.rank} className="flex items-center gap-3">
+            <span className="text-lg font-mono">#{u.rank}</span>
+            <span className="flex-1">{u.name}</span>
+            <span className="font-bold text-accent">{u.score}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+export default defineTemplate({
+  name: '排行榜',
+  description: '展示用户排名和分数',
+  component: RankList
+})
+```
+
+标注 `TemplateProps<RankData>` 后，组件内 `data` 的类型自动推导为 `RankData`，`ctx` 类型为 `RenderContext`。
+
+### 类型推导链路
+
+```
+RankData 接口定义
+  ↓
+TemplateProps<RankData> 标注组件 props
+  ↓
+defineTemplate 自动推导泛型 <RankData>
+  ↓
+TemplateDef<RankData> 保留 __data?: RankData
+  ↓
+DataOf<TemplateDef<RankData>> 提取 RankData
+  ↓
+渲染函数 data 参数类型为 RankData
+```
+
+## LoadedRegistry
+
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+// ---cut---
+type LoadedRegistry = Record<string, TemplateDef<any>>
+```
+
+加载后的模板注册表类型，默认是宽泛的 `Record<string, TemplateDef<any>>`，通过**模块增强**变为逐路由精确类型。
+
+### 模块增强机制
+
+`ktr sync` 扫描 `ktr/template/` 后，生成 `.ktr/registry-types.d.ts`：
+
+```ts title=".ktr/registry-types.d.ts"
+import type { TemplateDef } from '@karinjs/template-react'
+
+declare module '@karinjs/template-react' {
+  export interface LoadedRegistry {
+    'hello/card': TemplateDef<import('../ktr/template/hello/card/index.js').CardData>
+    'hello/list': TemplateDef<import('../ktr/template/hello/list/index.js').HelloListData>
+    'user/profile': TemplateDef<import('../ktr/template/user/profile/index.js').ProfileData>
+  }
+}
+```
+
+TypeScript 的模块增强会把这些定义**合并到原始接口**上，使得 `LoadedRegistry` 变为：
+
+```ts
+interface LoadedRegistry {
+  'hello/card': TemplateDef<CardData>
+  'hello/list': TemplateDef<HelloListData>
+  'user/profile': TemplateDef<ProfileData>
+}
+```
+
+### 类型增强效果
+
+增强后，渲染函数的路由参数和数据参数自动联动：
+
+```ts twoslash
+// @filename: virtual.d.ts
+import type { TemplateDef } from '@karinjs/template-react'
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': TemplateDef<{ title: string; items: Array<{ label: string; value: string }> }>
+  }
+}
+// @filename: index.ts
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+const renderTemplate = createTemplateRenderer(import.meta.url)
+// ---cut---
+// 路由字面量自动补全，data 类型由路由推导
+await renderTemplate('hello/card', { title: 'Hello', items: [] })
+//              ^?
+
+// 类型错误会在编译期报红
+// @ts-expect-error
+await renderTemplate('hello/card', { wrongField: 123 })
+```
+
+### 类型失效排查
+
+若路由补全突然「不灵了」，按以下步骤排查：
+
+1. **检查 `.ktr/registry-types.d.ts` 是否存在**：不存在时跑 `pnpm ktr sync` 生成。
+2. **检查 tsconfig.json 的 include**：确保包含 `.ktr/**/*.d.ts`。
+3. **重启 TS Server**：VSCode 中按 `Ctrl+Shift+P` → `TypeScript: Restart TS Server`。
+4. **检查模板导出**：确保模板的数据接口是 `export interface`，内联匿名类型无法被模块增强引用。
+
+### 生产态降级
+
+生产环境未部署 `.ktr/` 源文件时，`LoadedRegistry` 降级为默认的 `Record<string, TemplateDef<any>>`，失去逐路由类型推导，但运行时行为不受影响。
+
+## TemplateDef
+
+```ts twoslash
+import type { ComponentType } from 'react'
+import type { TemplateProps } from '@karinjs/template-react'
+// ---cut---
+interface TemplateDef<D> {
+  /** 面板侧边栏展示名称。 */
+  name?: string
+  /** 面板展示的模板描述。 */
+  description?: string
+  /** 实际渲染截图的组件。 */
+  component: ComponentType<TemplateProps<D>>
+  /** 运行时数据校验，返回 false 时 SSR 直接报错。 */
+  validate?: (data: unknown) => data is D
+  /** 类型占位符，运行时从不读取，仅供 DataOf 提取类型。 */
+  __data?: D
+}
+```
+
+模板定义的完整结构，`defineTemplate` 的参数和返回值都是这个类型（去掉 `__data` 字段）。
+
+### component 字段
+
+要求是 `React.ComponentType<TemplateProps<D>>`，即接收 `{ data: D, ctx: RenderContext }` 的组件。
+
+支持**函数组件**和**类组件**，也支持**异步组件**（React 18+ 的 Suspense）：
+
+```tsx twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface AsyncData {
+  userId: string
+}
+
+// 异步组件
+const AsyncProfile = async ({ data }: TemplateProps<AsyncData>) => {
+  const user = await fetch(`/api/users/${data.userId}`).then((r) => r.json())
+  return <div>{user.name}</div>
+}
+
+export default defineTemplate({
+  component: AsyncProfile
+})
+```
+
+<Callout type="warn">
+  异步组件在 React 18+ 的 SSR 中可用，但需要在组件外包裹 `<Suspense fallback={...}>`。框架暂不自动包裹，请在组件内自行处理或使用同步组件。
+</Callout>
+
+### validate 字段
+
+类型保护函数，签名为 `(data: unknown) => data is D`，返回 `true` 时断言 `data` 符合 `D` 类型。
+
+适用场景：动态路由、用户输入数据、跨插件传递数据等不可信来源。
+
+```tsx twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface SafeData {
+  id: number
+  name: string
+}
+
+function isSafeData(data: unknown): data is SafeData {
+  return (
+    typeof data === 'object' && data !== null && typeof (data as SafeData).id === 'number' && typeof (data as SafeData).name === 'string'
+  )
+}
+
+const SafeComponent = ({ data }: TemplateProps<SafeData>) => (
+  <div>
+    ID: {data.id}, Name: {data.name}
+  </div>
+)
+
+export default defineTemplate({
+  component: SafeComponent,
+  validate: isSafeData
+})
+```
+
+校验失败时渲染器返回 `{ success: false, error: 'Template data validation failed' }`，不会执行 React 渲染。
+
+### \_\_data 字段
+
+**类型占位符**，运行时从不存在，唯一作用是把泛型 `D` 保留在类型上供 `DataOf` 提取。
+
+日常不需要关心这个字段，`defineTemplate` 会自动处理。手写 `TemplateDef` 类型时也不需要显式赋值：
+
+```tsx twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+
+interface MyData {
+  foo: string
+}
+
+// 正确：不需要写 __data
+const myTemplate: TemplateDef<MyData> = {
+  component: () => <div>Hello</div>
+}
+
+// 不推荐：__data 只是类型占位符，运行时从不读取，手动赋值没有意义
+const redundantTemplate: TemplateDef<MyData> = {
+  component: () => <div>Hello</div>,
+  __data: { foo: 'bar' }
+}
+```
+
+## 类型推导最佳实践
+
+### 1. 始终导出数据接口
+
+模块增强依赖 `import('../path/to/template').DataType`，接口必须是具名导出：
+
+```tsx twoslash
+// ✅ 正确：导出接口
+export interface CardData {
+  title: string
+}
+
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+const Card = ({ data }: TemplateProps<CardData>) => <div>{data.title}</div>
+export default defineTemplate({ component: Card })
+```
+
+```tsx twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+// ❌ 错误：内联匿名类型
+const Card = ({ data }: TemplateProps<{ title: string }>) => <div>{data.title}</div>
+export default defineTemplate({ component: Card })
+// 模块增强无法引用匿名类型
+```
+
+### 2. 组件 props 优先标注
+
+让 `defineTemplate` 自动推导泛型，而不是手动指定：
+
+```tsx twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+}
+
+// ✅ 推荐：组件标注 TemplateProps<CardData>，defineTemplate 自动推导
+const Card = ({ data }: TemplateProps<CardData>) => <div>{data.title}</div>
+export default defineTemplate({ component: Card })
+
+// ❌ 不推荐：手动指定泛型，容易和组件 props 不一致
+// const Card2 = ({ data }: any) => <div>{data.title}</div>
+// export default defineTemplate<CardData>({ component: Card2 })
+```
+
+### 3. 渲染函数使用泛型约束
+
+封装渲染函数时，用 `K extends keyof Registry & string` 约束路由参数：
+
+```ts twoslash
+import type { DataOf, LoadedRegistry, RenderContextInput, RenderResult } from '@karinjs/template-react'
+
+type Registry = LoadedRegistry
+
+// ✅ 正确：泛型约束 + DataOf 提取
+async function renderImage<K extends keyof Registry & string>(
+  templatePath: K,
+  data: DataOf<Registry[K]>,
+  ctx?: RenderContextInput
+): Promise<RenderResult> {
+  // 实现...
+  return { success: true, htmlPath: '/path/to/output.html' }
+}
+
+// ❌ 错误：丢失类型推导
+async function renderImageWrong(templatePath: string, data: any): Promise<RenderResult> {
+  // 无法推导 data 类型
+  return { success: true, htmlPath: '/path/to/output.html' }
+}
+```
+
+### 4. 避免类型断言
+
+信任 TypeScript 的推导，不要强制类型断言：
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+const renderTemplate = createTemplateRenderer(import.meta.url)
+
+// ✅ 正确：类型自动推导
+await renderTemplate('hello/card', { title: 'Hello', items: [] })
+
+// ❌ 错误：强制断言丢失类型检查
+await renderTemplate('hello/card', { wrongField: 123 } as any)
+```
+
+类型错误是**编译期保护**，不要用 `as any` 绕过。

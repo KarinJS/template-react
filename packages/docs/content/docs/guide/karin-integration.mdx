@@ -33,7 +33,7 @@ const renderTemplate = createTemplateRenderer(import.meta.url, {
 })
 ```
 
-- **`import.meta.url`**：ktr 用它向上找最近的 `package.json` 定位插件包根（开发跑 `src/`、生产跑 `lib/` 都命中同一包根），必须原样传。
+- **`import.meta.url`**：ktr 用它向上找最近的 `package.json` 定位插件包根（开发跑 `src/`、生产跑打包产物如 `lib/` 都命中同一包根），必须原样传。
 - **`renderer.outputDir`**：唯一要指定的位置——SSR 生成的 HTML 放哪。放到 `karinPathHtml/<插件名>`，karin 截图服务从那里读文件。
 - 返回函数签名 `(路由, data, ctx?) => Promise<RenderResult>`，惰性初始化：首次渲染时才解析配置、加载注册表。路由补全和 data 类型由 `.ktr` 模块增强提供，不需要 import 任何 `.ktr` 文件。
 
@@ -100,11 +100,11 @@ export const templateTest = karin.command('^(#)?测试模板$', async (event) =>
 })
 ```
 
-路由写死成字面量时类型最安全。路由必须由用户输入（如 `#渲染模板 <路由>`）时，编译期绑不住 `data`，显式放宽后靠模板里的 `validate` 做运行时兜底；示例数据按"先 TS mock、再 `data/default.json`"的顺序读取。枚举全部模板用 `loadTemplateRegistry()`，用法见 [渲染器 API](/docs/api/renderer)。
+路由写死成字面量时类型最安全。路由必须由用户输入（如 `#渲染模板 <路由>`）时，编译期绑不住 `data`，显式放宽后靠模板里的 `validate` 做运行时兜底；示例数据按"先 `data/default.json`、再 TS mock"的顺序读取。枚举全部模板用 `loadTemplateRegistry()`，用法见 [渲染器 API](/docs/api/renderer)。
 
 ## 依赖放在哪里
 
 <Callout type="error">
-  **全部放进 `devDependencies`，构建时整体打进 `lib/`**——包括 `react`/`react-dom` 和 ktr 运行时。组件和渲染器必须共用产物内同一份
+  **全部放进 `devDependencies`，构建时整体打进产物**——包括 `react`/`react-dom` 和 ktr 运行时。组件和渲染器必须共用产物内同一份
   React，只打包一半会因两份 React 并存导致 hooks 崩溃。保持外部的只有 `node-karin`（宿主 karin 提供）。
 </Callout>

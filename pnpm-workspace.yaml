@@ -2,8 +2,10 @@ packages:
   - packages/*
   - packages/core/examples
 allowBuilds:
+  core-js: false
   esbuild: true
   node-pty: false
+  puppeteer: false
   sharp: true
 minimumReleaseAgeExclude:
   - '@oxfmt/binding-android-arm-eabi@0.62.0'
@@ -46,3 +48,4 @@ minimumReleaseAgeExclude:
   - '@oxlint/binding-win32-x64-msvc@1.77.0'
   - oxfmt@0.62.0
   - oxlint@1.77.0
+  - node-karin@1.17.0

@@ -1,0 +1,263 @@
+---
+title: 核心概念概览
+description: 5分钟理解 ktr 的整体架构、设计理念和数据流向
+---
+
+本页快速介绍 `@karinjs/template-react` 的核心设计——**约定优于配置**的截图模板框架。
+
+## 5分钟理解整体架构
+
+ktr 是一个基于 React 的 SSR 截图模板框架，核心特点：
+
+- **约定式路由**：`<板块>/<模板>/index.tsx` 自动注册为路由
+- **类型安全**：通过模块增强实现逐路由精确类型推导
+- **开发面板 + 沙盒隔离**：可视化调试界面与组件渲染环境分离
+- **SSR 渲染**：生产环境生成独立 HTML 供截图引擎使用
+
+```typescript twoslash
+// @filename: virtual.d.ts
+import type { TemplateDef } from '@karinjs/template-react'
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': TemplateDef<{ title: string; items: Array<{ label: string; value: string }> }>
+  }
+}
+// @filename: index.ts
+import type { DataOf, LoadedRegistry } from '@karinjs/template-react'
+import type { ImageElement } from 'node-karin'
+
+// 插件胶水层里封装的渲染函数（快速上手一节有完整实现）
+declare const renderImage: <K extends keyof LoadedRegistry & string>(
+  templatePath: K,
+  data: DataOf<LoadedRegistry[K]>
+) => Promise<ImageElement[]>
+// ---cut---
+// 路由补全、data 类型推导 —— 无需手动导入组件
+await renderImage('hello/card', {
+  title: 'Karin Template React',
+  items: [{ label: '渲染方式', value: 'SSR HTML' }]
+})
+```
+
+## 约定优于配置
+
+框架通过**文件系统约定**自动发现模板、mock 数据和路由，无需手写注册表：
+
+```text
+ktr/template/
+├── hello/
+│   └── card/
+│       ├── index.tsx       ← 自动注册为路由 hello/card
+│       ├── mock.ts         ← TS mock（类型安全）
+│       └── data/
+│           ├── default.json  ← JSON mock（面板可编辑）
+│           └── captured.json ← 真实渲染自动捕获
+└── style.css               ← 全局样式入口
+```
+
+启动开发服务器或执行构建时，框架扫描文件系统并生成三个注册表文件到 `.ktr/` 目录：
+
+1. **template-registry.ts** —— 路由 → 组件的映射
+2. **mock-registry.ts** —— mock 数据的统一导出
+3. **registry-types.d.ts** —— TypeScript 类型增强
+
+这些文件由框架自动管理，开发者无需关心。
+
+## 开发态 vs 生产态
+
+框架设计了两种运行模式，共享同一套核心逻辑但适配不同场景：
+
+### 开发态（Development）
+
+```
+┌─────────────┐
+│  开发面板    │ ← React UI，提供模板选择、数据编辑
+│ /__ktr/panel │
+└──────┬──────┘
+       │ postMessage
+       ↓
+┌─────────────┐
+│ 沙盒 iframe  │ ← 加载 virtual:ktr-sandbox 虚拟模块
+│  React 渲染  │ ← Vite HMR，代码改动即时更新
+└─────────────┘
+```
+
+特点：
+
+- Vite 开发服务器提供热模块替换（HMR）
+- 面板与沙盒通过 `postMessage` 通信
+- Mock API 提供数据读写接口
+- SSE 推送数据变更，实时同步
+
+### 生产态（Production）
+
+```typescript twoslash
+// @filename: virtual.d.ts
+import type { TemplateDef } from '@karinjs/template-react'
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': TemplateDef<{ title: string; items: Array<{ label: string; value: string }> }>
+  }
+}
+// @filename: index.ts
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+declare const data: { title: string; items: Array<{ label: string; value: string }> }
+declare const screenshot: (htmlPath: string) => Promise<void>
+// ---cut---
+// Karin 插件代码
+const render = createTemplateRenderer(import.meta.url)
+
+// SSR 渲染生成独立 HTML，内联 CSS 和主题变量
+const { success, htmlPath, error } = await render('hello/card', data, {
+  theme: { mode: 'dark', accent: 'oklch(0.62 0.19 254)' }
+})
+
+if (!success) {
+  throw new Error(`渲染失败：${error}`)
+}
+
+// 交给 Puppeteer 截图
+await screenshot(htmlPath)
+```
+
+特点：
+
+- React 18 `renderToReadableStream` 生成 HTML
+- 内联 CSS，无外部依赖
+- 主题变量直接写入 `<body>` 样式
+- 输出文件可独立运行
+
+## 数据流向图
+
+### 开发态数据流
+
+```
+用户操作（选择模板 + 数据）
+       ↓
+┌────────────────┐
+│   开发面板      │ ← 从 /__ktr/api 获取模板列表和 mock 数据
+│    (React)     │ ← 监听 SSE 推送，自动刷新
+└───────┬────────┘
+        │ postMessage({ type: 'ktr:data', payload: { path, data, ctx } })
+        ↓
+┌────────────────┐
+│  沙盒 iframe    │ ← 动态 import 模板组件
+│ (React 渲染)   │ ← root.render(<Component data={data} ctx={ctx} />)
+│                │ ← 测量尺寸并上报
+└───────┬────────┘
+        │ postMessage({ type: 'ktr:rendered', size: { width, height } })
+        ↓
+┌────────────────┐
+│   预览画布      │ ← 根据尺寸调整 iframe
+│  (缩放/平移)    │ ← 支持缩放、拖拽、截图
+└────────────────┘
+```
+
+### 生产态数据流
+
+```
+Karin 插件调用 renderImage()
+       ↓
+┌─────────────────────┐
+│ createTemplateRenderer │ ← 定位包根，加载配置
+│                         │ ← 加载注册表（.ktr/ 或打包产物）
+└──────────┬─────────────┘
+           ↓
+┌─────────────────────┐
+│  createRenderer      │ ← 执行 beforeRender 钩子
+│                      │ ← renderToReadableStream
+│                      │ ← 包装 HTML 外壳，内联 CSS
+│                      │ ← 执行 afterRender 钩子
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│  输出 HTML 文件      │ ← dist/template/html/hello_card.html
+│  (独立、可截图)      │
+└──────────┬──────────┘
+           ↓
+     Puppeteer 截图
+```
+
+## Mock 数据的三种来源
+
+ktr 提供三种数据源，各有适用场景：
+
+| 数据源        | 位置                 | 类型安全 | 面板可编辑 | 适合场景                 |
+| ------------- | -------------------- | -------- | ---------- | ------------------------ |
+| **TS mock**   | `mock.ts`            | ✅       | ❌         | 固定示例，插件代码可复用 |
+| **JSON mock** | `data/*.json`        | ❌       | ✅         | 多组对照数据，快速调样式 |
+| **捕获数据**  | `data/captured.json` | ❌       | ✅         | 真实渲染自动记录         |
+
+```typescript twoslash
+// @filename: ./index.tsx
+export interface HelloCardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+// @filename: ./mock.ts
+// ---cut---
+// TS mock：类型安全，编译期校验
+import type { HelloCardData } from './index'
+
+export const basic = {
+  title: 'Karin Template React',
+  items: [{ label: '渲染方式', value: 'SSR HTML' }]
+} satisfies HelloCardData
+```
+
+真实渲染后，框架自动将 `{ data, ctx }` 写入 `captured.json`，开发面板通过 SSE 推送实时同步，帮助快速复现线上问题。
+
+## 关键设计理念
+
+### 1. 约定式架构
+
+文件系统即路由，无需手写注册表：
+
+- `ktr/template/hello/card/index.tsx` → 路由 `hello/card`
+- `_` 开头的目录不扫描（如 `_shared/`）
+- `components/` 目录不参与路由（模板内部组件）
+
+### 2. 渐进增强
+
+TypeScript 类型随约定文件自动生成：
+
+```typescript
+// .ktr/registry-types.d.ts（框架生成）
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': typeof import('../ktr/template/hello/card/index.tsx').default
+  }
+}
+```
+
+无需手动导入，`renderImage` 自动获得路由补全和 data 类型推导。
+
+### 3. 双态统一
+
+开发态（Vite HMR）和生产态（SSR HTML）共享：
+
+- 同一套模板组件
+- 同一套主题系统
+- 同一套注册表加载逻辑
+
+差异仅在运行环境，核心代码完全复用。
+
+### 4. 沙盒隔离
+
+开发面板与模板渲染分离，避免样式污染和状态干扰：
+
+- 面板用 React 构建，预构建为静态资源由开发服务器托管
+- 沙盒用 iframe 隔离，独立 React 上下文
+- 通过 `postMessage` 通信，协议类型安全
+
+## 下一步
+
+<Cards>
+  <Card title="约定式路由" href="./routing" description="深入理解文件扫描规则和路由生成流程" />
+  <Card title="模板注册表" href="./registry" description="了解 .ktr/ 三个文件的作用和生成机制" />
+  <Card title="数据流" href="./data-flow" description="从定义到渲染的完整链路" />
+  <Card title="开发面板架构" href="./dev-panel-architecture" description="面板 + 沙盒的分离设计和通信协议" />
+</Cards>

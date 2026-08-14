@@ -1,0 +1,320 @@
+---
+title: 运行时 API
+description: RenderContext、capture 机制、运行时生命周期与 SSR 执行流程的完整说明
+---
+
+运行时指 SSR 渲染阶段（Node 侧）的行为和上下文，包括渲染器如何执行、如何捕获真实数据、以及组件能拿到哪些上下文信息。
+
+## RenderContext
+
+模板组件通过 props 接收的运行时上下文，由渲染器注入：
+
+```ts twoslash
+import type { ThemeContext } from '@karinjs/template-react'
+// ---cut---
+interface RenderContext {
+  /** 当前渲染比例，截图模板通常保持为 1。 */
+  scale: number
+  /** 调用方显式提供的主题变量；框架不发明默认值。 */
+  theme?: Partial<ThemeContext>
+}
+```
+
+### scale
+
+渲染比例因子，影响最终 HTML 的 viewport 和截图尺寸。通常保持为 `1`，高清截图需求时可以传 `2` 或更高：
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+const renderTemplate = createTemplateRenderer(import.meta.url)
+// ---cut---
+const result = await renderTemplate('hello/card', { title: '高清截图' }, { scale: 2 })
+```
+
+模板组件内可以根据 `ctx.scale` 调整字体大小、边距等细节，但绝大多数场景直接保持 `1` 即可。
+
+### theme
+
+调用方显式提供的主题变量，类型为 `Partial<ThemeContext>`。框架**不发明默认主题色**，未传时为 `undefined`，此时组件库自身的默认主题生效。
+
+```tsx twoslash
+import type { TemplateProps } from '@karinjs/template-react'
+interface CardData {
+  title: string
+  content: string
+}
+// ---cut---
+const Card = ({ data, ctx }: TemplateProps<CardData>) => {
+  const isDark = ctx.theme?.mode === 'dark'
+  const accent = ctx.theme?.accent ?? '#3B82F6' // 回退到自己的默认值
+
+  return (
+    <div className={isDark ? 'dark' : 'light'}>
+      <h1 style={{ color: accent }}>{data.title}</h1>
+      <p>{data.content}</p>
+    </div>
+  )
+}
+```
+
+### RenderContextInput
+
+渲染函数的第三个参数类型，所有字段可选：
+
+```ts twoslash
+import type { ThemeContext } from '@karinjs/template-react'
+// ---cut---
+interface RenderContextInput {
+  scale?: number
+  theme?: Partial<ThemeContext>
+}
+```
+
+调用时显式传入的字段会被注入到组件 props，缺省时框架保持为 `undefined`。
+
+## ThemeContext
+
+主题变量的完整结构，调用方可以只传部分字段：
+
+```ts twoslash
+interface ThemeContext {
+  /** 明暗模式：'light' | 'dark'。 */
+  mode: 'light' | 'dark'
+  /** 主色（品牌色、强调色）。 */
+  accent: string
+  /** 主色上的文字色。 */
+  accentForeground: string
+  /** 主色浅背景（按钮 hover 态、标签背景等）。 */
+  accentSoft: string
+  /** 主色浅背景上的文字色。 */
+  accentSoftForeground: string
+  /** 模板根背景色。 */
+  background: string
+  /** 主要文字色。 */
+  foreground: string
+  /** 表面色（卡片、面板背景）。 */
+  surface: string
+  /** 次要文字色（描述、标签等）。 */
+  muted: string
+  /** 边框色。 */
+  border: string
+  /** 任意 CSS 变量直通口，同名时以此为准。 */
+  vars: Record<string, string>
+}
+```
+
+### 实际使用示例
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+const renderTemplate = createTemplateRenderer(import.meta.url)
+// ---cut---
+// 只传明暗模式，其余颜色由组件库主题决定
+await renderTemplate(
+  'hello/card',
+  { title: '夜间模式' },
+  {
+    theme: { mode: 'dark' }
+  }
+)
+
+// 完整自定义主题
+await renderTemplate(
+  'hello/card',
+  { title: '品牌定制' },
+  {
+    theme: {
+      mode: 'light',
+      accent: '#FF6B6B',
+      accentForeground: '#FFFFFF',
+      background: '#F8F9FA',
+      foreground: '#212529',
+      border: '#DEE2E6'
+    }
+  }
+)
+
+// 传入自定义 CSS 变量
+await renderTemplate(
+  'hello/card',
+  { title: '圆角定制' },
+  {
+    theme: {
+      mode: 'light',
+      vars: { '--radius': '16px', '--spacing': '2rem' }
+    }
+  }
+)
+```
+
+主题变量会被注入到 SSR HTML 的 `<style>` 标签中，作为 CSS 变量供模板使用。
+
+## Capture 机制
+
+渲染器会把**真实调用时传入的数据**捕获到 `ktr/template/<板块>/<模板>/data/captured.json`，供开发面板展示。
+
+### 触发条件
+
+满足任一条件即捕获：显式配置了 `captureDir`；或未配置时处于开发环境（`NODE_ENV=development`），默认捕获到 `ktr/template/`：
+
+```ts twoslash
+import { createRenderer } from '@karinjs/template-react'
+import path from 'node:path'
+declare const templates: any
+declare const cssPath: string
+declare const outputDir: string
+// ---cut---
+const render = createRenderer(templates, {
+  cssPath,
+  outputDir,
+  captureDir: path.resolve(process.cwd(), 'ktr/template') // 显式指定捕获目录
+})
+```
+
+`createTemplateRenderer` **默认开启捕获**，目录为 `ktr/template`（约定位置），除非显式覆盖 `renderer.captureDir: undefined` 关闭。
+
+### 捕获规则
+
+每次渲染成功后，按以下规则写入：
+
+1. 路径：`<captureDir>/<板块>/<模板>/data/captured.json`，目录不存在时自动创建。
+2. 内容：渲染器会把本次的运行时上下文一并捕获，写成 `{ data, ctx }` 完整快照的格式化 JSON（面板回放时能还原主题、缩放等上下文）；直接使用 `saveCapturedData` 且不传 `ctx` 时才是纯 data 形状。
+3. 覆盖策略：每次渲染都覆盖写入，保留最新一次的数据。
+
+### captured.json 示例
+
+```json title="ktr/template/hello/card/data/captured.json"
+{
+  "data": {
+    "title": "运行时捕获示例",
+    "items": [
+      { "name": "张三", "score": 95 },
+      { "name": "李四", "score": 88 }
+    ]
+  },
+  "ctx": {
+    "scale": 1
+  }
+}
+```
+
+开发面板会自动加载 `captured.json`，作为「真实数据」标签页展示。插件源码不需要关心捕获逻辑，只管正常渲染即可。
+
+### 禁用捕获
+
+生产环境或无需面板开发时可以关闭：
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+// ---cut---
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: { captureDir: undefined } // 关闭捕获
+})
+```
+
+## 运行时生命周期
+
+从调用渲染函数到生成 HTML 的完整流程：
+
+### 1. 惰性初始化（首次渲染）
+
+`createTemplateRenderer` 返回的函数首次调用时：
+
+1. **定位包根**：从 `callerUrl` 向上最多 10 层查找 `package.json`。
+2. **加载配置**：读取 `karin.template.ts`，合并默认值。
+3. **加载注册表**：按约定优先级（`.ktr` 源文件 → 生产产物）加载模板和 mock 注册表。
+4. **解析 CSS 路径**：开发态用 dev 缓存 `node_modules/.cache/ktr/style.css`，生产态默认按 karin 惯例发现 `lib/style.css`（可用 `renderer.cssPath` 覆盖）。
+5. **创建渲染器**：调用 `createRenderer`，传入注册表和选项。
+
+后续渲染直接复用已创建的渲染器。
+
+### 2. 路由查找与数据校验
+
+每次渲染时：
+
+1. **查找模板定义**：按 `templatePath` 从注册表取模板定义，未找到时返回 `{ success: false, error: 'Template is not registered: ...' }`。
+2. **执行 validate**：若模板定义了 `validate` 函数，调用 `validate(data)`，返回 `false` 时返回 `{ success: false, error: 'Template data validation failed: ...' }`。
+
+### 3. 插件 beforeRender 钩子
+
+按 `enforce` 顺序执行所有插件的 `beforeRender` 钩子：
+
+- `enforce: 'pre'` → `enforce: 'normal'` → `enforce: 'post'`
+- 同级插件按注册顺序执行
+- 若插件的 `apply` 返回 `false`，跳过该插件
+
+钩子接收 `PluginContext`，可以修改输出目录、检查数据等：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const logPlugin: RenderPlugin = {
+  name: 'log-plugin',
+  beforeRender: async (ctx) => {
+    console.log(`[渲染前] 路由: ${ctx.path}, 数据:`, ctx.data)
+  }
+}
+```
+
+### 4. React SSR 渲染
+
+1. **构建完整 props**：`{ data, ctx: { scale, theme } }`
+2. **渲染组件**：`react-dom/server` 的 `renderToReadableStream` 流式 SSR，等 `allReady` 后一次性读出完整 HTML
+3. **生成 HTML**：包裹 `<!doctype html>`、`<head>`（内联 CSS + 主题变量）、`<body>`（`#container` + 渲染内容）
+
+### 5. 插件 afterRender 钩子
+
+按相同顺序执行 `afterRender` 钩子，可以加工 HTML：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const injectMetaPlugin: RenderPlugin = {
+  name: 'inject-meta',
+  afterRender: async (ctx) => {
+    return ctx.html.replace('</head>', '<meta name="generator" content="ktr" /></head>')
+  }
+}
+```
+
+返回值非空时替换原 HTML，否则保持不变。
+
+### 6. 写入文件
+
+1. **HTML 输出**：按 `htmlFileName` 规则写入 `<outputDir>/<filename>.html`。
+2. **数据捕获**：若配置了 `captureDir`，写入 `<captureDir>/<path>/data/captured.json`。
+
+### 7. 返回结果
+
+```ts twoslash
+interface RenderResult {
+  success: boolean
+  /** 成功时是生成的 HTML 文件路径；失败时为空字符串。 */
+  htmlPath: string
+  error?: string
+}
+```
+
+成功时返回 `{ success: true, htmlPath: '/path/to/output.html' }`，失败时返回 `{ success: false, error: '错误原因' }`。
+
+## 错误处理
+
+渲染器**不抛异常**，所有错误都通过 `RenderResult.error` 返回：
+
+| 错误情况                   | `error` 内容                              |
+| -------------------------- | ----------------------------------------- |
+| 路由未注册                 | `Template is not registered: <路由>`      |
+| `validate` 未通过          | `Template data validation failed: <路由>` |
+| React 渲染抛异常           | 原始异常消息                              |
+| 写入 HTML 失败             | 原始异常消息（如 `ENOENT`、`EACCES`）     |
+| 捕获数据写入失败（不阻塞） | 仅 `console.warn` 告警，不影响 `success`  |
+
+插件钩子（`beforeRender` / `afterRender`）内抛出的异常会中断渲染，`error` 为原始异常消息。
+
+## 最佳实践
+
+1. **主题变量回退**：组件内访问 `ctx.theme` 时总是提供回退值，避免 `undefined` 导致样式失效。
+2. **scale 无关设计**：模板宽高直接写固定值（如 `w-[640px]`），不要乘以 `ctx.scale`——截图工具会自动处理。
+3. **validate 保守**：只校验必需字段，避免过严校验导致动态数据渲染失败。
+4. **捕获开发态**：生产部署时关闭捕获（`captureDir: undefined`），减少 I/O 开销。
+5. **插件轻量化**：`beforeRender` / `afterRender` 避免耗时操作，保持渲染性能。

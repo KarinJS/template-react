@@ -9,9 +9,8 @@ description: createTemplateRenderer、createRenderer、注册表加载函数与�
 
 ```ts twoslash
 import type { DataOf, LoadedRegistry, RenderContextInput, RendererOptions, RenderResult } from '@karinjs/template-react'
-// @noErrors: 1155
 // ---cut---
-const createTemplateRenderer: (callerUrl: string, options?: TemplateRendererOptions) => TemplateRenderFn
+declare const createTemplateRenderer: (callerUrl: string, options?: TemplateRendererOptions) => TemplateRenderFn
 
 interface TemplateRendererOptions {
   renderer?: Partial<RendererOptions> // 透传给 createRenderer 的覆盖项，在约定默认值之上合并
@@ -28,7 +27,7 @@ type TemplateRenderFn = <K extends keyof LoadedRegistry & string>(
 - `callerUrl`：调用方模块的 `import.meta.url`，用来向上定位插件包根（最多 10 层），必须原样传。
 - 惰性初始化：首次渲染时才解析配置、加载注册表、创建渲染器。
 
-**约定行为**（什么都不配时自动做的）：读 `karin.template.ts`；加载约定注册表（开发态 `.ktr` 优先，缺失回退生产产物）；CSS 开发态用缓存、生产态用 `lib/style.css`；`outputDir` 默认 `dist/template/html`；真实渲染数据捕获到 `ktr/template/<路由>/data/captured.json`。
+**约定行为**（什么都不配时自动做的）：读 `karin.template.ts`；加载约定注册表（开发态 `.ktr` 优先，缺失回退生产产物）；CSS 开发态用 dev 缓存、生产态默认按 karin 惯例发现 `lib/style.css`（可用 `renderer.cssPath` 覆盖）；`outputDir` 默认 `dist/template/html`；真实渲染数据捕获到 `ktr/template/<路由>/data/captured.json`。
 
 ```ts title="src/utils/render.ts" twoslash
 import { createTemplateRenderer } from '@karinjs/template-react'
@@ -36,23 +35,206 @@ import { createTemplateRenderer } from '@karinjs/template-react'
 declare const path: { join: (...parts: string[]) => string }
 declare const karinPathHtml: string
 declare const dir: { pluginName: string }
-// @noErrors: 1109
 // ---cut---
 const renderTemplate = createTemplateRenderer(import.meta.url, {
   renderer: { outputDir: path.join(karinPathHtml, dir.pluginName) }
 })
 
 // 路由补全和 data 类型由注册表模块增强提供
-const { success, htmlPath, error } = await renderTemplate('hello/card', { title: '...', items: [...] })
+const { success, htmlPath, error } = await renderTemplate('hello/card', {
+  title: '你好',
+  items: [{ label: '状态', value: 'ok' }]
+})
+```
+
+### 更多使用场景
+
+#### 自定义输出目录
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+import path from 'node:path'
+
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: {
+    outputDir: path.resolve(process.cwd(), 'output/screenshots')
+  }
+})
+
+await renderTemplate('user/profile', { name: '张三', avatar: '...' })
+// HTML 输出到 output/screenshots/user_profile.html
+```
+
+#### 自定义主题变量
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+const renderTemplate = createTemplateRenderer(import.meta.url)
+
+// 深色模式渲染
+await renderTemplate(
+  'hello/card',
+  { title: '夜间模式' },
+  {
+    theme: { mode: 'dark' }
+  }
+)
+
+// 完整自定义主题
+await renderTemplate(
+  'hello/card',
+  { title: '品牌定制' },
+  {
+    theme: {
+      mode: 'light',
+      accent: '#FF6B6B',
+      accentForeground: '#FFFFFF',
+      background: '#F8F9FA',
+      foreground: '#212529',
+      border: '#DEE2E6'
+    }
+  }
+)
+
+// 传入 CSS 变量
+await renderTemplate(
+  'hello/card',
+  { title: '圆角定制' },
+  {
+    theme: {
+      vars: { '--radius': '16px', '--spacing': '2rem' }
+    }
+  }
+)
+```
+
+#### 高清截图（2x）
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+const renderTemplate = createTemplateRenderer(import.meta.url)
+
+await renderTemplate(
+  'report/chart',
+  { data: [120, 230, 180] },
+  {
+    scale: 2 // 2 倍渲染，截图更清晰
+  }
+)
+```
+
+#### 带时间戳的文件名
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: {
+    htmlFileName: 'timestamp' // 每次渲染生成新文件
+  }
+})
+
+// 并发渲染同一模板时不会相互覆盖
+await Promise.all([renderTemplate('hello/card', { title: 'A' }), renderTemplate('hello/card', { title: 'B' })])
+// 输出 hello_card_1723456789012.html 和 hello_card_1723456789123.html
+```
+
+#### 自定义文件名规则
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: {
+    htmlFileName: (templatePath) => {
+      // 自定义规则：用横线分隔，加上日期前缀
+      const date = new Date().toISOString().split('T')[0]
+      return `${date}-${templatePath.replace('/', '-')}`
+    }
+  }
+})
+
+await renderTemplate('hello/card', { title: '...' })
+// 输出 2026-08-14-hello-card.html
+```
+
+#### 关闭数据捕获
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: {
+    captureDir: undefined // 生产环境关闭捕获
+  }
+})
+```
+
+#### 注入额外样式
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+import path from 'node:path'
+
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: {
+    extraStylePaths: [path.resolve(process.cwd(), 'ktr/public/fonts.css'), path.resolve(process.cwd(), 'ktr/public/custom.css')]
+  }
+})
+// fonts.css 和 custom.css 会内联到生成的 HTML <style> 中
+```
+
+#### 注册渲染插件
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const logPlugin: RenderPlugin = {
+  name: 'log-plugin',
+  beforeRender: (ctx) => {
+    console.log(`[渲染] ${ctx.path}`)
+  },
+  afterRender: (ctx) => {
+    console.log(`[完成] ${ctx.path}, HTML 长度: ${ctx.html.length}`)
+  }
+}
+
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: {
+    plugins: [logPlugin]
+  }
+})
+```
+
+#### 错误处理
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+const renderTemplate = createTemplateRenderer(import.meta.url)
+
+const result = await renderTemplate('hello/card', { title: 'Test' })
+
+if (!result.success) {
+  console.error(`渲染失败: ${result.error}`)
+  // 可能的错误：
+  // - Template is not registered: hello/card
+  // - Template data validation failed: hello/card
+  // - <React 渲染或写文件的原始异常消息>
+} else {
+  console.log(`渲染成功，HTML 路径: ${result.htmlPath}`)
+}
 ```
 
 ## createRenderer
 
 ```ts twoslash
 import type { DataOf, RenderContextInput, RenderResult, RendererOptions, TemplateDef } from '@karinjs/template-react'
-// @noErrors: 1155
 // ---cut---
-const createRenderer: <R extends Record<keyof R, TemplateDef<any>>>(
+declare const createRenderer: <R extends Record<keyof R, TemplateDef<any>>>(
   templates: R,
   options: RendererOptions
 ) => <K extends keyof R & string>(templatePath: K, data: DataOf<R[K]>, ctx?: RenderContextInput) => Promise<RenderResult>
@@ -83,17 +265,14 @@ import type { LoadedRegistry } from '@karinjs/template-react'
 interface LoadRegistryOptions {
   /** 项目根目录，默认取当前工作目录。 */
   root?: string
-  /** 约定缓存目录（相对 root 或绝对路径），默认 .ktr。 */
-  cacheDir?: string
   /** 显式指定 karin.template 配置文件路径。 */
   configFile?: string
   /** 生产打包产物所在目录（相对 root 或绝对路径），默认按 main 字段和根目录扫描自动发现。 */
   bundledDir?: string
 }
-// @noErrors: 1155
 // ---cut---
-const loadTemplateRegistry: (options?: LoadRegistryOptions) => Promise<LoadedRegistry>
-const loadMockRegistry: <M extends Record<string, unknown> = Record<string, unknown>>(options?: LoadRegistryOptions) => Promise<M>
+declare const loadTemplateRegistry: (options?: LoadRegistryOptions) => Promise<LoadedRegistry>
+declare const loadMockRegistry: <M extends Record<string, unknown> = Record<string, unknown>>(options?: LoadRegistryOptions) => Promise<M>
 ```
 
 按约定加载 `ktr sync` 生成的注册表，插件源码**不需要 import `.ktr`**。取新规则：`.ktr` 源文件存在时永远优先（开发态），缺失时回退打包产物（生产态，按 `bundledDir` → `main` 目录 → 根目录扫描发现）。

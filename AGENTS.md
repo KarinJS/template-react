@@ -10,7 +10,7 @@
 
 - `packages/core`：发布包 `@karinjs/template-react`，包含公共类型、CLI、配置加载、约定扫描、开发服务器、SSR 运行时和面板源码。
 - `packages/docs`：文档站工程（Fumadocs，GitHub Pages 静态部署）。
-- `skills/`：Agent Skills 技能包（`karin-template-react`，供下游通过 `npx skills add` 安装）。
+- `skills/`：Agent Skills 技能包（`karin-template-react`，供下游通过 `npx skills add` 安装）。`scripts/fetch-docs.mjs` 是技能自带的零依赖文档抓取脚本（文档站 → GitHub raw/API 自动降级），SKILL.md 指引 Agent 用它而不是自带的 fetch 工具拉取最新文档；脚本抓取的缓存写入技能目录的 `.cache/`（已 gitignore）。
 
 下游插件开发模板（fixture）不随仓库发布，开发期在本地按需搭建验证。
 

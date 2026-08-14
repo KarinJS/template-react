@@ -1,0 +1,580 @@
+---
+title: 构建问题详解
+description: Vite build 失败、CSS 未生成、注册表未同步、外部依赖配置错误的完整排查与解决方案
+---
+
+# 构建问题详解
+
+生产构建是插件发布前的最后一关。本页覆盖 Vite build 失败、CSS 未生成、注册表未同步、外部依赖配置等常见构建问题。
+
+## Vite build 失败：找不到注册表
+
+### 症状
+
+```bash
+vite build
+# Error: Cannot find module '.ktr/template-registry'
+# or
+# [vite] Rollup failed to resolve import ".ktr/template-registry.ts"
+```
+
+### 原因
+
+打包入口未包含注册表文件，或 `.ktr/` 目录未生成。
+
+### 解决方案
+
+**1. 检查 build.lib.entry 配置**
+
+注册表必须作为独立入口打包：
+
+```ts title="vite.config.ts" twoslash
+import tailwindcss from '@tailwindcss/vite'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  plugins: [react(), tailwindcss(), ktrBuildPlugin()],
+  build: {
+    ssr: true,
+    outDir: 'lib',
+    lib: {
+      entry: {
+        'apps/template': 'src/apps/template.ts',
+        // ✅ 注册表入口必须包含
+        'template-registry': '.ktr/template-registry.ts',
+        'mock-registry': '.ktr/mock-registry.ts'
+      },
+      formats: ['es']
+    }
+  }
+})
+```
+
+**常见错误**：
+
+```ts title="vite.config.ts（错误）"
+export default defineConfig({
+  build: {
+    lib: {
+      entry: {
+        'apps/template': 'src/apps/template.ts'
+        // ❌ 缺少注册表入口
+      }
+    }
+  }
+})
+```
+
+**2. 执行 sync 生成注册表**
+
+`ktrBuildPlugin` 会在 `buildStart` 自动同步，但如果插件未正确加载，手动跑一次：
+
+```bash
+pnpm ktr sync
+```
+
+检查 `.ktr/` 目录是否存在：
+
+```bash
+ls -la .ktr/
+# 应输出：
+# template-registry.ts
+# mock-registry.ts
+# registry-types.d.ts
+```
+
+**3. 确保 ktrBuildPlugin 在插件列表里**
+
+```ts title="vite.config.ts" twoslash
+import tailwindcss from '@tailwindcss/vite'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(),
+    ktrBuildPlugin() // ← 必须在插件数组里
+  ]
+})
+```
+
+---
+
+## CSS 未生成到产物目录
+
+### 症状
+
+构建成功但产物目录（如 `lib/`，由你的打包器 outDir 决定）没有 `style.css`，或者真实渲染的截图没有样式。
+
+### 原因
+
+`ktrBuildPlugin` 未启用 CSS 编译，或 Tailwind 插件未正确配置。
+
+### 解决方案
+
+**1. 检查 ktrBuildPlugin 配置**
+
+默认启用 CSS 编译，确保没有传 `{ css: false }`：
+
+```ts title="vite.config.ts（正确）" twoslash
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [
+    ktrBuildPlugin() // ✅ 默认启用 CSS 编译
+  ]
+})
+```
+
+```ts title="vite.config.ts（错误）" twoslash
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [
+    ktrBuildPlugin({ css: false }) // ❌ 禁用了 CSS 编译
+  ]
+})
+```
+
+**2. 确保 Tailwind 插件在前**
+
+Tailwind 必须在 `ktrBuildPlugin` 之前：
+
+```ts title="vite.config.ts" twoslash
+import tailwindcss from '@tailwindcss/vite'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(), // ← Tailwind 在前
+    ktrBuildPlugin() // ← ktr 在后
+  ]
+})
+```
+
+**3. 检查 CSS 入口文件**
+
+确保 `ktr/template/style.css` 存在且内容正确：
+
+```css title="ktr/template/style.css"
+@import 'tailwindcss';
+@import '@karinjs/template-react/styles';
+@source './**/*.{ts,tsx}';
+```
+
+缺失时手动创建，或重新执行 `pnpm ktr init`。
+
+**4. 验证产物**
+
+构建成功后检查：
+
+```bash
+ls -la lib/   # 产物目录（你的打包器 outDir）
+# 应输出：
+# style.css  ← CSS 编译产物
+# apps/
+# template-registry.js
+# mock-registry.js
+```
+
+`style.css` 大小应在 10KB 以上（包含 Tailwind reset + HeroUI 样式 + 实际用到的类）。
+
+---
+
+## 构建成功但运行时报错：两份 React
+
+### 症状
+
+```text
+Error: Invalid hook call. Hooks can only be called inside the body of a function component.
+```
+
+或者：
+
+```text
+Error: Minified React error #321
+```
+
+### 原因
+
+产物里存在两份 React：源码依赖一份、打包产物一份。hooks 状态无法跨 React 实例共享，导致崩溃。
+
+### 解决方案
+
+**确保 React 全部打进产物**
+
+```ts title="vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  ssr: {
+    noExternal: true, // ✅ 所有依赖（除 external 列表）都打进产物
+    external: ['node-karin'] // ✅ 只有 node-karin 保持外部
+  },
+  build: {
+    ssr: true,
+    rollupOptions: {
+      external: [/^node:/, 'node-karin'] // ✅ Node 内置模块 + node-karin
+    }
+  },
+  resolve: {
+    dedupe: ['react', 'react-dom'] // ✅ 强制去重
+  }
+})
+```
+
+**关键点**：
+
+1. `ssr.noExternal: true` —— 所有 npm 包都打进产物
+2. `ssr.external: ['node-karin']` —— 只有宿主提供的 `node-karin` 保持外部
+3. `resolve.dedupe` —— 确保只有一份 React
+
+**常见错误配置**：
+
+```ts title="vite.config.ts（错误）"
+export default defineConfig({
+  ssr: {
+    noExternal: ['@karinjs/template-react'], // ❌ 只打包 ktr，React 留外部
+    external: ['node-karin', 'react', 'react-dom'] // ❌ React 留外部会导致两份
+  }
+})
+```
+
+---
+
+## 构建后找不到静态资源
+
+### 症状
+
+真实渲染的截图里，`/logo.png` 等静态资源 404。
+
+### 原因
+
+静态资源未复制到产物目录，或路径引用错误。
+
+### 解决方案
+
+**1. 确保 copyAssets 启用**
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  dir: {
+    assets: 'ktr/public',
+    copyAssets: true // ✅ 默认为 true
+  }
+})
+```
+
+**2. 验证产物目录**
+
+构建后检查：
+
+```bash
+ls -la lib/assets/
+# 应包含 ktr/public/ 下的所有文件
+```
+
+**3. 模板里用绝对路径引用**
+
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+const Card = ({ data }: TemplateProps<any>) => (
+  <div>
+    {/* ✅ 开发时指向 ktr/public/logo.png */}
+    {/* ✅ 生产时指向 <产物目录>/assets/logo.png（如 lib/assets/logo.png） */}
+    <img src="/logo.png" alt="Logo" />
+  </div>
+)
+
+export default defineTemplate({ component: Card })
+```
+
+ktr 的开发服务器和渲染器会自动处理路径映射。
+
+**4. 资源已随包发布时禁用复制**
+
+如果静态资源本身就在包里（如 `node_modules/@your-scope/assets/`），设置 `copyAssets: false` 避免重复：
+
+```ts title="karin.template.ts"
+export default defineConfig({
+  dir: {
+    assets: 'node_modules/@your-scope/assets',
+    copyAssets: false // ← 不复制，直接用原路径
+  }
+})
+```
+
+---
+
+## tsdown 构建失败
+
+### 症状
+
+```bash
+tsdown
+# Error: Cannot find module './.ktr/template-registry.ts'
+```
+
+或者构建成功但产物是 `.mjs` 扩展名，注册表加载失败。
+
+### 原因
+
+入口路径缺少 `./` 前缀，或 `outExtensions` 未固定为 `.js`。
+
+### 解决方案
+
+```ts title="tsdown.config.ts" twoslash
+import { defineConfig } from 'tsdown'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  entry: {
+    // ✅ 入口路径必须带 ./ 前缀
+    'apps/template': './src/apps/template.ts',
+    'template-registry': './.ktr/template-registry.ts',
+    'mock-registry': './.ktr/mock-registry.ts'
+  },
+  plugins: [ktrBuildPlugin()],
+  format: ['esm'],
+  platform: 'node',
+  target: 'node18',
+  outDir: 'lib',
+  // ✅ 固定产物扩展名为 .js，不要用 .mjs
+  outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+  deps: {
+    neverBundle: ['node-karin']
+  }
+})
+```
+
+**关键点**：
+
+1. 入口路径必须带 `./` 或 `/` 前缀，否则被当成 npm 包名
+2. `outExtensions` 固定为 `.js`，注册表发现按 `.js` 文件名查找
+3. `neverBundle` 只有 `node-karin`
+
+---
+
+## 构建速度慢
+
+### 症状
+
+`vite build` 或 `tsdown` 构建耗时很长（超过 30 秒），或每次构建都重新编译所有依赖。
+
+### 原因
+
+未启用缓存、依赖过多、或 Tailwind 扫描范围过大。
+
+### 解决方案
+
+**1. 启用 Vite 缓存**
+
+```ts title="vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  cacheDir: 'node_modules/.vite'
+})
+```
+
+**2. 缩小 Tailwind 扫描范围**
+
+只扫描模板目录，不扫描 `node_modules`：
+
+```css title="ktr/template/style.css"
+@import 'tailwindcss';
+@import '@karinjs/template-react/styles';
+@source './**/*.{ts,tsx}'; /* ← 只扫描 ktr/template/ */
+```
+
+**3. 排除不必要的依赖**
+
+如果项目依赖了不需要打包的包（如测试框架），显式排除：
+
+```ts title="vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  ssr: {
+    noExternal: true,
+    external: ['node-karin', 'vitest', '@testing-library/react']
+  }
+})
+```
+
+**4. 使用 tsdown 替代 Vite**
+
+tsdown 基于 Rolldown（Rust），构建速度比 Vite 快 3-5 倍：
+
+```bash
+pnpm add -D tsdown
+tsdown
+```
+
+配置见 [构建发布 - 方式二](/docs/guide/building#方式二tsdown备选)。
+
+---
+
+## 产物体积过大
+
+### 症状
+
+产物目录（如 `lib/`）总大小超过 5MB，或单个 JS 文件超过 1MB。
+
+### 原因
+
+Tailwind 生成了大量未使用的类、或依赖未正确 tree-shaking。
+
+### 解决方案
+
+**1. 检查 @source 路径**
+
+确保 Tailwind 只扫描实际使用的文件：
+
+```css title="ktr/template/style.css"
+@import 'tailwindcss';
+@import '@karinjs/template-react/styles';
+/* ✅ 只扫描模板目录 */
+@source './**/*.{ts,tsx}';
+
+/* ❌ 错误：扫描整个项目 */
+/* @source '../../**/*.{ts,tsx}'; */
+```
+
+**2. 分析产物大小**
+
+使用 `rollup-plugin-visualizer`：
+
+```bash
+pnpm add -D rollup-plugin-visualizer
+```
+
+```ts title="vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+import { visualizer } from 'rollup-plugin-visualizer'
+
+export default defineConfig({
+  plugins: [visualizer({ open: true, gzipSize: true })]
+})
+```
+
+构建后会生成 `stats.html`，可视化查看各模块占用。
+
+**3. 移除未使用的 HeroUI 组件**
+
+如果不用 HeroUI 的组件（只用样式变量），自己写精简的 CSS 入口：
+
+```css title="ktr/template/style.css"
+@import 'tailwindcss';
+/* 不引入 HeroUI，手动定义变量 */
+@source './**/*.{ts,tsx}';
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.2 0 0);
+  --accent: oklch(0.62 0.19 254);
+  /* ... 其他变量 */
+}
+```
+
+体积从 ~50KB 降到 ~10KB。
+
+**4. 拆分大型依赖**
+
+如果某个依赖特别大（如图表库），按需导入：
+
+```tsx title="ktr/template/dashboard/chart/index.tsx"
+// ✅ 按需导入
+import { LineChart } from 'recharts/es6/chart/LineChart'
+
+// ❌ 全量导入
+// import { LineChart } from 'recharts'
+```
+
+---
+
+## 构建后注册表为空
+
+### 症状
+
+构建成功，产物目录里 `template-registry.js` 存在但内容为空，真实渲染时报错 `Template is not registered`。
+
+### 原因
+
+`ktr sync` 未执行，或 `ktr/template/` 目录路径配置错误。
+
+### 解决方案
+
+**1. 手动执行 sync**
+
+```bash
+pnpm ktr sync
+cat .ktr/template-registry.ts
+```
+
+输出应该包含所有模板的 import 和 export：
+
+```ts title=".ktr/template-registry.ts"
+import template_0 from '../ktr/template/hello/card/index.tsx'
+import template_1 from '../ktr/template/hello/list/index.tsx'
+
+export default {
+  'hello/card': template_0,
+  'hello/list': template_1
+}
+```
+
+如果输出是空对象 `export default {}`，说明模板扫描失败。
+
+**2. 检查模板目录配置**
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  dir: {
+    template: 'ktr/template' // ✅ 相对项目根目录
+  }
+})
+```
+
+**3. 验证模板结构**
+
+模板必须是 `<板块>/<模板>/index.tsx`，默认导出 `defineTemplate(...)`：
+
+```text
+ktr/template/
+└── hello/          ← 板块
+    └── card/       ← 模板
+        └── index.tsx  ← 默认导出 defineTemplate
+```
+
+裸写的 `.tsx` 不会注册：
+
+```text
+ktr/template/
+└── hello/
+    └── card.tsx  ← ❌ 不会注册，必须是 card/index.tsx
+```
+
+---
+
+## 相关资源
+
+<Cards>
+  <Card title="构建发布" href="/docs/guide/building" description="Vite 和 tsdown 的完整配置" />
+  <Card title="常见问题" href="/docs/troubleshooting/common-issues" description="高频问题快速诊断" />
+  <Card title="依赖问题详解" href="/docs/troubleshooting/dependency-issues" description="React 版本冲突、monorepo 场景" />
+</Cards>

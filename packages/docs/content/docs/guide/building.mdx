@@ -5,7 +5,7 @@ description: 用 vite 或 tsdown 把插件打包成 karin 生产可用的纯 JS 
 
 开发时写的 `.tsx` 组件和 Tailwind CSS，Node 直接跑不了——发布前必须构建。本页给出可直接复制的 vite（推荐）和 tsdown 配置。
 
-构建要产出三样：插件逻辑 JS（`src/**/*.ts` → `lib/`）、注册表 JS（`.ktr/*.ts` → `lib/`）、模板样式 CSS（→ `lib/style.css`）。
+构建要产出三样：插件逻辑 JS（`src/**/*.ts`）、注册表 JS（`.ktr/*.ts`）、模板样式 CSS（`style.css`），全部落到**打包器自己的 outDir**（下面示例用 karin 惯例的 `lib/`，叫什么由你的打包配置决定）。
 
 **没有 `ktr build` 命令**：构建统一走打包器，在打包配置里挂 `ktrBuildPlugin()`（`@karinjs/template-react/plugin`）即可——`buildStart` 自动刷新 `.ktr` 注册表（不用单独跑 `ktr sync`），`closeBundle` 把 CSS 编译到打包器自己的 outDir，改 outDir 不用同步改任何 ktr 配置。
 
@@ -98,6 +98,17 @@ tsdown
 `createTemplateRenderer` 按约定自动发现，不需要配置：
 
 - **注册表**：`.ktr` 源文件存在时优先（开发态），否则按 `bundledDir` 选项 → `package.json` 的 `main` 目录 → 根目录扫描发现打包产物（生产态）。
-- **样式**：开发态读 dev server 实时编译的缓存，生产态读 `lib/style.css`。
+- **样式**：开发态读 dev server 实时编译的缓存，生产态默认按 karin 惯例读 `lib/style.css`。
 
-产物目录叫别的名字时显式指定：`createTemplateRenderer(import.meta.url, { bundledDir: 'lib' })`。
+产物目录不叫 `lib/` 时显式指定：
+
+```ts twoslash
+import path from 'node:path'
+
+import { createTemplateRenderer } from '@karinjs/template-react'
+// ---cut---
+const render = createTemplateRenderer(import.meta.url, {
+  bundledDir: 'dist', // 注册表产物目录
+  renderer: { cssPath: path.resolve('dist/style.css') } // CSS 产物路径
+})
+```

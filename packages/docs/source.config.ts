@@ -14,7 +14,15 @@ export default defineConfig({
           twoslashOptions: {
             compilerOptions: {
               // 与下游模板的 tsconfig 一致：JSX 走自动运行时，组件里不需要 import React
-              jsx: ts.JsxEmit.ReactJSX
+              jsx: ts.JsxEmit.ReactJSX,
+              // twoslash 的 vfs 不会自动包含 @types 全局包，显式引入需要的类型，
+              // 否则示例里的 node:path / process / import.meta.hot 等会报错
+              types: ['node', 'vite/client'],
+              // 展示 .ktr 生成物时需要：导入路径带 .tsx 扩展名、import JSON 文件
+              allowImportingTsExtensions: true,
+              noEmit: true,
+              resolveJsonModule: true,
+              esModuleInterop: true
             }
           }
         })
