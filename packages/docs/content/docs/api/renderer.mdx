@@ -1,21 +1,9 @@
 ---
 title: 渲染器 API
-description: createTemplateRenderer、createRenderer、注册表加载函数与渲染上下文类型的完整参考。
+description: createTemplateRenderer、createRenderer、注册表加载函数与渲染上下文类型的完整参考
 ---
 
-用在插件 Node 侧胶水层的 API：`createRenderer`、`createTemplateRenderer`、`loadMockRegistry`、`loadTemplateRegistry`，全部从主入口 `@karinjs/template-react` 导入。
-
-```ts twoslash
-import { createTemplateRenderer } from '@karinjs/template-react'
-
-const renderTemplate = createTemplateRenderer(import.meta.url)
-//    ^?
-```
-
-<Callout>
-  **选型建议**：绝大多数插件只用 `createTemplateRenderer`（约定事项全自动）；`createRenderer`
-  是底层能力，需要完全自定义来源或输出目录时才用。
-</Callout>
+插件 Node 侧胶水层用的 API，全部从主入口 `@karinjs/template-react` 导入。绝大多数插件只用 `createTemplateRenderer`（约定事项全自动）；`createRenderer` 是底层能力，需要完全自定义来源时才用。
 
 ## createTemplateRenderer
 
@@ -37,21 +25,10 @@ type TemplateRenderFn = <K extends keyof LoadedRegistry & string>(
 ) => Promise<RenderResult>
 ```
 
-| 参数               | 类型                       | 必填 | 说明                                                                      |
-| ------------------ | -------------------------- | ---- | ------------------------------------------------------------------------- |
-| `callerUrl`        | `string`                   | 是   | 调用方模块的 `import.meta.url`，用来向上定位插件包根（最多 10 层）。      |
-| `options.renderer` | `Partial<RendererOptions>` | 否   | 覆盖项，合并进约定默认值后透传给 `createRenderer`，例如指定 `outputDir`。 |
+- `callerUrl`：调用方模块的 `import.meta.url`，用来向上定位插件包根（最多 10 层），必须原样传。
+- 惰性初始化：首次渲染时才解析配置、加载注册表、创建渲染器。
 
-**约定行为**（什么都不配时自动做的事）：
-
-- **包根定位**：开发期 `src/`、生产期 `lib/` 向上都命中同一个 `package.json`。
-- **配置与注册表**：读取 `karin.template.ts`，加载约定注册表（开发态 `.ktr` 优先，缺失时回退生产产物 `lib/`）。
-- **CSS**：开发态用缓存 `node_modules/.cache/ktr/style.css`；生产态与 `lib/style.css` 取修改时间较新的一份。
-- **默认位置**：`outputDir` 默认 `dist/template/html`；捕获目录默认在模板目录（真实数据写入 `ktr/template/<路由>/data/captured.json`，滚动覆盖，面板自动刷新选中）；HTML 外壳透传 `html` 配置（如 `headExtra`）。
-
-**惰性初始化**：第一次渲染时才解析配置、加载注册表并创建渲染器（复用同一个 Promise），模块加载期没有 IO。
-
-示例（`src/utils/render.ts`）：
+**约定行为**（什么都不配时自动做的）：读 `karin.template.ts`；加载约定注册表（开发态 `.ktr` 优先，缺失回退生产产物）；CSS 开发态用缓存、生产态用 `lib/style.css`；`outputDir` 默认 `dist/template/html`；真实渲染数据捕获到 `ktr/template/<路由>/data/captured.json`。
 
 ```ts title="src/utils/render.ts" twoslash
 import { createTemplateRenderer } from '@karinjs/template-react'
@@ -81,21 +58,21 @@ const createRenderer: <R extends Record<keyof R, TemplateDef<any>>>(
 ) => <K extends keyof R & string>(templatePath: K, data: DataOf<R[K]>, ctx?: RenderContextInput) => Promise<RenderResult>
 ```
 
-把注册表渲染成独立 HTML 文件的底层渲染器。返回值 `RenderResult`：`success`（是否成功）、`htmlPath`（成功时的 HTML 路径，失败为空串）、`error?`（失败原因）。
+`RendererOptions`：
 
-| 参数              | 类型                                                           | 必填               | 说明                                                                       |
-| ----------------- | -------------------------------------------------------------- | ------------------ | -------------------------------------------------------------------------- |
-| `cssPath`         | `string`                                                       | 是                 | 模板 CSS 文件路径，通常来自 `resolveTemplateStyle`。                       |
-| `outputDir`       | `string`                                                       | 是                 | SSR 生成的 HTML 输出目录（自动创建）。                                     |
-| `extraStylePaths` | `string[]`                                                     | 否                 | 额外注入 HTML 的样式文件，按顺序内联。                                     |
-| `plugins`         | `RenderPlugin[]`                                               | 否                 | SSR 渲染插件，见文末。                                                     |
-| `captureDir`      | `string`                                                       | 否                 | 捕获目录，**显式传入才捕获**；未传时仅开发环境默认捕获到 `ktr/template/`。 |
-| `htmlFileName`    | `'fixed' \| 'timestamp' \| ((templatePath: string) => string)` | 否，默认 `'fixed'` | 输出 HTML 文件命名方式。                                                   |
-| `html.headExtra`  | `string`                                                       | 否                 | 追加到 `<head>` 的原始 HTML。                                              |
+| 参数              | 类型                                                           | 必填               | 说明                                                 |
+| ----------------- | -------------------------------------------------------------- | ------------------ | ---------------------------------------------------- |
+| `cssPath`         | `string`                                                       | 是                 | 模板 CSS 文件路径，通常来自 `resolveTemplateStyle`。 |
+| `outputDir`       | `string`                                                       | 是                 | SSR 生成的 HTML 输出目录（自动创建）。               |
+| `extraStylePaths` | `string[]`                                                     | 否                 | 额外注入 HTML 的样式文件，按顺序内联。               |
+| `plugins`         | `RenderPlugin[]`                                               | 否                 | SSR 渲染插件，见文末。                               |
+| `captureDir`      | `string`                                                       | 否                 | 捕获目录，显式传入才捕获。                           |
+| `htmlFileName`    | `'fixed' \| 'timestamp' \| ((templatePath: string) => string)` | 否，默认 `'fixed'` | 输出 HTML 文件命名方式。                             |
+| `html.headExtra`  | `string`                                                       | 否                 | 追加到 `<head>` 的原始 HTML。                        |
 
-`htmlFileName` 三种取值：`'fixed'` 每模板固定一个文件覆盖写（`hello/card` → `hello_card.html`）；`'timestamp'` 输出 `hello_card_<时间戳>.html`（并发渲染同模板时可选）；传函数则收路由、返回不含扩展名的文件主名。
+`htmlFileName`：`'fixed'` 每模板固定一个文件覆盖写（`hello/card` → `hello_card.html`）；`'timestamp'` 输出带时间戳的文件名（并发渲染同模板时可选）；函数形式收路由、返回不含扩展名的文件主名。
 
-**渲染行为**：路由未注册报 `Template is not registered: <路由>`，`validate` 没通过报 `Template data validation failed: <路由>`，都返回 `success: false` 不抛异常。成功后写出完整 HTML（内联 CSS、`#container` 边界、按 `ctx.theme` 注入主题变量）并按规则写 `captured.json`，捕获失败只告警不中断。
+**渲染行为**：路由未注册或 `validate` 未通过时返回 `success: false`（原因在 `error`），不抛异常。成功后写出完整 HTML（内联 CSS、`#container` 边界、按 `ctx.theme` 注入主题变量）并按规则写 `captured.json`。
 
 ## loadTemplateRegistry / loadMockRegistry
 
@@ -119,17 +96,9 @@ const loadTemplateRegistry: (options?: LoadRegistryOptions) => Promise<LoadedReg
 const loadMockRegistry: <M extends Record<string, unknown> = Record<string, unknown>>(options?: LoadRegistryOptions) => Promise<M>
 ```
 
-按约定加载 `ktr sync` 生成的注册表，插件源码**不需要 import `.ktr` 目录**；用法示例见[在 Karin 插件中集成](/docs/guide/karin-integration)。`options`（`LoadRegistryOptions`）全部可缺省：
+按约定加载 `ktr sync` 生成的注册表，插件源码**不需要 import `.ktr`**。取新规则：`.ktr` 源文件存在时永远优先（开发态），缺失时回退打包产物（生产态，按 `bundledDir` → `main` 目录 → 根目录扫描发现）。
 
-| 选项         | 说明                                                                       |
-| ------------ | -------------------------------------------------------------------------- |
-| `root`       | 项目根目录，默认取当前工作目录。                                           |
-| `cacheDir`   | 约定缓存目录（相对 root 或绝对路径），默认 `.ktr`。                        |
-| `configFile` | 显式指定 karin.template 配置文件路径。                                     |
-| `bundledDir` | 生产打包产物目录（相对 root 或绝对路径），默认按 main 字段与目录扫描发现。 |
-
-- **取新规则**：`.ktr` 源文件存在时永远优先（开发态），缺失时回退到打包产物（生产态）。产物目录不做硬性假设——依次按：显式 `bundledDir` 选项 → `package.json` 的 `main` 字段所在目录 → 根目录一层扫描来发现，下游随便改 outDir 都能命中；都不存在时抛错提示先运行 `ktr sync`。
-- **返回值**：`loadTemplateRegistry` 返回「路由 → 模板定义」映射表（类型 `LoadedRegistry`：模块增强生效时逐路由精确，否则退化为 `AnyRegistry`）；`loadMockRegistry` 返回 mock 命名空间：各 `mock.ts` 具名导出 + `mockDataFiles` 清单（路由 → `data/*.json` 文件名）。
+返回值：`loadTemplateRegistry` 返回「路由 → 模板定义」映射（模块增强生效时逐路由精确，否则退化为 `AnyRegistry`）；`loadMockRegistry` 返回各 `mock.ts` 具名导出 + `mockDataFiles` 清单（路由 → `data/*.json` 文件名）。
 
 ## 渲染上下文与主题类型
 
@@ -146,22 +115,18 @@ interface RenderContext {
 }
 ```
 
-第三个参数 `ctx` 的类型是 `RenderContextInput`：所有字段可选，`theme` 只注入显式提供的字段，缺省时组件库自身主题生效；面板「模板主题」弹窗里显式选择后才会下发。
+第三个参数 `ctx` 的类型是 `RenderContextInput`：所有字段可选，`theme` 只注入显式提供的字段，缺省时组件库自身主题生效。
 
 ### ThemeContext
 
-| 字段                   | 说明                                 |
-| ---------------------- | ------------------------------------ |
-| `mode`                 | 明暗模式：`'light' \| 'dark'`。      |
-| `accent`               | 主色。                               |
-| `accentForeground`     | 主色上的文字色。                     |
-| `accentSoft`           | 主色的浅色背景（徽标、弱强调区域）。 |
-| `accentSoftForeground` | 浅色主色上的文字色。                 |
-| `background`           | 模板根背景色。                       |
-| `foreground`           | 主要文字色。                         |
-| `surface`              | 卡片、面板等表面色。                 |
-| `muted`                | 次要文字颜色。                       |
-| `border`               | 边框、分割线颜色。                   |
+| 字段                                  | 说明                                                   |
+| ------------------------------------- | ------------------------------------------------------ |
+| `mode`                                | 明暗模式：`'light' \| 'dark'`。                        |
+| `accent` / `accentForeground`         | 主色 / 主色上的文字色。                                |
+| `accentSoft` / `accentSoftForeground` | 主色浅背景 / 其上的文字色。                            |
+| `background` / `foreground`           | 模板根背景色 / 主要文字色。                            |
+| `surface` / `muted` / `border`        | 表面色 / 次要文字 / 边框。                             |
+| `vars`                                | 任意 CSS 变量直通口（如 `--radius`），同名时以此为准。 |
 
 ### RenderPlugin / PluginContext
 
@@ -179,4 +144,4 @@ interface RenderPlugin {
 }
 ```
 
-钩子的 `PluginContext` 字段：`path`（模板路由）、`data`（模板数据）、`ctx`（运行时上下文）、`outputDir`（HTML 输出目录）。
+`PluginContext` 字段：`path`（模板路由）、`data`（模板数据）、`ctx`（运行时上下文）、`outputDir`（HTML 输出目录）。

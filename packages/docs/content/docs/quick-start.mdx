@@ -1,46 +1,30 @@
 ---
 title: 快速开始
-description: 10 分钟，从 Karin 官方 TS 插件模板到用 React 模板发出第一张图片
+description: 从初始化到在群里发出第一张 React 模板截图
 ---
 
 # 快速开始
 
-这篇教程面向**几乎零基础**的开发者：你不需要懂 React 原理、不需要懂构建工具，跟着每一步复制粘贴即可。每一步都会告诉你"成功后你会看到什么"，没看到就停下来检查对应步骤。
+本页把 Karin 插件项目接入 `@karinjs/template-react`，用 React 组件写一个截图模板并在群里发出第一张图片。每步结尾说清成功标志，没看到就停下来检查。
 
-目标是：把 Karin 官方的 TypeScript 插件模板接入 `@karinjs/template-react`，用 React 组件写一个截图模板，并在群里发出第一张图片，**替代掉 art-template**。
-
-## 开始前你需要
-
-- 安装好 [Node.js](https://nodejs.org/)（建议 22 或更高版本）和 [pnpm](https://pnpm.io/)（`npm install -g pnpm`）；
-- 一个基于 Karin 官方 **TypeScript 插件模板**创建的插件项目（还没有的话，去 Karin 官方仓库复制插件模板作为起点）；
-- 一个能跑起来的 Karin 主程序（用来真正发图片）。
-
-<Callout type="info">
-  还不会 React / Tailwind / TypeScript？先把 [React 中文官方教程](https://zh-hans.react.dev/learn)、[Tailwind CSS
-  文档](https://tailwindcss.com/docs)、[TypeScript 官方文档](https://www.typescriptlang.org/docs/) 过一遍再开工。也可以直接装 [AI
-  技能包](/docs/ai-skill)，让 AI 按最新文档带你做。
-</Callout>
-
-## 正式开工
+前置条件：Node.js 22+、pnpm、一个基于 Karin 官方 TypeScript 插件模板的项目。
 
 <Steps>
 <Step>
-### 第 1 步：一条命令初始化
+### 第 1 步：初始化
 
-在你的插件项目根目录执行：
+在插件项目根目录执行：
 
 ```bash
 npx @karinjs/template-react init
 ```
 
-它会用交互问答帮你把该配的东西一次配齐：
+交互问答四项：
 
-- **选择模板样式方案**：选"使用 ktr 默认样式（继承 HeroUI 主题）"就直接继承 [HeroUI](https://heroui.com/cn/docs/react/getting-started/colors) 默认主题，`text-accent`、`bg-surface` 这类类名开箱就有颜色；选"HeroUI + 自定义主题块"会额外生成一段带注释的主题变量块（`:root` / `.dark`），方便以后自己改色。
-- **是否生成示例模板**：把官方 examples 的 7 个示例模板（问候卡片、成员榜单、宽屏仪表盘、竖屏故事图、社媒方图、长条小票、深层嵌套）复制到 `ktr/template/` 下，含组件和示例数据，可以直接看到效果、照着改写。
-- **是否生成 render.ts 辅助函数**：生成 `src/utils/render.ts`，把模板渲染接到 Karin 的截图能力上（就是下面第 4 步要用的东西）。
+- **样式方案**：选默认即继承 HeroUI 主题，`bg-surface`、`text-accent` 这类语义类开箱可用。
+- **是否生成示例模板**：把官方 7 个示例（问候卡片、成员榜单、宽屏仪表盘等）复制到 `ktr/template/`，照着改即可。
+- **是否生成 `src/utils/render.ts`**：模板渲染接 Karin 截图的胶水层（第 4 步要用）。
 - **开发面板端口**。
-
-**成功后**你会看到：项目里多了 `karin.template.ts`、`ktr/template/style.css`，以及你选择生成的示例模板和 `src/utils/render.ts`；`tsconfig.json` 补上了 `jsx: "react-jsx"`；`package.json` 补上了 react、`@karinjs/template-react` 等开发依赖和 `template` 脚本。终端最后会提示你执行安装命令。
 
 按提示装依赖：
 
@@ -48,98 +32,51 @@ npx @karinjs/template-react init
 pnpm install
 ```
 
-<Callout type="info">
-  **从零开始建项目**用 `npx @karinjs/template-react create <项目名>`，它会先建目录和 `package.json`，再走上面同一套问答。
-</Callout>
+**成功标志**：项目多出 `karin.template.ts`、`ktr/template/`（含示例模板）、`src/utils/render.ts`；`tsconfig.json` 补上 `jsx: "react-jsx"`；`package.json` 补上依赖和 `template` 脚本。
+
+<Callout type="info">从零新建项目用 `npx @karinjs/template-react create <项目名>`，之后走同一套问答。</Callout>
 
 <Callout type="warn">
-  **所有依赖都放 `devDependencies`**——构建会把它们全部打进 `lib/`（含 react 和本工具包的运行时），发布后生产环境零安装。关键前提：core
-  的运行时和模板组件必须在**同一份产物**里，这样包内只有一份 React 副本，hooks 才能正常工作；反过来说，如果你把 `@karinjs/template-react`
-  改成外部引用，那 react/react-dom 就必须跟着外部化（放 `dependencies`），两半各一份 React 会直接崩。
+  依赖全部放 `devDependencies`，构建时整体打进 `lib/`（含 react 和本包运行时），生产环境零安装；只有 `node-karin`
+  保持外部。不要只打包一半——组件和渲染器必须用同一份 React，否则 hooks 直接崩。
 </Callout>
-
-<Callout type="error">
-  **`jsx: "react-jsx"` 是写 `.tsx` 模板的前提**，少了它编辑器里 JSX 全是红线。`init` 会自动补上；如果你的 `tsconfig.json`
-  格式特殊没被改到，手动加一下。另外：如果 `tsconfig.json` 写了 `include`，确认它覆盖 `src`、`ktr`、`.ktr` 三个目录——`renderImage`
-  的逐路由精确类型来自 `.ktr/registry-types.d.ts` 的模块增强，不被 include 就失效了；没写 `include` 则默认全包含，不用动。
-</Callout>
-
-想知道 `init` 到底写了什么、或者更愿意手写，看 [手动配置](#附手动配置)。
 
 </Step>
-
 <Step>
-### 第 2 步：认识模板的写法
+### 第 2 步：模板长什么样
 
-上一步如果选了生成示例模板，`ktr/template/hello/card/index.tsx` 已经在那儿了（另外还有 6 个不同场景的示例，都可以照着改）。它长这样：
+以示例 `ktr/template/hello/card/index.tsx` 的最小形态为例：
 
 ```tsx title="ktr/template/hello/card/index.tsx"
-import { Card, Chip } from '@heroui/react'
-import { Braces, Layers3, Sparkles } from 'lucide-react'
-
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
-/** Hello 卡片模板的数据结构，适合固定宽度的信息摘要截图。 */
-type HelloCardData = {
-  /** 主标题。 */
+interface CardData {
   title: string
-  /** 可选副标题。 */
-  subtitle?: string
-  /** 展示在卡片内容区的键值对。 */
   items: Array<{ label: string; value: string }>
 }
 
-const HelloCard = ({ data }: TemplateProps<HelloCardData>) => (
-  <Card className="w-155 gap-0 overflow-hidden rounded-3xl border border-border bg-background p-0 text-foreground">
-    <Card.Header className="flex-row items-start justify-between gap-4 border-b border-border px-8 py-7">
-      <div className="min-w-0">
-        <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
-          <Sparkles size={16} />
-          Karin 模板示例
-        </div>
-        <Card.Title className="text-3xl font-bold tracking-normal">{data.title}</Card.Title>
-        {data.subtitle && <Card.Description className="mt-2 text-sm text-accent">{data.subtitle}</Card.Description>}
+const Card = ({ data }: TemplateProps<CardData>) => (
+  <div className="w-155 rounded-3xl border border-border bg-background p-8 text-foreground">
+    <h1 className="mb-4 text-3xl font-bold">{data.title}</h1>
+    {data.items.map((item) => (
+      <div key={item.label} className="flex justify-between py-2">
+        <span className="text-muted">{item.label}</span>
+        <strong>{item.value}</strong>
       </div>
-
-      <Chip className="bg-accent text-accent-foreground" size="md" variant="tertiary">
-        <Layers3 size={14} />
-        HeroUI
-      </Chip>
-    </Card.Header>
-
-    <Card.Content className="grid gap-3 px-8 py-7">
-      {data.items.map((item, index) => (
-        <div key={item.label} className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent-soft text-accent">
-              {index === 0 ? <Braces size={16} /> : <Layers3 size={16} />}
-            </span>
-            <span className="truncate text-sm text-muted">{item.label}</span>
-          </div>
-          <strong className="text-base">{item.value}</strong>
-        </div>
-      ))}
-    </Card.Content>
-  </Card>
+    ))}
+  </div>
 )
 
-export default defineTemplate({
-  name: '问候卡片',
-  description: 'HeroUI + lucide-react 截图卡片',
-  component: HelloCard
-})
+export default defineTemplate({ name: '问候卡片', component: Card })
 ```
 
-三个要点：
+- **路径即路由**：`ktr/template/<板块>/<模板>/index.tsx` → 路由 `hello/card`；裸写 `.tsx` 不注册。
+- **颜色用语义类**（`bg-background`、`text-muted`），换肤和明暗切换自动跟随，别写 `bg-white` 这类固定色。
+- **JSON 示例数据放 `data/` 子目录**（如 `data/default.json`），放模板根目录不识别。
 
-- **路径是强约定**：模板组件必须写在 `ktr/template/<板块>/<模板>/index.tsx`，目录就是路由（这个模板的路由是 `hello/card`），文件名固定叫 `index.tsx`。直接写 `ktr/template/hello/card.tsx` 这种裸文件**不会**被注册。
-- **颜色用语义化类名**：`bg-background`、`text-muted`、`text-accent` 这些来自继承的 HeroUI 主题，换肤和明暗切换时会自动跟随。别写 `bg-white`、`text-zinc-500` 这类固定颜色。细节见[样式与主题](/docs/guide/styling)。
-- **数据放 `data/` 子目录**：示例数据在 `ktr/template/hello/card/data/default.json`，直接放在 `hello/card/` 根部不会被识别。
-
-**成功后**：文件都在，保存后没有报错。
+完整目录结构见 [目录约定](/docs/guide/conventions)。
 
 </Step>
-
 <Step>
 ### 第 3 步：启动开发面板
 
@@ -147,18 +84,15 @@ export default defineTemplate({
 pnpm template
 ```
 
-这条脚本是 `init` 帮你写进 `package.json` 的，等价于 `ktr sync && ktr dev`。`ktr sync` 会扫描 `ktr/template/` 并在隐藏的 `.ktr/` 目录生成注册表和类型声明（框架产物，不要手动改、不要 import 它）。
+等价于 `ktr sync && ktr dev`：`sync` 扫描模板目录生成 `.ktr/` 注册表，`dev` 启动面板。
 
-**成功后**：终端清屏并打印面板地址和模板数量，浏览器自动打开面板，左侧能看到"问候卡片"，中间就是它的实时预览。改 `index.tsx` 或 `default.json` 保存，预览秒级更新——这就是你以后调样式的主战场。
-
-<Callout type="info">端口被占用时 ktr 会自动换一个，并在启动详情里告诉你是谁占着、用什么命令能杀掉它。</Callout>
+**成功标志**：浏览器自动打开面板，左侧选中"问候卡片"即见实时预览；改组件或 `data/*.json` 保存后秒级更新。端口被占用时自动换端口，并在启动详情里提示占用进程。
 
 </Step>
-
 <Step>
 ### 第 4 步：接上 Karin，发出第一张图
 
-`src/utils/render.ts`（第 1 步选了生成胶水层的话已经有了）把模板渲染和 Karin 截图接起来：
+`src/utils/render.ts`（第 1 步选择生成后已存在）：
 
 ```ts title="src/utils/render.ts" twoslash
 // @filename: ./src/dir.ts
@@ -209,7 +143,7 @@ export const renderImage = async <K extends keyof Registry & string>(
 }
 ```
 
-再创建一个机器人指令 `src/apps/template.ts`：
+再加一条机器人指令 `src/apps/template.ts`：
 
 ```ts title="src/apps/template.ts" twoslash
 // @filename: ./src/utils/render.ts
@@ -245,15 +179,11 @@ export const templateTest = karin.command('^(#)?测试模板$', async (event) =>
 })
 ```
 
-<Callout type="warn">
-  注意 `renderImage('hello/card', ...)` 的第二个参数是有严格类型的：试着把 `title` 删掉或写成数字，`tsc`
-  会立刻报错。类型是从模板组件一路推导过来的，不需要你手动维护映射表。
-</Callout>
+`renderImage('hello/card', ...)` 的 data 有严格类型——删掉 `title` 或写成数字，`tsc` 立刻报错。
 
-**成功后**：`pnpm dev`（同时启动面板和 karin 开发进程），在群里发 `#测试模板`，机器人回复一张卡片图片。同时你会发现面板的数据下拉里自动出现了 `captured.json` 并被选中——那是这次真实渲染的数据，自动捕获的。
+**成功标志**：`pnpm dev` 后在群里发 `#测试模板`，机器人回复卡片图片；面板数据列表自动出现并选中 `captured.json`（本次真实渲染捕获的数据）。
 
 </Step>
-
 <Step>
 ### 第 5 步：生产构建
 
@@ -261,69 +191,15 @@ export const templateTest = karin.command('^(#)?测试模板$', async (event) =>
 vite build
 ```
 
-前提是 `vite.config.ts` 里挂了 `ktrBuildPlugin()`（来自 `@karinjs/template-react/plugin`）——它会在打包前自动刷新 `.ktr` 注册表（替代 `ktr sync`）、打包后把 Tailwind CSS 编译到 vite 自己的 `outDir`（产出 `lib/style.css`）。
+前提是 `vite.config.ts` 挂了 `ktrBuildPlugin()`（来自 `@karinjs/template-react/plugin`）：打包前自动刷新 `.ktr` 注册表，打包后把 CSS 编译到 `lib/style.css`。完整配置见 [构建发布](/docs/guide/building)。
 
-**成功后**：`lib/` 里能看到 `apps/*.js`、`template-registry.js`、`mock-registry.js`、`style.css`。发布后的插件不需要 `ktr/template/` 源码目录也能渲染。
-
-<Callout type="info">
-  `vite.config.ts` 还没配过？去 [构建与打包](/docs/guide/building) 复制完整配置（含逐段注释），那里也有 tsdown 备选方案和最常见的三个坑。
-</Callout>
+**成功标志**：`lib/` 里有 `apps/*.js`、`template-registry.js`、`mock-registry.js`、`style.css`，发布后不再需要 `ktr/template/` 源码目录。
 
 </Step>
 </Steps>
 
-## 附：手动配置
-
-不想用 `ktr init`，或者想知道它到底改了什么，照下面三步手写即可，结果完全等价。
-
-**1. 装依赖**（全部装为开发依赖，构建时会一并打进产物）：
-
-```bash
-pnpm add -D @karinjs/template-react react react-dom @types/react @types/react-dom @vitejs/plugin-react
-```
-
-- `react` / `react-dom`：模板组件的运行时（SSR 渲染要用）。
-- `@karinjs/template-react`：本工具链，提供 `ktr` 命令和渲染器；打包用的 Vite、Tailwind 插件和 HeroUI 样式都已经随它装好。
-- `@vitejs/plugin-react`：构建时编译 JSX 用（开发期的 `ktr dev` 用不到你项目里的它）。
-
-**2. 配 tsconfig**，在 `compilerOptions` 里加上 `jsx`：
-
-```json title="tsconfig.json"
-{
-  "compilerOptions": {
-    "jsx": "react-jsx"
-  }
-}
-```
-
-**3. 建两个文件**：
-
-```ts title="karin.template.ts" twoslash
-import { defineConfig } from '@karinjs/template-react'
-
-// 这里只保留 @karinjs/template-react 自身配置；模板、mock 和 JSON 数据全部按 ktr/template/ 约定自动发现。
-export default defineConfig({
-  dev: {
-    port: 5180,
-    host: 'localhost',
-    open: true
-  }
-})
-```
-
-```css title="ktr/template/style.css"
-@import 'tailwindcss';
-@import '@karinjs/template-react/styles';
-@source './**/*.{ts,tsx}';
-```
-
-`ktr/template/style.css` 不写也能跑——首次启动时 ktr 会自动补一份同样内容的入口。样式入口每一行的含义和换肤方式见[样式与主题](/docs/guide/styling)。
-
-## 接下来读什么
-
 <Cards>
-  <Card title="编写模板" href="/docs/guide/template" description="defineTemplate 字段详解、ctx、圆角与外观控制" />
-  <Card title="样式与主题" href="/docs/guide/styling" description="继承自 HeroUI 的颜色 token、换肤与深色模式" />
-  <Card title="mock 数据" href="/docs/guide/data" description="mock.ts、data/*.json、captured.json 捕获闭环" />
-  <Card title="karin 集成" href="/docs/guide/karin-integration" description="renderImage 逐行讲解与截图参数" />
+  <Card title="编写模板" href="/docs/guide/template" description="defineTemplate 字段、ctx、外观规则" />
+  <Card title="mock 数据" href="/docs/guide/data" description="TS mock、JSON mock、captured.json" />
+  <Card title="接入 Karin" href="/docs/guide/karin-integration" description="renderImage 逐段讲解与更多指令" />
 </Cards>

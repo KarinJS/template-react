@@ -1,34 +1,17 @@
 ---
-title: 构建与打包
-description: 把含 JSX/TS/CSS 的插件项目打包成 karin 生产可用的纯 JS 产物：推荐 Vite，备选 tsdown，附完整实测配置。
+title: 构建发布
+description: 用 vite 或 tsdown 把插件打包成 karin 生产可用的纯 JS 产物，ktrBuildPlugin 自动完成注册表同步和 CSS 编译
 ---
 
-# 构建与打包
+开发时写的 `.tsx` 组件和 Tailwind CSS，Node 直接跑不了——发布前必须构建。本页给出可直接复制的 vite（推荐）和 tsdown 配置。
 
-开发时你写的是 TypeScript 和 JSX（`.tsx` 组件），还有一份 Tailwind CSS——这些**浏览器侧的写法，Node 直接跑不了**。karin 生产环境只加载纯 JS，所以发布前必须构建一次。
+构建要产出三样：插件逻辑 JS（`src/**/*.ts` → `lib/`）、注册表 JS（`.ktr/*.ts` → `lib/`）、模板样式 CSS（→ `lib/style.css`）。
 
-构建要产出三样东西：
-
-| 产物          | 来源                                | 去向            |
-| ------------- | ----------------------------------- | --------------- |
-| 插件逻辑 JS   | `src/**/*.ts`                       | `lib/`          |
-| 模板注册表 JS | `.ktr/*.ts`（先跑 `ktr sync` 生成） | `lib/`          |
-| 模板样式 CSS  | `ktr/template/style.css`            | `lib/style.css` |
-
-<Callout type="warn">
-  **注册表必须在打包前是最新的**：不挂插件时先手动 `ktr sync`；挂了 `ktrBuildPlugin` 则由插件在 buildStart
-  自动刷新。漏了它构建出来的包找不到任何模板。
-</Callout>
+**没有 `ktr build` 命令**：构建统一走打包器，在打包配置里挂 `ktrBuildPlugin()`（`@karinjs/template-react/plugin`）即可——`buildStart` 自动刷新 `.ktr` 注册表（不用单独跑 `ktr sync`），`closeBundle` 把 CSS 编译到打包器自己的 outDir，改 outDir 不用同步改任何 ktr 配置。
 
 ## 方式一：Vite（推荐）
 
-<Callout type="info">
-  **为什么推荐 Vite**：`ktr dev` 的开发服务器就是 Vite——JSX 编译、Tailwind 编译、沙盒全跑在它上面。用 Vite
-  打包，生产和开发是**同一条管线**，不会出现"开发时好好的、换个打包器就炸"的差异。而且安装 `@karinjs/template-react` 时 `vite` 和
-  `@tailwindcss/vite` 已经作为依赖装好了，**不用再装任何打包器**。
-</Callout>
-
-新建 `vite.config.ts`：
+`ktr dev` 的开发服务器就是 Vite，生产和开发同一条管线；装 `@karinjs/template-react` 时 `vite` 和 `@tailwindcss/vite` 已随包装好，不用再装打包器。
 
 ```ts title="vite.config.ts" twoslash
 import tailwindcss from '@tailwindcss/vite'
@@ -37,25 +20,22 @@ import { defineConfig } from 'vite'
 import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
 
 export default defineConfig({
-  // ktrBuildPlugin 在 buildStart 刷新 .ktr 注册表（替代 ktr sync）、
-  // 在 closeBundle 把模板 CSS 编译到 vite 自己的 outDir（产出 lib/style.css）。
+  // ktrBuildPlugin：buildStart 刷新 .ktr 注册表，closeBundle 编译 CSS 到 outDir
   plugins: [react(), tailwindcss(), ktrBuildPlugin()],
-  // 整包模式：除 node-karin（宿主提供）外全部内联，生产环境零安装。
-  // tsx 不需要特殊处理：ktr 只在开发态惰性调用它（读 TS 配置和 .ktr 源注册表），生产产物永远不会执行到。
+  // 整包模式：除 node-karin（宿主提供）外全部内联，生产环境零安装
   ssr: {
     noExternal: true,
     external: ['node-karin']
   },
   build: {
-    // 产物跑在 karin 宿主（Node），不是浏览器
-    ssr: true,
+    ssr: true, // 产物跑在 karin 宿主（Node），不是浏览器
     target: 'node18',
     outDir: 'lib',
     lib: {
       entry: {
         // 你的插件入口，按需增删（karin 约定 lib/apps 结构）
         'apps/template': 'src/apps/template.ts',
-        // .ktr 注册表是固定入口，插件会在打包前自动刷新
+        // .ktr 注册表是固定入口
         'template-registry': '.ktr/template-registry.ts',
         'mock-registry': '.ktr/mock-registry.ts'
       },
@@ -68,27 +48,17 @@ export default defineConfig({
 })
 ```
 
-构建命令（写进 `package.json` 的 scripts）：
-
 ```bash
 vite build
 ```
 
-<Callout>
-  **`ktrBuildPlugin` 替你做了两件事**：`buildStart` 阶段刷新 `.ktr` 注册表（就是 `ktr sync`），`closeBundle` 阶段编译 Tailwind CSS
-  到 `build.outDir`（产物正好是渲染器约定查找的 `lib/style.css`）。产物目录默认跟随 vite 自己的
-  `build.outDir`，改目录不用同步改任何 ktr 配置；CSS 想走别的管线时传 `ktrBuildPlugin({ css: false })`。
-</Callout>
+CSS 想走别的管线时传 `ktrBuildPlugin({ css: false })`。
 
 ## 方式二：tsdown（备选）
-
-tsdown 基于 rolldown，速度快，`ktrBuildPlugin` 在 tsdown 里同样生效（rolldown 兼容同一套钩子）——注册表同步和 CSS 编译都由插件完成，**不需要再装任何额外的 CSS 插件**，只多装 tsdown 本身。
 
 ```bash
 pnpm add -D tsdown
 ```
-
-新建 `tsdown.config.ts`：
 
 ```ts title="tsdown.config.ts" twoslash
 import { defineConfig } from 'tsdown'
@@ -96,18 +66,17 @@ import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
 
 export default defineConfig({
   entry: {
-    // 注意：入口路径必须带 ./ 前缀，否则会被当成 npm 包名解析
+    // 入口路径必须带 ./ 前缀，否则会被当成 npm 包名解析
     'apps/template': './src/apps/template.ts',
     'template-registry': './.ktr/template-registry.ts',
     'mock-registry': './.ktr/mock-registry.ts'
   },
-  // buildStart 同步 .ktr 注册表，closeBundle 用 ktr 自带的 vite 管线把 CSS 编译到 lib/style.css
   plugins: [ktrBuildPlugin()],
   format: ['esm'],
   platform: 'node',
   target: 'node18',
   outDir: 'lib',
-  // 注册表发现约定按 .js 文件名查找，ESM 产物也要固定为 .js，不要用默认的 .mjs
+  // 注册表发现按 .js 文件名查找，ESM 产物也要固定为 .js，不要用默认的 .mjs
   outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
   deps: {
     // 只有 node-karin（宿主提供）保持外部
@@ -116,33 +85,19 @@ export default defineConfig({
 })
 ```
 
-构建命令：
-
 ```bash
 tsdown
 ```
 
-## 验证构建结果
+## 验证
 
-构建完成后，在 karin 里触发一次你的模板渲染命令，能正常出图就说明链路完整。
+构建后在 karin 里触发一次模板渲染指令，能正常出图即链路完整。两条硬性要求：`node-karin` 必须保持外部（由宿主提供）；产物里只能有一份 React（link 本地 ktr 开发时出现两份时，用 `resolve.dedupe: ['react', 'react-dom']` 去重）。
 
-<Callout type="warn">
-  **三个最常见的坑**：① 忘了先 `ktr sync`，包里一个模板都没有；② 把 `node-karin` 打进产物——它必须由 karin 宿主提供，打进去会冲突；③
-  让包里出现两份 React（比如 link 本地 ktr 开发时它自带的 react 被当成独立副本），SSR hooks 会直接崩——用 `resolve.dedupe: ['react',
-  'react-dom']` 强制去重。
-</Callout>
+## 渲染器怎么找到产物
 
-## 渲染器怎么找到这些产物
+`createTemplateRenderer` 按约定自动发现，不需要配置：
 
-`createTemplateRenderer` 按约定自动发现，不需要你配置：
+- **注册表**：`.ktr` 源文件存在时优先（开发态），否则按 `bundledDir` 选项 → `package.json` 的 `main` 目录 → 根目录扫描发现打包产物（生产态）。
+- **样式**：开发态读 dev server 实时编译的缓存，生产态读 `lib/style.css`。
 
-- **注册表**：开发态永远优先 `.ktr` 源文件（配合 dev server 实时刷新）；`.ktr` 不存在时（生产），按 `bundledDir` 选项 → `package.json` 的 `main` 所在目录 → 根目录一层扫描来发现打包产物。
-- **样式**：开发态读 `node_modules/.cache/ktr/style.css`（dev server 实时编译），生产读 `lib/style.css`。
-
-```ts twoslash
-import { createTemplateRenderer } from '@karinjs/template-react'
-
-// 产物目录叫别的名字时，用 bundledDir 显式告诉它
-const renderTemplate = createTemplateRenderer(import.meta.url, { bundledDir: 'lib' })
-//    ^?
-```
+产物目录叫别的名字时显式指定：`createTemplateRenderer(import.meta.url, { bundledDir: 'lib' })`。

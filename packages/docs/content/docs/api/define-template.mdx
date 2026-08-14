@@ -1,13 +1,9 @@
 ---
 title: 模板定义 API
-description: defineTemplate、defineMock、TemplateProps、TemplateDef、DataOf 的签名、参数与示例。
+description: defineTemplate、defineMock、TemplateProps、TemplateDef、DataOf 的签名与示例
 ---
 
-写模板时直接 import 的 API，全部来自 `@karinjs/template-react` 主入口：
-
-```ts twoslash
-import { defineMock, defineTemplate, type DataOf, type TemplateDef, type TemplateProps } from '@karinjs/template-react'
-```
+写模板时直接 import 的 API，全部来自 `@karinjs/template-react` 主入口。
 
 ## defineTemplate
 
@@ -18,9 +14,7 @@ import type { TemplateDef } from '@karinjs/template-react'
 const defineTemplate: <D>(def: Omit<TemplateDef<D>, '__data'>) => TemplateDef<D>
 ```
 
-把「一个 React 组件 + 展示元信息」登记成模板。它运行时不做加工、原样返回——价值在类型：数据类型 `D` 留在返回值里供一路推导。组件 props 已标注 `TemplateProps<D>` 时泛型 `D` 自动推断；内联匿名组件再显式写 `defineTemplate<D>({...})`。
-
-参数 `def` 的字段：
+把「一个 React 组件 + 展示元信息」登记成模板。运行时不做加工、原样返回——价值在类型：数据类型 `D` 留在返回值里供一路推导。组件 props 已标注 `TemplateProps<D>` 时泛型自动推断；内联匿名组件再显式写 `defineTemplate<D>({...})`。
 
 | 字段          | 类型                                    | 必填 | 说明                                           |
 | ------------- | --------------------------------------- | ---- | ---------------------------------------------- |
@@ -28,8 +22,6 @@ const defineTemplate: <D>(def: Omit<TemplateDef<D>, '__data'>) => TemplateDef<D>
 | `description` | `string`                                | 否   | 面板展示的模板描述。                           |
 | `component`   | `React.ComponentType<TemplateProps<D>>` | 是   | 实际渲染截图的组件，异步组件也可以。           |
 | `validate`    | `(data: unknown) => data is D`          | 否   | 运行时数据校验，返回 `false` 时 SSR 直接报错。 |
-
-**示例一：常规写法（泛型自动推断）**，`ktr/template/hello/list/index.tsx`：
 
 ```tsx title="ktr/template/hello/list/index.tsx" twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
@@ -54,11 +46,11 @@ export default defineTemplate({
 })
 ```
 
-只有 `index.tsx` 里**默认导出** `defineTemplate(...)` 这一种固定写法会注册为 `<板块>/<模板>` 路由；裸写的 `.tsx` 组件不会被扫描。
+只有 `index.tsx` 里**默认导出** `defineTemplate(...)` 这一种写法会注册为 `<板块>/<模板>` 路由。
 
-**示例二：带运行时校验**，`ktr/template/receipt/tall/index.tsx`：
+`validate` 示例（动态路由场景的兜底，不通过时报 `Template data validation failed`）：
 
-```tsx title="ktr/template/receipt/tall/index.tsx" twoslash
+```tsx twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
 /** 长条小票模板的数据结构。 */
@@ -69,8 +61,6 @@ interface ReceiptTallData {
 declare const ReceiptTall: React.FC<TemplateProps<ReceiptTallData>>
 // ---cut---
 export default defineTemplate({
-  name: '长条小票',
-  description: '窄长小票版式的长截图',
   component: ReceiptTall,
   validate: (data): data is ReceiptTallData =>
     typeof data === 'object' &&
@@ -80,8 +70,6 @@ export default defineTemplate({
 })
 ```
 
-`validate` 是动态路由场景的兜底：用户输入的数据编译期管不到，SSR 前校验一次，返回 `false` 就报 `Template data validation failed`。
-
 ## defineMock
 
 ```ts twoslash
@@ -90,35 +78,7 @@ export default defineTemplate({
 const defineMock: <D>(data: D) => D
 ```
 
-定义一份类型安全的 TS mock 数据，原样返回。写在模板的 `mock.ts`（固定文件名）里具名导出，面板中只读。两种写法效果相同：
-
-<Tabs items={['satisfies 写法', 'defineMock 写法']}>
-<Tab value="satisfies 写法">
-
-```ts title="ktr/template/hello/list/mock.ts" twoslash
-// @filename: ./index.ts
-export interface HelloListData {
-  title: string
-  users: Array<{ name: string; role: string; score: number }>
-}
-// @filename: ./mock.ts
-// ---cut---
-import type { HelloListData } from './index'
-
-export const team = {
-  title: '模板贡献榜',
-  users: [
-    { name: '林小满', role: '模板作者', score: 98 },
-    { name: '沈括', role: '插件维护者', score: 92 },
-    { name: '苏晚晴', role: '设计评审', score: 89 }
-  ]
-} satisfies HelloListData
-```
-
-`satisfies` 校验字面量是否满足类型，同时保留精确推断。
-
-</Tab>
-<Tab value="defineMock 写法">
+定义一份类型安全的 TS mock，原样返回。写在模板的 `mock.ts`（固定文件名）里具名导出，面板中只读。与 `satisfies` 写法效果相同：
 
 ```ts title="ktr/template/hello/list/mock.ts" twoslash
 interface HelloListData {
@@ -130,16 +90,9 @@ import { defineMock } from '@karinjs/template-react'
 
 export const team = defineMock<HelloListData>({
   title: '模板贡献榜',
-  users: [/* 同上 */]
+  users: [{ name: '林小满', role: '模板作者', score: 98 }]
 })
 ```
-
-显式标注泛型后，多字段、缺字段编译期报错。
-
-</Tab>
-</Tabs>
-
-TS mock 可以被插件代码直接 import 复用（见[在 Karin 插件中集成](/docs/guide/karin-integration)）。
 
 ## TemplateProps
 
@@ -154,11 +107,11 @@ interface TemplateProps<D> {
 }
 ```
 
-每个模板组件都会收到的 props。`ctx` 里：`scale` 是渲染比例（通常为 `1`）；`theme` 是调用方显式提供的主题变量——**框架不发明默认主题色**，没传就是 `undefined`，深色模式读 `ctx.theme?.mode`。大多数模板像上面的 `HelloList` 一样只解构 `data`。
+每个模板组件都会收到的 props。`ctx.scale` 通常为 `1`；`ctx.theme` 是调用方显式提供的主题变量，没传就是 `undefined`（框架不发明默认主题色），深色模式读 `ctx.theme?.mode`。
 
 ## TemplateDef
 
-`defineTemplate` 参数和返回值的结构，四个字段见上面的参数表。额外一个隐藏字段 `__data?: D`（只读）：**仅类型占位**，运行时从不读取，作用是把 `D` 保留在定义上供 `DataOf` 提取。日常不需要手写它。
+`defineTemplate` 参数和返回值的结构，字段同上表。隐藏字段 `__data?: D` 仅作类型占位（运行时从不读取），作用是把 `D` 保留在定义上供 `DataOf` 提取，日常不用手写。
 
 ## DataOf
 
@@ -168,33 +121,22 @@ import type { TemplateDef } from '@karinjs/template-react'
 type DataOf<T> = T extends TemplateDef<infer D> ? D : never
 ```
 
-从模板定义类型里把数据类型 `D`「挖」出来。最典型的用法在渲染封装（`src/utils/render.ts`）：
+从模板定义类型里取出数据类型 `D`，典型用法是渲染封装：
 
-```ts title="src/utils/render.ts" twoslash
-import type { DataOf, TemplateDef } from '@karinjs/template-react'
+```ts twoslash
+import type { DataOf, LoadedRegistry } from '@karinjs/template-react'
 
-/** 模板注册表：路由到模板定义，逐路由精确类型由 .ktr 模块增强注入。 */
-type Registry = Record<string, TemplateDef<any>>
-/** node-karin 消息段中的图片元素。 */
-interface ImageElement {
-  type: 'image'
-  /** 图片 url、路径或者 base64。 */
-  file: string
-}
-// @errors: 2355
+/** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
+type Registry = LoadedRegistry
 // ---cut---
-const renderImage = async <K extends keyof Registry & string>(
-  templatePath: K,
-  data: DataOf<Registry[K]>,
-  options?: Record<string, unknown>
-): Promise<ImageElement[]> => {
+const renderImage = async <K extends keyof Registry & string>(templatePath: K, data: DataOf<Registry[K]>) => {
   /* ... */
 }
 ```
 
-`K` 是路由字面量，`Registry[K]` 是该路由的模板定义，`DataOf` 取出它的数据类型——写 `renderImage('hello/card', {...})` 时，`data` 字段写错编译期报红。
+`K` 是路由字面量，`DataOf<Registry[K]>` 是该模板的数据类型——写 `renderImage('hello/card', {...})` 时 data 写错编译期报红。
 
 <Callout>
-  逐路由精确类型来自 `.ktr/registry-types.d.ts` 的**模块增强**（`ktr sync` 生成），插件源码不需要 import `.ktr` 里的任何文件；没跑过 `ktr
-  sync` 时类型退化为宽松的 `AnyRegistry`——类型突然「不灵了」时，先跑一次 `pnpm ktr sync`。
+  逐路由精确类型来自 `.ktr/registry-types.d.ts` 的**模块增强**（`ktr sync` 生成），插件源码不需要 import `.ktr`
+  里的任何文件；类型突然「不灵了」时先跑一次 `pnpm ktr sync`。
 </Callout>

@@ -3,17 +3,17 @@ title: mock 数据
 description: 三类数据源（TS mock、JSON mock、真实渲染捕获）的区别与用法
 ---
 
-模板写好后需要数据才能预览。框架支持三种 mock 数据（mock 即"假数据、示例数据"），另有真实渲染数据的自动捕获机制。
+模板需要数据才能预览。本页讲三类数据源的区别和各自写法。
 
 ## 三类数据源对照
 
-| 数据源    | 位置                                            | 类型安全               | 面板里能编辑吗         | 适合场景                                 |
-| --------- | ----------------------------------------------- | ---------------------- | ---------------------- | ---------------------------------------- |
-| TS mock   | `ktr/template/<板块>/<模板>/mock.ts`            | 有（`satisfies` 校验） | 只读                   | 固定示例数据，想在插件代码里 import 复用 |
-| JSON mock | `ktr/template/<板块>/<模板>/data/*.json`        | 无                     | 可以（筛选/编辑/保存） | 多组对照数据，边调样式边改               |
-| 捕获数据  | `ktr/template/<板块>/<模板>/data/captured.json` | 无                     | 可以（本质是 JSON）    | 机器人真实渲染时自动记录的数据           |
+| 数据源    | 位置                                            | 类型安全         | 面板里能编辑吗         | 适合场景                     |
+| --------- | ----------------------------------------------- | ---------------- | ---------------------- | ---------------------------- |
+| TS mock   | `ktr/template/<板块>/<模板>/mock.ts`            | 有（编译期校验） | 只读                   | 固定示例，可在插件代码里复用 |
+| JSON mock | `ktr/template/<板块>/<模板>/data/*.json`        | 无               | 可以（筛选/编辑/保存） | 多组对照数据，边调样式边改   |
+| 捕获数据  | `ktr/template/<板块>/<模板>/data/captured.json` | 无               | 可以（本质是 JSON）    | 机器人真实渲染自动记录的数据 |
 
-三者可以并存。面板左侧的数据卡片会列出同一模板下的 TS mock 和 JSON 文件，点一下就切换预览数据。常见搭配：TS mock 当"标准示例"，JSON 当随手改的对照数据，captured.json 交给框架自动写。
+三者并存，面板左侧数据卡片点一下就切换。常见搭配：TS mock 当标准示例，JSON 当随手改的对照数据，captured.json 交给框架自动写。
 
 ## TS mock：mock.ts
 
@@ -27,77 +27,38 @@ export interface HelloListData {
 // ---cut---
 import type { HelloListData } from './index'
 
-/** 列表示例的 TS mock，适合在插件代码里直接复用类型安全的数据。 */
+/** 列表示例的 TS mock，适合在插件代码里直接复用。 */
 export const team = {
   title: '模板贡献榜',
   users: [
     { name: '林小满', role: '模板作者', score: 98 },
-    { name: '沈括', role: '插件维护者', score: 92 },
-    { name: '苏晚晴', role: '设计评审', score: 89 }
+    { name: '沈括', role: '插件维护者', score: 92 }
   ]
 } satisfies HelloListData
 ```
 
-- **固定文件名** `mock.ts`，与 `index.tsx` 同级，用**具名导出**（导出名即面板里显示的数据名）。
-- 末尾的 `satisfies HelloListData` 是 TypeScript 校验写法："数据必须满足该类型，否则编译报错"。TS mock 因此是唯一有编译期类型保护的数据源。
-- 就是普通 TS 文件，插件代码可以直接 `import { team } from '../../ktr/template/hello/list/mock'` 复用。
-
-<Callout type="warn">TS mock 在面板里是**只读**的（数据卡片带只读标记）。想改就回到编辑器改 `mock.ts` 源文件，保存后面板热更新。</Callout>
+- 固定文件名 `mock.ts`，与 `index.tsx` 同级，用**具名导出**（导出名即面板显示的数据名）。
+- `satisfies` 做编译期校验，写错字段立刻报红；也可用 `defineMock<HelloListData>({...})`，效果相同。
+- 普通 TS 文件，插件代码可直接 import 复用。
 
 ## JSON mock：data 目录
-
-JSON mock 是普通 `.json` 文件，统一收在模板目录的 `data/` 子目录：
 
 ```json title="ktr/template/hello/card/data/default.json"
 {
   "title": "Karin Template React",
-  "subtitle": "React + Tailwind CSS + TypeScript",
-  "items": [
-    { "label": "渲染方式", "value": "SSR HTML" },
-    { "label": "预览", "value": "Iframe 沙盒" },
-    { "label": "类型", "value": "注册表驱动" }
-  ]
+  "items": [{ "label": "渲染方式", "value": "SSR HTML" }]
 }
 ```
 
-JSON mock 是面板里唯一可完整管理的数据源：左侧数据区支持**新建**、**编辑**（弹出 JSON 编辑器，保存即写回文件）、**删除**、**刷新**，点卡片**切换**预览数据。文件名（不含扩展名）即数据名，一个模板放多个 JSON 就能快速对照不同数据的渲染效果。
-
-新建和删除 JSON 只有两个途径：**面板按钮**或**直接操作文件系统**，插件运行时代码不会创建它们（`#渲染模板` 这类命令读示例数据时，按"先 TS mock、再 `data/default.json`"的顺序只读取用）。
-
-<Callout type="info">
-JSON mock **必须放在 `data/` 子目录**（`ktr/template/<板块>/<模板>/data/xxx.json`），直接放在模板目录根部不会被识别。
-</Callout>
+必须放在 `data/` 子目录（放模板根目录不识别）。面板里可新建、编辑（保存即写回文件）、删除、刷新；文件名即数据名，一个模板放多个 JSON 就能快速对照。
 
 ## 捕获数据：captured.json
 
-机器人真实触发一次渲染（比如群里有人发 `#渲染模板 hello/card`）时，框架会把**这次实际用的数据和运行时上下文**自动写入该模板的 `data/captured.json`——同一文件滚动覆盖，只保留最近一次。文件是 `{ data, ctx }` 快照形状：`data` 为本次渲染的完整数据（含渲染前插件加工的字段），`ctx` 为本次的运行时上下文（`scale`、`theme` 以及下游插件挂上去的扩展字段）。面板选中它回放时会把 `ctx` 一并下发沙盒，画布与真实渲染完全一致。完整闭环：
+机器人每触发一次真实渲染，框架把本次的 `{ data, ctx }` 快照写入该模板的 `data/captured.json`（滚动覆盖，只保留最近一次）；开发服务器监听变更后推送面板，面板自动刷新并选中它——画布立刻显示刚才真实渲染的那份数据（`ctx` 一并下发，预览与真实渲染完全一致）。
 
-<Steps>
-<Step>
-
-机器人触发 `renderImage`：插件渲染模板，截图发回群聊。
-
-</Step>
-<Step>
-
-框架把本次渲染的 `{ data, ctx }` 快照写入 `data/captured.json`（滚动覆盖，不堆积历史文件）。
-
-</Step>
-<Step>
-
-开发服务器监听到文件变更，通过 Vite 的 WebSocket 连接向面板推送 `ktr:data-files-changed` 消息。
-
-</Step>
-<Step>
-
-面板自动刷新数据列表并**自动选中 captured.json**——画布立刻显示刚才真实渲染的那份数据。
-
-</Step>
-</Steps>
-
-全程不用手动刷新浏览器。典型用法：群里反馈"图渲染得不对"，captured 自动跳出来，直接拿真实数据改样式、改数据即时验证。
+典型用法：群里反馈"图渲染得不对"，captured 自动跳出来，直接拿真实数据改样式即时验证。
 
 <Cards>
-  <Card title="开发面板导览" href="./dev-panel" description="数据卡片的新建、编辑、删除在哪里点" />
-  <Card title="编写模板" href="./template" description="回到模板组件本身的写法" />
+  <Card title="开发面板" href="./dev-panel" description="数据卡片的新建、编辑在哪里点" />
+  <Card title="编写模板" href="./template" description="回到模板组件的写法" />
 </Cards>

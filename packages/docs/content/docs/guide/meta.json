@@ -1,4 +1,4 @@
 {
   "title": "使用指南",
-  "pages": ["template", "data", "dev-panel", "styling", "karin-integration", "building"]
+  "pages": ["conventions", "template", "data", "dev-panel", "styling", "building", "karin-integration"]
 }
