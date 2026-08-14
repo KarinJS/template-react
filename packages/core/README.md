@@ -59,4 +59,4 @@ export const renderImage = async (templatePath, data, options) => {
 - 框架不注入默认主题色；深色模式读 `ctx.theme.mode`。
 - 不要手动 import `.ktr/`——用 `@karinjs/template-react` 的 `loadTemplateRegistry()` / `loadMockRegistry()` 按约定加载。
 
-更多内容（mock 数据、开发面板、API 参考、art-template 迁移）：**https://karinjs.github.io/template-react/**
+更多内容（目录约定、mock 数据、开发面板、API 参考）：**https://karinjs.github.io/template-react/**

@@ -24,7 +24,8 @@
 - `ktr/template/<板块>/<模板>/data/captured.json`：真实渲染时自动捕获的本次数据，滚动覆盖单文件；开发服务器会把变更实时推送给面板，面板自动刷新并选中。
 - `ktr/template/<板块>/<模板>/components/`：模板内部子组件和逻辑文件的固定存放目录（可选），不会被扫描为路由；复杂模板在这里自由分层，`index.tsx` 只做总装。
 - `ktr/template/style.css`：下游模板的 Tailwind CSS 入口，固定三行（`tailwindcss` + `@karinjs/template-react/styles` + `@source`）。不写也能跑，首次启动由 `ensureCssEntry` 自动补。
-- 组件根元素**不要**写 `id="container"`：截图边界由 HtmlWrapper 统一提供。想要圆角截图时给根元素加 `rounded-*` 类（需要裁剪内容时配合 `overflow-hidden`），框架不会强加或剥离任何外观。
+- 组件根元素**不要**写 `id="container"`：截图边界由 HtmlWrapper 统一提供。想要圆角截图时给根元素加 `rounded-*` 类（需要裁剪内容时配合 `overflow-hidden`），框架不会强加或剥离任何外观。外壳 `#container` 带 `position: relative` 充当绝对定位包含块；模板里的 `absolute` 装饰层要被根元素圆角裁剪时，根元素需自己加 `relative`。
+- `dark:` 变体由 `@karinjs/template-react/styles` 重定义为类选择器驱动（不是默认的 prefers-color-scheme 媒体查询），与框架写 `dark` 类 / `data-theme` 的明暗机制对齐，开发面板和生产截图行为一致。
 - `ktr/template/**/_*`：以下划线开头的目录视为内部辅助目录，不会被当作模板路由扫描。
 
 `karin.template.ts` 只配置 `@karinjs/template-react` 自身行为：目录类配置收在 `dir` 对象下（`dir.template`/`dir.assets`/`dir.cssEntry`；缓存固定 `.ktr/`、mock 固定与模板共置、产物目录由 `@karinjs/template-react/plugin` 的 `ktrBuildPlugin` 跟随打包器 outDir），另有 `dev`（面板端口等）、`html`、`vite` 扩展配置。不要在这里手写模板清单。

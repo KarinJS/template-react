@@ -23,6 +23,10 @@ body {
 }
 #container {
   flex-shrink: 0;
+  /* 旧引擎外壳的 transform 会顺带成为绝对定位包含块，模板里的 inset-0 氛围层都锚定在
+     卡片矩形上。标准化后外壳没有任何定位，这些层会锚到视口（Karin 截图视口和卡片
+     尺寸不一致时，氛围层错位、底部装饰跑到上面）。relative 补回该语义，且不影响外观。 */
+  position: relative;
 }
 `
 

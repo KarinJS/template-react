@@ -1,15 +1,4 @@
-import {
-  AlertDialog,
-  Button,
-  Checkbox,
-  Label,
-  ScrollShadow,
-  Separator,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
-  useOverlayState
-} from '@heroui/react'
+import { Button, ScrollShadow, Separator, ToggleButton, ToggleButtonGroup, Tooltip, Label } from '@heroui/react'
 import { Check, Code2, Copy, Info, Moon, RotateCcw, Shuffle, Sun, X } from 'lucide-react'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
@@ -66,9 +55,6 @@ interface ThemeBuilderPanelProps {
   onClose: () => void
 }
 
-/** 「随机生成」确认框的免打扰键：勾过「不再显示」后直接随机，不再弹确认。 */
-const shuffleWarningStorageKey = 'ktr-shuffle-warning-shown'
-
 /** 表单里的一个字段：标签行 + 控件，纵向间距统一。 */
 const Field = ({ children }: { children: React.ReactNode }) => <div className="flex flex-col gap-1.5">{children}</div>
 
@@ -85,7 +71,7 @@ const isEditableTarget = (target: EventTarget | null): boolean =>
  * 模板主题构建器：一个纵向表单，调整后实时作用到画布里的用户组件。
  *
  * 控件与文案复刻 HeroUI 官方主题编辑器：预设弹层、离散量收进弹层、
- * 随机生成带确认框，导出 CSS 收进左侧滑出的代码弹窗（打开期间实时跟随旋钮）。
+ * 随机生成一键直达，导出 CSS 收进左侧滑出的代码弹窗（打开期间实时跟随旋钮）。
  */
 export const ThemeBuilderPanel = ({
   knobs,
@@ -134,9 +120,6 @@ export const ThemeBuilderPanel = ({
     return () => document.removeEventListener('pointerdown', onPointerDown)
   }, [codeOpen])
 
-  const shuffleDialog = useOverlayState()
-  const [dontShowAgain, setDontShowAgain] = useState(false)
-
   useEffect(() => () => clearTimeout(copyTimerRef.current), [])
 
   // 滑入动画：挂载后下一帧再归位，transition 才有起点。
@@ -176,32 +159,6 @@ export const ThemeBuilderPanel = ({
     }
   }
 
-  /** 随机生成入口：勾过「不再显示」就直接随机，否则先弹确认框。 */
-  const handleShuffleTrigger = () => {
-    try {
-      if (window.localStorage.getItem(shuffleWarningStorageKey) === 'true') {
-        onRandomize()
-        return
-      }
-    } catch {
-      // localStorage 不可用时退回每次确认。
-    }
-    setDontShowAgain(false)
-    shuffleDialog.open()
-  }
-
-  const handleShuffleConfirm = () => {
-    onRandomize()
-    if (dontShowAgain) {
-      try {
-        window.localStorage.setItem(shuffleWarningStorageKey, 'true')
-      } catch {
-        // 存不下就算了，下次继续弹确认。
-      }
-    }
-    shuffleDialog.close()
-  }
-
   const accent: OklchColor = { l: knobs.lightness, c: knobs.chroma, h: knobs.hue }
   const lockProps = (knob: LockableKnob) => ({
     knob,
@@ -220,7 +177,7 @@ export const ThemeBuilderPanel = ({
         <div className="flex shrink-0 items-center gap-0.5">
           <Tooltip closeDelay={80} delay={200}>
             <Tooltip.Trigger>
-              <Button aria-label="随机生成" isIconOnly onPress={handleShuffleTrigger} size="sm" variant="ghost">
+              <Button aria-label="随机生成" isIconOnly onPress={onRandomize} size="sm" variant="ghost">
                 <Shuffle className="size-4" />
               </Button>
             </Tooltip.Trigger>
@@ -445,50 +402,6 @@ export const ThemeBuilderPanel = ({
           </div>
         </div>
       )}
-
-      {/* 随机生成确认框；portal 渲染，需要重新套面板主题。 */}
-      <AlertDialog.Backdrop
-        className={panelTheme}
-        data-theme={panelTheme}
-        isDismissable
-        isOpen={shuffleDialog.isOpen}
-        style={panelThemeStyle}
-        onOpenChange={(open) => {
-          if (!open) setDontShowAgain(false)
-          shuffleDialog.setOpen(open)
-        }}
-      >
-        <AlertDialog.Container>
-          <AlertDialog.Dialog>
-            <AlertDialog.CloseTrigger />
-            <AlertDialog.Header>
-              <AlertDialog.Icon status="default">
-                <Shuffle className="size-5" />
-              </AlertDialog.Icon>
-              <AlertDialog.Heading>确定要随机生成吗？</AlertDialog.Heading>
-            </AlertDialog.Header>
-            <AlertDialog.Body>这将覆盖你当前的主题设置。</AlertDialog.Body>
-            <AlertDialog.Footer className="flex-col sm:flex-row sm:items-center">
-              <Button className="order-2 w-full sm:order-2 sm:w-auto" size="md" variant="tertiary" onPress={() => shuffleDialog.close()}>
-                取消
-              </Button>
-              <Button className="order-1 w-full sm:order-3 sm:w-auto" size="md" onPress={handleShuffleConfirm}>
-                确认
-              </Button>
-              <div className="order-3 flex flex-1 items-center gap-2 self-start sm:order-1 sm:self-center">
-                <Checkbox id="ktr-shuffle-dont-show" isSelected={dontShowAgain} variant="secondary" onChange={setDontShowAgain}>
-                  <Checkbox.Content>
-                    <Checkbox.Control>
-                      <Checkbox.Indicator />
-                    </Checkbox.Control>
-                  </Checkbox.Content>
-                </Checkbox>
-                <Label htmlFor="ktr-shuffle-dont-show">不再显示</Label>
-              </div>
-            </AlertDialog.Footer>
-          </AlertDialog.Dialog>
-        </AlertDialog.Container>
-      </AlertDialog.Backdrop>
     </aside>
   )
 }

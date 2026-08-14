@@ -289,17 +289,15 @@ const ReportOnMount = ({ onRendered, children }) => {
   return children
 }
 
-// 面板下发主题时整体合并：以 theme.mode 为唯一明暗依据；颜色字段以面板显式下发为准。
+// 面板下发主题时整体替换：面板每次都发完整主题对象，replace 语义才能让
+// 「恢复默认」（面板不再下发颜色字段）真正清掉旧的内联变量；合并语义会把上一次的颜色留在
+// selectedCtx.theme 里，applyTheme 又把它写成内联样式，优先级压过组件库默认主题。
 const updateTheme = (payload = {}) => {
   const rawTheme = payload && typeof payload === 'object' && payload.theme ? payload.theme : payload
-  const theme = {
-    ...selectedCtx.theme,
-    ...rawTheme
-  }
 
   selectedCtx = {
     ...selectedCtx,
-    theme
+    theme: { ...rawTheme }
   }
 }
 
@@ -345,7 +343,7 @@ const renderCurrent = () => {
   }
 }
 
-// 面板消息入口：select 只切换模板，data 触发渲染，theme 在有数据时联动重渲染。
+// 面板消息入口：select 只切换模板，data 触发渲染，theme 仅明暗切换时联动重渲染。
 window.addEventListener('message', (event) => {
   if (event.origin !== window.location.origin || event.data?.source !== target) {
     return
@@ -381,9 +379,16 @@ window.addEventListener('message', (event) => {
     document.body.style.colorScheme = scheme
   }
   if (type === 'ktr:theme') {
+    // 只有明暗切换才重渲染：组件可能按 ctx.theme.mode 分支输出，模式变了必须重来。
+    // 颜色等视觉变量走 applyTheme 直接写 CSS 变量，不碰 React 树——
+    // 否则拖一次颜色滑块就整棵重挂载（root.render 的 key 带时间戳），画布肉眼可见地闪烁。
+    const prevMode = (selectedCtx.theme && selectedCtx.theme.mode) === 'dark' ? 'dark' : 'light'
     updateTheme(payload)
-    if (hasSelectedData) {
+    const nextMode = (selectedCtx.theme && selectedCtx.theme.mode) === 'dark' ? 'dark' : 'light'
+    if (hasSelectedData && nextMode !== prevMode) {
       renderCurrent()
+    } else {
+      applyTheme()
     }
   }
   if (type === 'ktr:inspect') {
@@ -559,6 +564,11 @@ export const registerSandboxMiddleware = (server: ViteDevServer): void => {
       min-height: max-content;
       background: transparent;
       overflow: hidden;
+    }
+    /* 与 SSR 外壳一致：#container 充当绝对定位包含块，模板里的 inset-0 氛围层
+       锚定在卡片矩形上而不是 iframe 视口（刷新瞬间视口尺寸未就位会导致氛围层逃逸）。 */
+    #container {
+      position: relative;
     }
   </style>
 </head>
