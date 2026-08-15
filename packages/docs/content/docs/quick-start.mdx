@@ -43,11 +43,14 @@ pnpm install
 <Callout type="info">如果你还没有项目，用 `npx @karinjs/template-react create <项目名>` 从零创建，之后走同样的问答流程。</Callout>
 
 <Callout type="warn">
-  **依赖管理注意事项**：所有依赖都放在 `devDependencies`，构建时会整体打包进 `lib/`（包括 React 和本包运行时），生产环境零安装；只有
-  `node-karin` 保持外部引用。不要手动修改依赖配置——组件和渲染器必须使用同一份 React 实例，否则 hooks 会直接报错。
+  **依赖管理注意事项**：所有在模板中用到的依赖都需要放在 `packages.json` 的 `devDependencies` 中，构建时会整体打包（包括 React
+  和本包运行时），生产环境即可不用安装有关前端的相关依赖；只有 `node-karin` 保持排除在外。不要手动修改依赖配置——组件和渲染器必须使用同一份
+  React 实例，否则 hooks 会直接报错。
 </Callout>
 
-<Callout type="error">**遇到问题？** 如果初始化失败或出现错误，查看 [故障排查](/docs/troubleshooting) 页面的常见问题解决方案。</Callout>
+<Callout type="error">
+  **遇到问题？** 如果初始化失败或出现错误，查看 [故障排查](/docs/troubleshooting/common-issues) 页面的常见问题解决方案。
+</Callout>
 
 </Step>
 <Step>
@@ -132,7 +135,7 @@ pnpm template
 
 <Callout type="error">
   **遇到问题？** 如果面板无法启动或预览不显示，检查： - 是否执行了 `pnpm install` - `.ktr/` 目录是否存在（如果不存在，手动执行 `npx ktr
-  sync`） - 浏览器控制台是否有报错 更多帮助见 [故障排查](/docs/troubleshooting)。
+  sync`） - 浏览器控制台是否有报错 更多帮助见 [故障排查](/docs/troubleshooting/common-issues)。
 </Callout>
 
 </Step>
@@ -309,7 +312,7 @@ pnpm dev
 <Callout type="error">
   **遇到问题？** 常见问题排查： - **机器人无响应**：检查指令格式是否正确，确认机器人已启动 - **渲染失败**：查看终端错误信息，确认 `pnpm
   template` 已执行过（生成注册表） - **类型报错**：执行 `npx ktr sync` 重新生成类型定义 更多帮助见 [接入
-  Karin](/docs/guide/karin-integration) 和 [故障排查](/docs/troubleshooting)。
+  Karin](/docs/guide/karin-integration) 和 [故障排查](/docs/troubleshooting/common-issues)。
 </Callout>
 
 </Step>
@@ -371,7 +374,7 @@ export default defineConfig({
 <Callout type="error">
   **构建失败？** 常见问题： - **找不到 ktrBuildPlugin**：确认已安装 `@karinjs/template-react` 并在 `vite.config.ts` 中正确导入 -
   **类型错误**：执行 `npx ktr sync` 重新生成类型定义 - **CSS 缺失**：确认构建配置挂了 `ktrBuildPlugin()` 且没有传 `{ css: false }` 更多帮助见
-  [构建发布](/docs/build/building) 和 [故障排查](/docs/troubleshooting)。
+  [构建发布](/docs/build/building) 和 [故障排查](/docs/troubleshooting/common-issues)。
 </Callout>
 
 </Step>

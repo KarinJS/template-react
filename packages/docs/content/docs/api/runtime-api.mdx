@@ -74,34 +74,9 @@ interface RenderContextInput {
 
 ## ThemeContext
 
-主题变量的完整结构，调用方可以只传部分字段：
+主题变量的完整结构，调用方可以只传部分字段（由源码 JSDoc 自动生成）：
 
-```ts twoslash
-interface ThemeContext {
-  /** 明暗模式：'light' | 'dark'。 */
-  mode: 'light' | 'dark'
-  /** 主色（品牌色、强调色）。 */
-  accent: string
-  /** 主色上的文字色。 */
-  accentForeground: string
-  /** 主色浅背景（按钮 hover 态、标签背景等）。 */
-  accentSoft: string
-  /** 主色浅背景上的文字色。 */
-  accentSoftForeground: string
-  /** 模板根背景色。 */
-  background: string
-  /** 主要文字色。 */
-  foreground: string
-  /** 表面色（卡片、面板背景）。 */
-  surface: string
-  /** 次要文字色（描述、标签等）。 */
-  muted: string
-  /** 边框色。 */
-  border: string
-  /** 任意 CSS 变量直通口，同名时以此为准。 */
-  vars: Record<string, string>
-}
-```
+<AutoTypeTable path="../core/src/types/index.ts" name="ThemeContext" />
 
 ### 实际使用示例
 

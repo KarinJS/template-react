@@ -7,7 +7,7 @@ description: defineTemplate 的写法、运行时上下文 ctx 与模板组件�
 
 ## 一个完整模板
 
-```tsx title="ktr/template/hello/list/index.tsx"
+```tsx title="ktr/template/hello/list/index.tsx" twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
 /** 成员榜单模板的数据结构。 */
@@ -17,7 +17,7 @@ interface HelloListData {
 }
 
 const HelloList = ({ data }: TemplateProps<HelloListData>) => (
-  <div className="w-[640px] bg-background p-7 text-foreground">
+  <div className="w-160 bg-background p-7 text-foreground">
     <h1 className="mb-5 text-2xl font-bold">{data.title}</h1>
     {data.users.map((user) => (
       <div key={user.name} className="flex justify-between py-1">

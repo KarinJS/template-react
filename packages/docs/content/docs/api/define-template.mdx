@@ -15,12 +15,9 @@ declare const defineTemplate: <D>(def: Omit<TemplateDef<D>, '__data'>) => Templa
 
 把「一个 React 组件 + 展示元信息」登记成模板。运行时不做加工、原样返回——价值在类型：数据类型 `D` 留在返回值里供一路推导。组件 props 已标注 `TemplateProps<D>` 时泛型自动推断；内联匿名组件再显式写 `defineTemplate<D>({...})`。
 
-| 字段          | 类型                                    | 必填 | 说明                                           |
-| ------------- | --------------------------------------- | ---- | ---------------------------------------------- |
-| `name`        | `string`                                | 否   | 面板侧边栏展示名称。                           |
-| `description` | `string`                                | 否   | 面板展示的模板描述。                           |
-| `component`   | `React.ComponentType<TemplateProps<D>>` | 是   | 实际渲染截图的组件，异步组件也可以。           |
-| `validate`    | `(data: unknown) => data is D`          | 否   | 运行时数据校验，返回 `false` 时 SSR 直接报错。 |
+字段结构如下（由源码 JSDoc 自动生成）：
+
+<AutoTypeTable path="../core/src/types/index.ts" name="TemplateDef" />
 
 ```tsx title="ktr/template/hello/list/index.tsx" twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'

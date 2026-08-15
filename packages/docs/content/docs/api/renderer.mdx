@@ -3,7 +3,7 @@ title: 渲染器 API
 description: createTemplateRenderer、createRenderer、注册表加载函数与渲染上下文类型的完整参考
 ---
 
-插件 Node 侧胶水层用的 API，全部从主入口 `@karinjs/template-react` 导入。绝大多数 npm 插件只用 `createTemplateRenderer`（约定事项全自动）；`createRenderer` 是底层能力，需要完全自定义来源时才用。`ktr build` 生成的 standalone 运行包也会导出同名的 `createTemplateRenderer` 和 `renderTemplate`，使用方式见[独立构建](../guide/standalone-build)。
+插件 Node 侧胶水层用的 API，全部从主入口 `@karinjs/template-react` 导入。绝大多数 npm 插件只用 `createTemplateRenderer`（约定事项全自动）；`createRenderer` 是底层能力，需要完全自定义来源时才用。`ktr build` 生成的 standalone 运行包也会导出同名的 `createTemplateRenderer` 和 `renderTemplate`，使用方式见[独立构建](../build/standalone-build)。
 
 ## createTemplateRenderer
 
@@ -242,16 +242,7 @@ declare const createRenderer: <R extends Record<keyof R, TemplateDef<any>>>(
 
 `RendererOptions`：
 
-| 参数              | 类型                                                           | 必填               | 说明                                                                      |
-| ----------------- | -------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------- |
-| `cssPath`         | `string`                                                       | 否                 | 模板 CSS 文件路径，通常来自 `resolveTemplateStyle`；与 `cssText` 二选一。 |
-| `cssText`         | `string`                                                       | 否                 | 直接内嵌的模板 CSS 文本，standalone runtime 使用。                        |
-| `outputDir`       | `string`                                                       | 是                 | SSR 生成的 HTML 输出目录（自动创建）。                                    |
-| `extraStylePaths` | `string[]`                                                     | 否                 | 额外注入 HTML 的样式文件，按顺序内联。                                    |
-| `plugins`         | `RenderPlugin[]`                                               | 否                 | SSR 渲染插件，见文末。                                                    |
-| `captureDir`      | `string`                                                       | 否                 | 捕获目录，显式传入才捕获。                                                |
-| `htmlFileName`    | `'fixed' \| 'timestamp' \| ((templatePath: string) => string)` | 否，默认 `'fixed'` | 输出 HTML 文件命名方式。                                                  |
-| `html.headExtra`  | `string`                                                       | 否                 | 追加到 `<head>` 的原始 HTML。                                             |
+<AutoTypeTable path="../core/src/types/index.ts" name="RendererOptions" />
 
 `htmlFileName`：`'fixed'` 每模板固定一个文件覆盖写（`hello/card` → `hello_card.html`）；`'timestamp'` 输出带时间戳的文件名（并发渲染同模板时可选）；函数形式收路由、返回不含扩展名的文件主名。
 
@@ -299,14 +290,7 @@ interface RenderContext {
 
 ### ThemeContext
 
-| 字段                                  | 说明                                                   |
-| ------------------------------------- | ------------------------------------------------------ |
-| `mode`                                | 明暗模式：`'light' \| 'dark'`。                        |
-| `accent` / `accentForeground`         | 主色 / 主色上的文字色。                                |
-| `accentSoft` / `accentSoftForeground` | 主色浅背景 / 其上的文字色。                            |
-| `background` / `foreground`           | 模板根背景色 / 主要文字色。                            |
-| `surface` / `muted` / `border`        | 表面色 / 次要文字 / 边框。                             |
-| `vars`                                | 任意 CSS 变量直通口（如 `--radius`），同名时以此为准。 |
+<AutoTypeTable path="../core/src/types/index.ts" name="ThemeContext" />
 
 ### RenderPlugin / PluginContext
 

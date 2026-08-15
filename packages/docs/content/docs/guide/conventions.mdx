@@ -7,30 +7,50 @@ description: ktr 的核心设计：目录即路由，模板、mock、样式、�
 
 ## 完整目录树
 
+一个典型的 Karin 插件项目，ktr 相关的目录结构如下：
+
 ```text
 插件项目根目录/
-├── karin.template.ts                  # 配置文件（可选，只配工具链自身行为）
+├── src/                                # 插件逻辑（karin 指令等）
+│   ├── index.ts
+│   └── apps/
+│       └── card.ts
 ├── ktr/
-│   ├── template/                      # 模板根目录：目录即路由
-│   │   ├── style.css                  # Tailwind 入口（缺失时首次启动自动补）
-│   │   └── hello/                     # 板块（模板分组）
-│   │       └── card/                  # 模板 → 路由 hello/card
-│   │           ├── index.tsx          # 模板组件，默认导出 defineTemplate(...)
-│   │           ├── mock.ts            # TS mock（固定文件名，面板只读）
-│   │           ├── components/        # 子组件与逻辑（可选，不参与路由）
-│   │           │   └── badge.tsx
-│   │           └── data/              # JSON mock（面板可编辑）
-│   │               ├── default.json
-│   │               └── captured.json  # 真实渲染自动捕获的数据
-│   └── public/                        # 静态资源（图片、字体）
-│       └── logo.png
-└── .ktr/                              # 框架生成的缓存（勿编辑、勿提交、勿 import）
-    ├── template-registry.ts
-    ├── mock-registry.ts
-    └── registry-types.d.ts
+│   ├── template/                       # 模板根目录：目录即路由
+│   │   ├── style.css                   # Tailwind 入口（缺失时首次启动自动补）
+│   │   ├── hello/                      # 板块（模板分组）
+│   │   │   └── card/                   # 模板 → 路由 hello/card
+│   │   │       ├── index.tsx           # 模板组件，默认导出 defineTemplate(...)
+│   │   │       ├── mock.ts             # TS mock（固定文件名，面板只读）
+│   │   │       ├── components/         # 子组件与逻辑（可选，不参与路由）
+│   │   │       │   ├── badge.tsx
+│   │   │       │   └── use-status.ts
+│   │   │       └── data/               # JSON mock（面板可编辑）
+│   │   │           ├── default.json
+│   │   │           ├── empty.json
+│   │   │           └── captured.json   # 真实渲染自动捕获的数据
+│   │   ├── user/
+│   │   │   └── profile/                # 第二个模板 → 路由 user/profile
+│   │   │       ├── index.tsx
+│   │   │       └── mock.ts
+│   │   └── _shared/                    # 下划线开头：共享代码，不扫成路由
+│   │       ├── components/
+│   │       │   └── avatar.tsx
+│   │       └── format.ts
+│   └── public/                         # 静态资源（图片、字体）
+│       ├── logo.png
+│       └── fonts/
+│           └── rubik-bold.woff2
+├── .ktr/                               # 框架生成的缓存（勿编辑、勿提交、勿 import）
+│   ├── template-registry.ts
+│   ├── mock-registry.ts
+│   └── registry-types.d.ts
+├── karin.template.ts                   # 配置文件（可选，只配工具链自身行为）
+├── package.json
+└── vite.config.ts
 ```
 
-逐项说明：
+各位置的约定说明见下表：
 
 | 位置                                   | 说明                                                                                     |
 | -------------------------------------- | ---------------------------------------------------------------------------------------- |

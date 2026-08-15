@@ -123,13 +123,9 @@ interface PluginContext {
 
 ### 字段说明
 
-| 字段        | 类型            | 说明                                              |
-| ----------- | --------------- | ------------------------------------------------- |
-| `path`      | `string`        | 模板路由（如 `'hello/card'`）。                   |
-| `data`      | `unknown`       | 当前渲染的数据，已通过 `validate` 校验（若有）。  |
-| `ctx`       | `RenderContext` | 运行时上下文，包含 `scale` 和 `theme`。           |
-| `outputDir` | `string`        | HTML 输出目录，可用于读写临时文件或计算相对路径。 |
-| `html`      | `string`        | （仅 `afterRender`）生成的 HTML 字符串。          |
+<AutoTypeTable path="../core/src/types/index.ts" name="PluginContext" />
+
+`afterRender` 的上下文额外带有 `html: string` 字段（生成的 HTML 字符串，可修改后返回）。
 
 ### 使用示例
 
