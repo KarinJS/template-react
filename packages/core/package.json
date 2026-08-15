@@ -2,6 +2,7 @@
   "name": "@karinjs/template-react",
   "version": "0.0.0",
   "description": "React + Tailwind CSS screenshot template kit for Karin plugins.",
+  "author": "ikenxuan, KarinJS Team",
   "bin": {
     "ktr": "./bin/ktr.mjs"
   },
@@ -43,6 +44,7 @@
     "dev": "tsdown --watch",
     "panel": "vite --config vite.panel.config.ts",
     "build": "tsc --noEmit && pnpm build:runtime && pnpm build:panel",
+    "cli": "node bin/ktr.mjs",
     "build:runtime": "tsdown",
     "build:panel": "vite build --config vite.panel.config.ts",
     "typecheck": "tsc --noEmit",
