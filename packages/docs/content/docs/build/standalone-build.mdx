@@ -139,6 +139,8 @@ dist/ktr/
 - `index.d.mts` 保留模板路由与 data 的一一对应关系。
 - `assets/` 是 `ktr/public/` 的副本。
 
+模板里 `<img src="/xxx">` 这类标记资源由入口内置的渲染函数自动处理：以入口同级的 `assets/` 为根（相对关系在构建期烘死，单 chunk 或 chunks/ 子目录都不影响），按 [`html.assetsInlineLimit`](/docs/api/config-cli#htmlassetsinlinelimit) 内联为 base64 或转为 `file://` 绝对路径。`dir.copyAssets: false`（资源随包发布）时则不生成 `assets/`，构建期把 `dir.assets` 相对产物目录的位置烘进入口，渲染时直接定位随包发布的那份——包里只有一份资源。
+
 <Callout type="info">
   standalone CSS 内嵌在 `index.mjs`，因此不会额外生成 `style.css`。构建过程也不会生成 HTML；只有实际调用渲染函数时，renderer 才会写出
   `RenderResult.htmlPath` 对应的 HTML 文件。

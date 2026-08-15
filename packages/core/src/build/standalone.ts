@@ -67,6 +67,19 @@ const generateStandaloneEntry = (config: ResolvedKtrConfig, routes: Array<{ file
   const typeChecks = routes.map(
     (item) => `type __KtrTypeCheck_${toImportName(item.route, 0)} = __KtrAssert<__KtrIsTyped<TemplateDataMap['${item.route}']>>`
   )
+  // 函数形式的内联阈值无法序列化进独立运行包，回退到数字默认值并在构建期提醒。
+  if (typeof config.html.assetsInlineLimit === 'function') {
+    consola.warn('[ktr] html.assetsInlineLimit 的函数形式无法嵌入独立运行包，已回退为 4096。')
+  }
+  const embeddedAssetsInlineLimit = typeof config.html.assetsInlineLimit === 'number' ? config.html.assetsInlineLimit : 4096
+  // 标记资源根目录：默认是构建期复制到入口同级的 assets/；copyAssets: false 时资源随包发布，
+  // 把它相对产物目录的位置烘进入口——独立运行包零配置即可定位，同样不依赖 chunk 落点。
+  const bakedAssetsDir = config.copyAssets
+    ? './assets/'
+    : (() => {
+        const relative = normalizePath(path.relative(config.standalone.outDir, config.assetsDir))
+        return relative.startsWith('.') ? relative : `./${relative}`
+      })()
   const content = `${generatedHeader}
 import { fileURLToPath } from 'node:url'
 import { createRenderer } from '@karinjs/template-react'
@@ -105,13 +118,19 @@ export type TemplateRenderFn = <K extends TemplatePath>(
 
 const embeddedCss = ${JSON.stringify(cssText)}
 const embeddedHeadExtra = ${JSON.stringify(config.html.headExtra)}
+const embeddedAssetsInlineLimit = ${JSON.stringify(embeddedAssetsInlineLimit)}
 const defaultOutputDir = fileURLToPath(new URL('./html/', import.meta.url))
+// 标记资源根目录：构建期烘死与入口的相对位置（copyAssets 复制的 assets/ 或随包发布的资源目录），
+// 与 index.mjs 的相对关系固定，chunk 拆分不影响。
+const defaultAssetsDir = fileURLToPath(new URL(${JSON.stringify(bakedAssetsDir)}, import.meta.url))
 
 export const createTemplateRenderer = (options: StandaloneRendererOptions = {}): TemplateRenderFn => {
   const renderer = createRenderer(templates, {
     ...options,
     cssText: embeddedCss,
     outputDir: options.outputDir ?? defaultOutputDir,
+    assetsDir: options.assetsDir ?? defaultAssetsDir,
+    assetsInlineLimit: options.assetsInlineLimit ?? embeddedAssetsInlineLimit,
     html: {
       headExtra: embeddedHeadExtra,
       ...options.html

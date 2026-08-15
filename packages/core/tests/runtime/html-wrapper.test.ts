@@ -83,4 +83,55 @@ describe('HtmlWrapper', () => {
     expect(html).toContain('<body class="dark"')
     expect(html).not.toContain('border-radius: 5rem')
   })
+
+  it('标记资源：不超过阈值内联为 base64，超过的转为 file:// 绝对路径', () => {
+    const dir = tempDir()
+    fs.writeFileSync(path.join(dir, 'small.png'), 'tiny', 'utf-8')
+    fs.writeFileSync(path.join(dir, 'big.png'), 'x'.repeat(5000), 'utf-8')
+
+    const wrapper = new HtmlWrapper({ assetsDir: dir })
+    const html = wrapper.wrapContent('<img src="/small.png"><img src="/big.png">', { scale: 1 })
+
+    // 小文件内联，HTML 自洽；大文件转 file:// 绝对路径，与 HTML 落盘位置无关。
+    expect(html).toContain('src="data:image/png;base64,')
+    expect(html).toContain('src="file://')
+    expect(html).not.toContain('src="/small.png"')
+    expect(html).not.toContain('src="/big.png"')
+  })
+
+  it('函数形式的阈值按文件决定内联；远程、协议相对和缺失资源保持原样', () => {
+    const dir = tempDir()
+    fs.writeFileSync(path.join(dir, 'a.png'), 'x'.repeat(100), 'utf-8')
+    fs.writeFileSync(path.join(dir, 'b.png'), 'x'.repeat(100), 'utf-8')
+
+    const wrapper = new HtmlWrapper({ assetsDir: dir, assetsInlineLimit: (filePath) => filePath.endsWith('a.png') })
+    const html = wrapper.wrapContent(
+      '<img src="/a.png"><img src="/b.png"><img src="https://cdn.com/x.png"><img src="data:image/png;base64,AA"><img src="//cdn.com/y.png"><img src="/missing.png">',
+      { scale: 1 }
+    )
+
+    expect(html).toContain('src="data:image/png;base64,')
+    expect(html).toContain('src="file://')
+    expect(html).toContain('src="https://cdn.com/x.png"')
+    expect(html).toContain('src="data:image/png;base64,AA"')
+    expect(html).toContain('src="//cdn.com/y.png"')
+    expect(html).toContain('src="/missing.png"')
+  })
+
+  it('改写 srcset 的每个候选 URL 并保留描述符', () => {
+    const dir = tempDir()
+    fs.writeFileSync(path.join(dir, 'a.png'), 'tiny', 'utf-8')
+
+    const wrapper = new HtmlWrapper({ assetsDir: dir })
+    const html = wrapper.wrapContent('<img srcset="/a.png 1x, /a.png 2x">', { scale: 1 })
+
+    expect(html).not.toContain('/a.png')
+    expect(html).toContain(' 1x, ')
+    expect(html).toContain(' 2x')
+  })
+
+  it('未设置 assetsDir 时标记资源原样输出', () => {
+    const html = new HtmlWrapper({}).wrapContent('<img src="/a.png">', { scale: 1 })
+    expect(html).toContain('src="/a.png"')
+  })
 })

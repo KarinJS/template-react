@@ -54,7 +54,7 @@ export default defineConfig({
 
 #### dir.assets
 
-**场景**：存放字体、图标、背景图等静态资源，开发时通过 `/assets/*` 访问，构建时自动复制到产物。
+**场景**：存放字体、图标、背景图等静态资源。
 
 ```ts twoslash
 import { defineConfig } from '@karinjs/template-react'
@@ -72,7 +72,11 @@ export default defineConfig({
 <img src="/assets/avatar.png" alt="头像" />
 ```
 
-开发时 `ktr dev` 会服务 `public/` 目录，构建时复制到 `<产物目录>/assets/`（产物目录跟随打包器 outDir，如 `lib/assets/`）。
+引用约定只有一条：`/` 开头的路径始终等于 `<dir.assets>/` 下的相对路径（上例即 `public/assets/avatar.png`）。这条不变量在三种环境下由不同机制保证，模板写法不用变：
+
+- **开发**：`ktr dev` 把 `dir.assets` 作为 publicDir 挂在根路径，引用直接可访问；
+- **构建**：`ktrBuildPlugin` / `ktr build` 把 `dir.assets` 原样复制到 `<产物目录>/assets/`，目录结构不变；
+- **渲染**：SSR 产出 HTML 时框架自动改写这些引用——资源根目录开发态取 `dir.assets`、生产态自动发现产物里的 `assets/`（与 chunk 落点无关，单 chunk 打包也不影响），不超过 [`html.assetsInlineLimit`](#htmlassetsinlinelimit) 的内联为 base64，超过的转为 `file://` 绝对路径，截图引擎用 `file://` 打开也能正确加载。
 
 #### dir.copyAssets
 
@@ -88,7 +92,7 @@ export default defineConfig({
 })
 ```
 
-适用于资源体积大、或资源目录本身就在产物目录的场景。
+适用于资源体积大、或资源目录本身就在产物目录的场景。设为 `false` 时构建会在产物根额外生成一份 `ktr-assets.json` 位置清单，渲染时据此定位随包发布的资源目录（无需随包发布 `karin.template.ts`）——包里始终只有一份资源，模板里的 `/xxx` 引用照常工作。
 
 #### dir.cssEntry
 
@@ -198,6 +202,25 @@ export default defineConfig({
 <Callout type="warn">
   `headExtra` 注入的内容在截图时**不会生效**（无网络请求），仅用于开发面板预览。字体等资源应使用 `extraStylePaths` 内联。
 </Callout>
+
+#### html.assetsInlineLimit
+
+**类型**：`number | ((filePath: string) => boolean)`，**默认**：`4096`
+
+模板标记里本地资源引用（`<img src="/...">` 等，对应 `<dir.assets>/` 下的文件）的内联阈值，语义同 Vite 的 `assetsInlineLimit`：SSR 产出 HTML 时，不超过阈值（字节）的资源内联为 base64 data URI，超过的转为 `file://` 绝对路径；函数形式按文件自行决定是否内联。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  html: {
+    // 全部内联，产出的 HTML 完全自包含
+    assetsInlineLimit: 100 * 1024 * 1024
+  }
+})
+```
+
+<Callout type="info">独立构建（`ktr build`）的运行包无法序列化函数形式，函数会回退为默认的 4096（构建期有警告提示）。</Callout>
 
 #### standalone 独立构建
 

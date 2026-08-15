@@ -68,6 +68,7 @@ class SSRRenderer<R extends Record<keyof R, TemplateDef<any>>> {
   private readonly options: RendererOptions
   private readonly htmlWrapper: HtmlWrapper
   private readonly pluginContainer: PluginContainer
+  private readonly ssrRuntime: NonNullable<RendererOptions['ssrRuntime']>
 
   /**
    * @param templates 约定扫描生成的模板注册表。
@@ -76,9 +77,14 @@ class SSRRenderer<R extends Record<keyof R, TemplateDef<any>>> {
   constructor(templates: R, options: RendererOptions) {
     this.templates = templates
     this.options = options
+    // 默认用 ktr 自身解析到的 React；约定装配层在源码注册表场景下会注入下游包根解析出的那份，
+    // 保证 createElement / hooks dispatcher 与模板组件里的 React 是同一个实例。
+    this.ssrRuntime = options.ssrRuntime ?? { createElement: React.createElement, renderToReadableStream }
     this.htmlWrapper = new HtmlWrapper({
       ...(options.cssPath ? { cssPath: options.cssPath } : {}),
       ...(options.cssText ? { cssText: options.cssText } : {}),
+      ...(options.assetsDir ? { assetsDir: options.assetsDir } : {}),
+      ...(options.assetsInlineLimit !== undefined ? { assetsInlineLimit: options.assetsInlineLimit } : {}),
       extraStylePaths: options.extraStylePaths ?? [],
       headExtra: options.html?.headExtra ?? ''
     })
@@ -115,12 +121,12 @@ class SSRRenderer<R extends Record<keyof R, TemplateDef<any>>> {
 
       await this.pluginContainer.runBefore(pluginContext)
 
-      const element = React.createElement(template.component, {
+      const element = this.ssrRuntime.createElement(template.component, {
         data,
         ctx: renderContext
       })
       // React 流式 SSR：先创建 ReadableStream，等 allReady 后一次性读出完整 HTML。
-      const stream = await renderToReadableStream(element)
+      const stream = await this.ssrRuntime.renderToReadableStream(element)
       await stream.allReady
       const htmlContent = await new Response(stream).text()
       // afterRender 插件串行传递 HTML，可在写文件前统一加工片段。

@@ -63,7 +63,7 @@ export default defineConfig({
 **类型**：`string`  
 **默认值**：`'ktr/public'`
 
-静态资源目录（字体、图标、背景图）。dev server 当 publicDir 服务，构建时复制到 `<产物>/assets`。
+静态资源目录（字体、图标、背景图）。`/xxx` 引用始终等于 `<dir.assets>/xxx`：dev server 当 publicDir 服务（开发态直接可访问），构建时复制到 `<产物>/assets`，SSR 产出 HTML 时再按 [`html.assetsInlineLimit`](/docs/api/config-cli#htmlassetsinlinelimit) 内联为 base64 或转为 `file://` 绝对路径——开发、构建、生产三态下位置始终正确。
 
 ```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
@@ -111,6 +111,8 @@ export default defineConfig({
 1. **资源已随 npm 包发布**：`package.json` 的 `files` 包含 `ktr/public`
 2. **资源体积大**：避免构建时复制耗时
 3. **资源与代码分离发布**：资源走 CDN，代码走 npm
+
+设为 `false` 时构建会在产物根生成 `ktr-assets.json` 位置清单，渲染时框架据此定位随包发布的资源目录（不需要随包发布 `karin.template.ts`），模板里的 `/xxx` 引用在开发、构建、生产三态下照常解析——包里只有一份资源。
 
 ### dir.cssEntry
 

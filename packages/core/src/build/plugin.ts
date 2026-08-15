@@ -5,6 +5,7 @@ import type { Plugin } from 'vite'
 
 import { resolveConfig } from '../config'
 import { ensureConventions } from '../conventions/registry'
+import { ktrAssetsManifestFileName } from '../runtime/registry-loader'
 import { buildTemplates } from './index'
 
 /** ktr 构建插件的选项。 */
@@ -30,6 +31,8 @@ export interface KtrBuildPluginOptions {
  */
 export const ktrBuildPlugin = (options: KtrBuildPluginOptions = {}): Plugin => {
   let outDir = options.outDir
+  // copyAssets: false 时资源目录随包发布、不复制进产物，这里记下它的位置，构建期写成清单。
+  let publishedAssetsDir: string | undefined
 
   return {
     name: 'ktr-template-build',
@@ -38,6 +41,9 @@ export const ktrBuildPlugin = (options: KtrBuildPluginOptions = {}): Plugin => {
 
     async buildStart() {
       const config = await resolveConfig({ cwd: options.root ?? process.cwd() })
+      if (!config.copyAssets) {
+        publishedAssetsDir = config.assetsDir
+      }
       const result = await ensureConventions(config)
       consola.success(`模板注册表已就绪：${result.routes.length} 个模板 -> ${result.registryPath}`)
     },
@@ -47,6 +53,12 @@ export const ktrBuildPlugin = (options: KtrBuildPluginOptions = {}): Plugin => {
     },
 
     async generateBundle() {
+      // 资源不复制时在产物根写位置清单：渲染时据此定位随包发布的资源目录，全包只有一份资源。
+      if (publishedAssetsDir && outDir) {
+        const relative = path.relative(outDir, publishedAssetsDir).replace(/\\/g, '/')
+        this.emitFile({ type: 'asset', fileName: ktrAssetsManifestFileName, source: `${JSON.stringify({ assetsDir: relative })}\n` })
+      }
+
       if (options.css === false) return
 
       const result = await buildTemplates({

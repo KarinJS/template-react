@@ -185,4 +185,24 @@ await renderTemplate('hello/card', { title: 1, items: [] })
     },
     30_000
   )
+
+  it('copyAssets: false 时不复制资源，把随包发布的资源目录位置烘进入口', async () => {
+    const root = setupProject()
+    fs.writeFileSync(
+      path.join(root, 'karin.template.ts'),
+      "export default { dir: { assets: 'resources', copyAssets: false }, standalone: { outDir: 'build' } }\n",
+      'utf8'
+    )
+    fs.mkdirSync(path.join(root, 'resources'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'resources', 'logo.png'), 'PNG', 'utf8')
+
+    const config = await resolveConfig({ cwd: root })
+    const result = await buildStandalone(config)
+
+    // 不复制：产物里没有 assets/ 副本，全包只有 resources/ 一份。
+    expect(fs.existsSync(path.join(result.outDir, 'assets'))).toBe(false)
+    // 资源位置烘进生成入口：相对产物目录指向 ../resources，运行时零配置定位。
+    const generatedEntry = fs.readFileSync(path.join(root, '.ktr', 'standalone-entry.ts'), 'utf8')
+    expect(generatedEntry).toContain('"../resources"')
+  }, 30_000)
 })

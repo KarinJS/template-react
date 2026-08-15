@@ -1,4 +1,5 @@
 import type React from 'react'
+import type { renderToReadableStream } from 'react-dom/server'
 import type { UserConfig as ViteUserConfig } from 'vite'
 
 // 通过包自身子路径引用，让打包后的 d.ts 也保持外部引用；
@@ -149,6 +150,19 @@ export interface HtmlWrapperOptions {
   extraStylePaths?: string[]
   /** 追加到 head 中的原始 HTML。 */
   headExtra?: string
+  /**
+   * 标记资源根目录。设置后，SSR 产出的 HTML 里以 `/` 开头的资源引用
+   * （src/srcset/poster/href）会按 `<assetsDir>/<引用路径>` 解析并改写；
+   * 未设置或目录不存在时保持原样（如 dev 面板由 publicDir 直接服务）。
+   */
+  assetsDir?: string
+  /**
+   * 标记资源内联阈值（字节），语义同 Vite 的 assetsInlineLimit：
+   * 不超过阈值的资源改写为 base64 data URI，超过的改写为 file:// 绝对路径；
+   * 函数形式按文件自行决定是否内联。
+   * @default 4096
+   */
+  assetsInlineLimit?: number | ((filePath: string) => boolean)
 }
 
 /** createRenderer 的初始化选项。 */
@@ -165,6 +179,26 @@ export interface RendererOptions {
   plugins?: RenderPlugin[]
   /** 开发环境下捕获真实渲染数据的目录，默认写入 template。 */
   captureDir?: string
+  /**
+   * SSR 用的 React 运行时，缺省用 ktr 自身解析到的 react / react-dom/server。
+   * 约定装配层（createTemplateRenderer）在源码注册表场景下会按下游包根解析后注入，
+   * 保证渲染器与模板组件共用同一个 React 实例；一般不需要手动传。
+   */
+  ssrRuntime?: {
+    createElement: typeof React.createElement
+    renderToReadableStream: typeof renderToReadableStream
+  }
+  /**
+   * 标记资源根目录（对应约定配置的 dir.assets / 产物里的 assets/）。
+   * 设置后 SSR 产出的 HTML 会以它为根改写 `/` 开头的资源引用，保证 file:// 截图时路径正确。
+   */
+  assetsDir?: string
+  /**
+   * 标记资源内联阈值（字节），语义同 Vite 的 assetsInlineLimit：
+   * 不超过阈值的内联为 base64 data URI，超过的转为 file:// 绝对路径；函数形式按文件决定。
+   * @default 4096
+   */
+  assetsInlineLimit?: number | ((filePath: string) => boolean)
   /**
    * 输出 HTML 文件命名方式：
    * - 'fixed'（默认）：每个模板固定一个 HTML 文件覆盖写（如 hello_card.html），不再随机堆积。
@@ -294,6 +328,13 @@ export interface KtrConfig {
      * @example headExtra: '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik">'
      */
     headExtra?: string
+    /**
+     * 标记资源内联阈值（字节），语义同 Vite 的 assetsInlineLimit：
+     * 模板里 `/` 开头的资源引用（对应 `<dir.assets>/` 下的文件）在 SSR 产出 HTML 时，
+     * 不超过阈值的内联为 base64，超过的转为 file:// 绝对路径；函数形式按文件决定。
+     * @default 4096
+     */
+    assetsInlineLimit?: number | ((filePath: string) => boolean)
   }
   /**
    * 透传并合并到 ktr 内部的 Vite 配置（dev server 和 CSS 构建都会用到），
@@ -336,6 +377,8 @@ export interface ResolvedKtrConfig {
   html: {
     /** 追加到 head 的原始 HTML。 */
     headExtra: string
+    /** 标记资源内联阈值（字节）或按文件判断的函数。 */
+    assetsInlineLimit: number | ((filePath: string) => boolean)
   }
   /** 独立模板运行包的最终构建配置。 */
   standalone: {

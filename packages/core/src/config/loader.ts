@@ -164,7 +164,8 @@ export const resolveConfig = async (options: ResolveConfigOptions = {}): Promise
       open: merged.dev?.open ?? true
     },
     html: {
-      headExtra: merged.html?.headExtra ?? ''
+      headExtra: merged.html?.headExtra ?? '',
+      assetsInlineLimit: merged.html?.assetsInlineLimit ?? 4096
     },
     standalone: {
       outDir: standaloneOutDir,

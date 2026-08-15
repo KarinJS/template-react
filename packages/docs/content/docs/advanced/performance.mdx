@@ -676,7 +676,8 @@ import type { RenderPlugin } from '@karinjs/template-react'
 import fs from 'node:fs'
 import path from 'node:path'
 
-// 2. 小图片内联
+// 2. 小图片内联（框架已内置该能力：html.assetsInlineLimit 默认 4096 字节，
+//    需要更定制的规则时才用这种 afterRender 插件，比如按路径前缀区分阈值）
 const inlineSmallImages: RenderPlugin = {
   name: 'inline-small-images',
   afterRender: (ctx) => {

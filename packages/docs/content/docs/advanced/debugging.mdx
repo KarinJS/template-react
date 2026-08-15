@@ -640,12 +640,18 @@ export default defineTemplate({ component: Component })
 **解决方案**：
 
 ```tsx
-// ✅ 正确：使用绝对路径
+// ✅ 正确：使用 / 开头的路径（等于 <dir.assets>/ 下的相对路径）
 <img src="/assets/avatar.png" alt="" />
 
 // ❌ 错误：使用相对路径
 <img src="./avatar.png" alt="" />
 ```
+
+SSR 产出 HTML 时框架会自动改写这些引用：不超过 `html.assetsInlineLimit`（默认 4096 字节）的内联为 base64，超过的转为 `file://` 绝对路径，开发和生产都不需要手写路径转换插件。如果图片仍然 404，按顺序检查：
+
+1. 引用路径是否以 `/` 开头（`./assets/x.png`、`assets/x.png` 都不会被处理）；
+2. 文件是否真实存在于 `<dir.assets>/` 下的对应位置（如 `ktr/public/assets/avatar.png`）；
+3. 生产态确认产物目录下 `assets/` 存在（如 `lib/assets/`，由构建时的 `copyAssets` 复制）。
 
 ### 场景 5：端口被占用
 

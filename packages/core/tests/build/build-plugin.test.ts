@@ -98,4 +98,38 @@ describe('ktrBuildPlugin', () => {
     expect(fs.existsSync(path.join(root, '.ktr/template-registry.ts'))).toBe(true)
     expect(fs.existsSync(path.join(root, 'lib/style.css'))).toBe(false)
   })
+
+  it('copyAssets: false 时不复制资源，而是在产物根写位置清单指向随包发布的资源目录', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-plugin-manifest-'))
+    fs.cpSync(fixtureRoot, root, { recursive: true })
+    fs.unlinkSync(path.join(root, 'templates/index.ts'))
+    fs.writeFileSync(
+      path.join(root, 'karin.template.ts'),
+      "export default { dir: { template: 'templates', cssEntry: 'templates/style.css', assets: 'resources', copyAssets: false } }\n",
+      'utf-8'
+    )
+    // 资源目录随包发布（在 package.json files 里），构建不应再复制一份。
+    fs.mkdirSync(path.join(root, 'resources', 'image'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'resources', 'image', 'logo.png'), 'PNG', 'utf-8')
+    fs.writeFileSync(path.join(root, 'entry.js'), 'export const answer = 42\n', 'utf-8')
+
+    await build({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [ktrBuildPlugin({ root })],
+      build: {
+        emptyOutDir: true,
+        minify: false,
+        outDir: path.join(root, 'lib'),
+        rollupOptions: { input: path.join(root, 'entry.js') }
+      }
+    })
+
+    // 清单作为 bundle asset 落在产物根，相对路径指向包内的 resources/。
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'lib', 'ktr-assets.json'), 'utf-8'))
+    expect(manifest).toEqual({ assetsDir: '../resources' })
+    // 不复制：产物里没有 resources 的副本（lib/assets/ 下只有 vite 自己的入口 chunk）。
+    expect(fs.existsSync(path.join(root, 'lib', 'assets', 'image'))).toBe(false)
+  })
 })

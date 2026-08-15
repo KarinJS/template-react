@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { resolveConfig, type ResolveConfigOptions } from '../config'
 import { mockRegistryPath, templateRegistryPath } from '../conventions/registry'
 import { importTsModule } from '../ts-import'
-import type { LoadedRegistry } from '../types'
+import type { LoadedRegistry, ResolvedKtrConfig } from '../types'
 
 /** 约定注册表的加载选项。 */
 export interface LoadRegistryOptions {
@@ -39,16 +39,22 @@ const resolveRegistryConfig = async (options?: LoadRegistryOptions) => {
 const nonOutputDirs = new Set(['node_modules', 'src', 'template', 'templates', 'ktr', 'resources', 'config', 'scripts'])
 
 /**
- * 在下游项目中定位打包产物里的注册表文件。产物目录由下游构建工具决定，框架不做假设，按优先级发现：
+ * 静态资源位置清单的文件名（产物根目录下）。
+ * `dir.copyAssets: false` 时构建插件把 dir.assets 相对产物目录的位置写进这个文件，
+ * 渲染时据此定位随包发布的资源目录，全包只保留一份资源。
+ */
+export const ktrAssetsManifestFileName = 'ktr-assets.json'
+
+/**
+ * 收集生产产物目录候选。产物目录由下游构建工具决定，框架不做假设，按优先级发现：
  * 1. 调用方显式传入的 bundledDir；
  * 2. package.json 的 main 字段所在目录（如 lib/index.js → lib/）；
  * 3. 根目录下一层目录扫描（排除源码/资源/隐藏目录）。
  * @param root 项目根目录。
- * @param fileName 注册表文件名（如 template-registry.js）。
  * @param bundledDir 调用方显式指定的产物目录。
- * @returns 找到的文件绝对路径；找不到时返回 undefined。
+ * @returns 按优先级排序的候选目录绝对路径列表。
  */
-const findBundledRegistry = (root: string, fileName: string, bundledDir?: string): string | undefined => {
+export const discoverBundledDirs = (root: string, bundledDir?: string): string[] => {
   const candidateDirs: string[] = []
 
   if (bundledDir) {
@@ -72,7 +78,18 @@ const findBundledRegistry = (root: string, fileName: string, bundledDir?: string
     candidateDirs.push(path.join(root, entry.name))
   }
 
-  for (const dir of candidateDirs) {
+  return candidateDirs
+}
+
+/**
+ * 在下游项目中定位打包产物里的注册表文件，候选目录由 discoverBundledDirs 按优先级给出。
+ * @param root 项目根目录。
+ * @param fileName 注册表文件名（如 template-registry.js）。
+ * @param bundledDir 调用方显式指定的产物目录。
+ * @returns 找到的文件绝对路径；找不到时返回 undefined。
+ */
+const findBundledRegistry = (root: string, fileName: string, bundledDir?: string): string | undefined => {
+  for (const dir of discoverBundledDirs(root, bundledDir)) {
     const candidate = path.join(dir, fileName)
     if (fs.existsSync(candidate)) {
       return candidate
@@ -127,6 +144,16 @@ const importRegistryModule = async <T>(filePath: string): Promise<T> => {
 
   return importTsModule<T>(filePath)
 }
+
+/**
+ * 解析模板注册表实际加载的文件路径（.ts 源码优先，缺失时回退到打包产物 .js）。
+ * 调用方（createTemplateRenderer）据此判断组件的加载来源，决定 SSR React 运行时的解析策略。
+ * @param config 已解析的 ktr 配置。
+ * @param bundledDir 调用方显式指定的产物目录。
+ * @returns 注册表文件绝对路径。
+ */
+export const pickTemplateRegistryFile = (config: ResolvedKtrConfig, bundledDir?: string): string =>
+  pickRegistryFile(config.root, templateRegistryPath(config), bundledDir)
 
 /**
  * 加载约定缓存目录中的模板注册表，供 karin 插件胶水层在 Node 环境中使用。

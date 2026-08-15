@@ -7,6 +7,29 @@ description: Template data validation failed、模板渲染失败、截图失败
 
 运行时错误发生在开发面板预览或真实渲染（Karin 指令触发）时。本页覆盖数据校验失败、SSR 渲染错误、截图失败、CSS 加载失败等场景。
 
+## Invalid hook call
+
+### 症状
+
+真实渲染时报错，堆栈里组件的 React 和 `react-dom-server` 来自**不同的 node_modules 路径**：
+
+```text
+Invalid hook call. Hooks can only be called inside of the body of a function component...
+TypeError: Cannot read properties of null (reading 'useContext')
+```
+
+### 原因
+
+进程里存在两份 React 实例：模板组件解析到的 `react` 和渲染器解析到的 `react-dom/server` 不在同一个 node_modules 树。典型场景是把 ktr 仓库 `link:` 进下游开发——渲染器的静态导入会从 ktr 仓库自己的 node_modules 解析出另一份 react-dom。
+
+当前版本已自动处理：加载 `.ts` 源注册表（dev / link 场景）时，`createTemplateRenderer` 会从下游包根解析 `react` 和 `react-dom/server` 注入渲染器，保证与组件共用同一实例；生产 bundle（组件与渲染器打在同一产物里）不受影响。
+
+### 解决方案
+
+1. 把 `@karinjs/template-react` 升级到包含此修复的版本；
+2. 如果仍遇到，检查模板组件是否从别的 node_modules 树解析了 React（比如 monorepo 里另一个包提供了自己的 react 副本），保证下游项目只有一份 `react` / `react-dom`；
+3. 手动渲染（直接 `createRenderer`）且确实存在双副本时，可通过 `RendererOptions.ssrRuntime` 显式传入组件侧的 `createElement` / `renderToReadableStream`。
+
 ## Template data validation failed
 
 ### 症状

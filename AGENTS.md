@@ -16,7 +16,7 @@
 
 ## 下游模板约定
 
-下游开发者的模板都在 `ktr/template/` 文件夹里（App Router 式强约定：目录即路由，文件名固定），静态资源放 `ktr/public/`（dev server 当 publicDir 服务，构建时复制到产物 `assets/`）：
+下游开发者的模板都在 `ktr/template/` 文件夹里（App Router 式强约定：目录即路由，文件名固定），静态资源放 `ktr/public/`（dev server 当 publicDir 服务，构建时复制到产物 `assets/`；标记里 `/xxx` 引用恒等于 `<dir.assets>/xxx`，SSR 产出 HTML 时框架按 `html.assetsInlineLimit` 内联为 base64 或转为 `file://` 绝对路径，三态位置一致）：
 
 - `ktr/template/<板块>/<模板>/index.tsx`：模板组件，默认导出 `defineTemplate(...)`；只有这个固定写法会注册为 `<板块>/<模板>`，裸写的 `.tsx` 不注册。
 - `ktr/template/<板块>/<模板>/mock.ts`：类型安全的 TS mock（固定文件名），会被自动导出，面板中只读。

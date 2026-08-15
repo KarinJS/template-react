@@ -2,6 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import React from 'react'
+import { renderToReadableStream } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { createRenderer } from '../../src/runtime'
@@ -119,5 +121,51 @@ describe('createRenderer', () => {
     expect(result.success).toBe(true)
     expect(path.basename(result.htmlPath)).toBe('custom-hello-card.html')
     expect(fs.existsSync(result.htmlPath)).toBe(true)
+  })
+
+  it('assetsDir 透传到 HTML 包装器，标记资源在渲染时被改写', async () => {
+    const dir = tempDir()
+    const cssPath = path.join(dir, 'style.css')
+    fs.writeFileSync(cssPath, '', 'utf-8')
+    const assetsDir = path.join(dir, 'public')
+    fs.mkdirSync(path.join(assetsDir, 'image'), { recursive: true })
+    fs.writeFileSync(path.join(assetsDir, 'image', 'logo.png'), 'png-bytes', 'utf-8')
+
+    const localTemplates = {
+      'x/img': { component: () => React.createElement('img', { src: '/image/logo.png', alt: '' }) }
+    }
+    const render = createRenderer(localTemplates, { cssPath, outputDir: dir, assetsDir })
+    const result = await render('x/img', {})
+
+    expect(result.success).toBe(true)
+    const html = fs.readFileSync(result.htmlPath, 'utf-8')
+    expect(html).toContain('src="data:image/png;base64,')
+    expect(html).not.toContain('src="/image/logo.png"')
+  })
+
+  it('优先使用注入的 ssrRuntime（约定装配层按下游包根解析后传入）', async () => {
+    const dir = tempDir()
+    const cssPath = path.join(dir, 'style.css')
+    fs.writeFileSync(cssPath, '', 'utf-8')
+    const calls: string[] = []
+    const render = createRenderer(templates, {
+      cssPath,
+      outputDir: dir,
+      ssrRuntime: {
+        createElement: ((...args: unknown[]) => {
+          calls.push('createElement')
+          return (React.createElement as (...a: unknown[]) => unknown)(...args)
+        }) as unknown as typeof React.createElement,
+        renderToReadableStream: (element: React.ReactNode) => {
+          calls.push('renderToReadableStream')
+          return renderToReadableStream(element as React.ReactElement)
+        }
+      }
+    })
+
+    const result = await render('hello/card', { title: 'Hello', items: [] })
+
+    expect(result.success).toBe(true)
+    expect(calls).toEqual(['createElement', 'renderToReadableStream'])
   })
 })

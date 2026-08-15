@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import type { HtmlWrapperOptions, RenderContext } from '../types'
 
@@ -77,12 +78,16 @@ export class HtmlWrapper {
   private readonly cssText: string | undefined
   private readonly extraStylePaths: string[]
   private readonly headExtra: string
+  private readonly assetsDir: string | undefined
+  private readonly assetsInlineLimit: number | ((filePath: string) => boolean)
 
   constructor(options: HtmlWrapperOptions) {
     this.cssPath = options.cssPath
     this.cssText = options.cssText
     this.extraStylePaths = options.extraStylePaths ?? []
     this.headExtra = options.headExtra ?? ''
+    this.assetsDir = options.assetsDir
+    this.assetsInlineLimit = options.assetsInlineLimit ?? 4096
   }
 
   /**
@@ -101,7 +106,7 @@ export class HtmlWrapper {
     const variables = attr(themeVariables(ctx.theme))
 
     // 主题变量只写 body：HeroUI 的 @theme inline 桥接把 bg-accent 编译成 var(--accent)，
-    // 变量在任意祖先元素上声明都能被后代继承到，不需要落在 :root。
+    // 变量在任意祖先元素上声明都能被后代继承，不需要落在 :root。
     // 明暗同理——HeroUI 的 dark 变量定义在 `.dark, [data-theme="dark"]` 选择器上，body 带上即可。
     return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -110,12 +115,93 @@ export class HtmlWrapper {
   <meta name="viewport" content="width=device-width">
   <style>${inlineStyles}</style>
   <style>${resetStyle()}</style>
-  ${this.headExtra}
+  ${this.rewriteMarkupAssets(this.headExtra)}
 </head>
 <body class="${mode === 'dark' ? 'dark' : ''}"${mode ? ` data-theme="${mode}"` : ''} style="${variables}">
-  <div id="container">${htmlContent}</div>
+  <div id="container">${this.rewriteMarkupAssets(htmlContent)}</div>
 </body>
 </html>`
+  }
+
+  /**
+   * 改写标记里的本地资源引用，保证截图引擎用 file:// 打开 HTML 时路径仍然正确。
+   * 约定不变量：`/` 开头的引用路径永远等于 `<assetsDir>/` 下的相对路径——
+   * dev 由 publicDir 根映射保证，构建时 copyAssets 原样保留目录结构，这里按同一约定解析。
+   * 不超过 assetsInlineLimit 的内联为 base64 data URI（HTML 完全自洽），
+   * 超过的转为 file:// 绝对路径（与 HTML 落盘位置无关）。
+   * 未配置 assetsDir 或目录不存在（dev 面板由 publicDir 服务）时原样返回。
+   * @param html 待处理的 HTML 片段。
+   * @returns 改写后的 HTML。
+   */
+  rewriteMarkupAssets(html: string): string {
+    if (!this.assetsDir || !fs.existsSync(this.assetsDir)) {
+      return html
+    }
+
+    return html.replace(/\s(src|srcset|poster|href)=(["'])(\/[^"']*)\2/g, (match, name: string, quote: string, value: string) => {
+      const rewritten = name === 'srcset' ? this.rewriteSrcset(value) : this.resolveMarkupAsset(value)
+      return ` ${name}=${quote}${rewritten}${quote}`
+    })
+  }
+
+  /**
+   * srcset 是逗号分隔的「URL + 描述符」列表，逐个改写 URL 部分。
+   * @param value srcset 属性值。
+   * @returns 改写后的 srcset。
+   */
+  private rewriteSrcset(value: string): string {
+    return value
+      .split(',')
+      .map((candidate) => {
+        const parts = candidate.trim().split(/\s+/)
+        if (parts.length === 0 || !parts[0]) {
+          return candidate
+        }
+        parts[0] = this.resolveMarkupAsset(parts[0])
+        return parts.join(' ')
+      })
+      .join(', ')
+  }
+
+  /**
+   * 把单个 `/` 开头的引用解析成 data URI 或 file:// 绝对路径。
+   * 协议相对（//cdn）、带协议的 URL 和 assetsDir 下不存在的文件都保持原样。
+   * @param url 以 `/` 开头的引用路径。
+   * @returns 改写后的 URL；无需改写时返回原值。
+   */
+  private resolveMarkupAsset(url: string): string {
+    // 协议相对 URL（//example.com/x.png）不是本地资源。
+    if (url.startsWith('//')) {
+      return url
+    }
+
+    const assetPath = url.split(/[?#]/)[0]
+    if (!assetPath) {
+      return url
+    }
+
+    const absoluteAssetPath = path.join(this.assetsDir!, assetPath)
+    if (!fs.existsSync(absoluteAssetPath)) {
+      console.warn(`[ktr] 标记引用的资源不存在，保留原路径：${url}`)
+      return url
+    }
+
+    if (this.shouldInlineAsset(absoluteAssetPath)) {
+      return this.toDataUri(absoluteAssetPath) ?? url
+    }
+    return pathToFileURL(absoluteAssetPath).href
+  }
+
+  /**
+   * 按 assetsInlineLimit 判断资源是否内联（阈值语义同 Vite：不超过阈值即内联）。
+   * @param filePath 资源文件绝对路径。
+   * @returns 内联返回 true。
+   */
+  private shouldInlineAsset(filePath: string): boolean {
+    if (typeof this.assetsInlineLimit === 'function') {
+      return this.assetsInlineLimit(filePath)
+    }
+    return fs.statSync(filePath).size <= this.assetsInlineLimit
   }
 
   /**

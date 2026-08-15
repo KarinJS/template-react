@@ -1,11 +1,12 @@
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { resolveConfig } from '../config'
-import type { DataOf, LoadedRegistry, RenderContextInput, RendererOptions, RenderResult } from '../types'
+import type { DataOf, LoadedRegistry, RenderContextInput, RendererOptions, RenderResult, ResolvedKtrConfig } from '../types'
 import { createRenderer } from './renderer'
-import { loadTemplateRegistry } from './registry-loader'
+import { discoverBundledDirs, ktrAssetsManifestFileName, loadTemplateRegistry, pickTemplateRegistryFile } from './registry-loader'
 import { resolveTemplateStyle } from './style'
 
 /** createTemplateRenderer 的可选覆盖项。 */
@@ -57,6 +58,72 @@ const findPackageRoot = (startDir: string): { root: string; pluginName: string }
 }
 
 /**
+ * 定位标记资源（<img src="/..."> 等）的根目录，与注册表加载共享同一套产物目录发现：
+ * 1. dir.assets 源码目录存在时优先（开发态改动即时生效；资源随包发布、copyAssets: false 的生产包也走这里）；
+ * 2. 否则在产物候选目录下找 assets/（构建插件把 dir.assets 原样复制到这里）。
+ * 不依赖 chunk 位置——单 chunk 或 core_chunk/ 子目录都不影响，发现的是产物根目录。
+ * @param config 已解析的 ktr 配置。
+ * @param bundledDir 调用方显式指定的产物目录。
+ * @returns 资源根目录绝对路径；都找不到时返回 undefined（渲染时不做标记资源改写）。
+ */
+export const discoverAssetsDir = (config: Pick<ResolvedKtrConfig, 'root' | 'assetsDir'>, bundledDir?: string): string | undefined => {
+  if (fs.existsSync(config.assetsDir)) {
+    return config.assetsDir
+  }
+
+  for (const dir of discoverBundledDirs(config.root, bundledDir)) {
+    // copyAssets: false 的包带位置清单，指向随包发布的资源目录（相对产物目录）。
+    const manifestPath = path.join(dir, ktrAssetsManifestFileName)
+    if (fs.existsSync(manifestPath)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as { assetsDir?: string }
+        if (typeof manifest.assetsDir === 'string') {
+          const resolved = path.resolve(dir, manifest.assetsDir)
+          if (fs.existsSync(resolved)) {
+            return resolved
+          }
+        }
+      } catch {
+        // 清单损坏时继续按默认位置探测。
+      }
+    }
+
+    const candidate = path.join(dir, 'assets')
+    if (fs.existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * 从下游插件包根解析 SSR 用的 React 运行时。
+ * ktr 被 link 进下游开发时，渲染器自身的静态导入会从 ktr 仓库的 node_modules 再解析出一份
+ * react / react-dom，与模板组件（从下游源码树解析）不是同一个实例，hooks 立刻崩溃
+ * （Invalid hook call）。从包根解析保证渲染器与组件始终共用同一份 React。
+ * @param root 插件包根目录。
+ * @returns 可用的 SSR 运行时；解析失败（如生产 bundle 环境没有独立 node_modules）返回 undefined，
+ *   调用方回落到渲染器自身的静态导入。
+ */
+export const resolveDownstreamSsrRuntime = async (root: string): Promise<RendererOptions['ssrRuntime'] | undefined> => {
+  try {
+    const require = createRequire(path.join(root, 'package.json'))
+    const reactModule = await import(pathToFileURL(require.resolve('react')).href)
+    const serverModule = await import(pathToFileURL(require.resolve('react-dom/server')).href)
+    // CJS 动态导入的命名空间上 default 是 module.exports，两份都兼容取。
+    const react = (reactModule.default ?? reactModule) as typeof import('react')
+    const server = (serverModule.default ?? serverModule) as typeof import('react-dom/server')
+    if (typeof react.createElement !== 'function' || typeof server.renderToReadableStream !== 'function') {
+      return undefined
+    }
+    return { createElement: react.createElement, renderToReadableStream: server.renderToReadableStream }
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * 按约定创建模板渲染函数：包根定位、配置解析、约定注册表加载、CSS 定位和捕获目录全部自动处理，
  * 下游胶水层只需要关心各自领域的逻辑（如 karin 截图与消息封装）。
  * 与 karin 等宿主框架无关；HTML 输出目录等宿主相关位置通过 options.renderer 覆盖。
@@ -74,6 +141,12 @@ export const createTemplateRenderer = (callerUrl: string, options?: TemplateRend
     rendererPromise ??= (async () => {
       const config = await resolveConfig({ cwd: root })
       const templates = await loadTemplateRegistry(options?.bundledDir ? { root, bundledDir: options.bundledDir } : { root })
+      const assetsDir = discoverAssetsDir(config, options?.bundledDir)
+      // 加载的是 .ts 源注册表时，组件从下游源码树解析依赖（dev / ktr 被 link 的场景），
+      // 渲染器必须改用下游包根解析出的 React，否则双副本导致 hooks 崩溃；
+      // 生产产物（.js 注册表）里组件与渲染器同在一份 bundle，保持静态导入。
+      const registryFile = pickTemplateRegistryFile(config, options?.bundledDir)
+      const ssrRuntime = registryFile.endsWith('.ts') ? await resolveDownstreamSsrRuntime(root) : undefined
       return createRenderer(templates, {
         // resolveTemplateStyle 的默认路径是 cwd 相对的，宿主进程 cwd 不一定是插件目录，必须显式按包根定位；
         // 生产 CSS 由 tsdown 编译进 lib/style.css，开发缓存仍在 node_modules/.cache/ktr。
@@ -81,6 +154,10 @@ export const createTemplateRenderer = (callerUrl: string, options?: TemplateRend
           cachePath: path.join(root, 'node_modules', '.cache', 'ktr', 'style.css'),
           distDir: path.join(root, 'lib')
         }),
+        // 标记资源根目录：开发态是 dir.assets 源码目录，生产态是产物里的 assets/，与 chunk 位置无关。
+        ...(assetsDir ? { assetsDir } : {}),
+        assetsInlineLimit: config.html.assetsInlineLimit,
+        ...(ssrRuntime ? { ssrRuntime } : {}),
         outputDir: path.join(config.outDir, 'html'),
         captureDir: config.templateDir,
         // karin.template.ts 的 html 配置（圆角、headExtra）透传给渲染器。

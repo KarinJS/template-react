@@ -30,7 +30,7 @@ const configFor = (mockDataDir: string): ResolvedKtrConfig => ({
   cssEntry: path.join(fixtureRoot, 'templates/style.css'),
   extraStylePaths: [],
   dev: { port: 0, host: '127.0.0.1', open: false },
-  html: { headExtra: '' },
+  html: { headExtra: '', assetsInlineLimit: 4096 },
   standalone: {
     outDir: path.join(mockDataDir, '../dist/ktr'),
     target: 'node18',
