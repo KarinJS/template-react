@@ -18,7 +18,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: preview-${{ github.ref }}
@@ -103,26 +102,28 @@ jobs:
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "📦 预览版本：$NEW_VERSION"
 
-      - name: 🚀 发布预览包到 pkg.pr.new（PR 自动评论安装命令）
+      - name: 🚀 发布预览包到 pkg.pr.new
         id: publish
         working-directory: packages/core
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx --yes pkg-pr-new publish --json output.json --comment=update --commentWithSha --compact --packageManager=pnpm > pkg-output.txt
-          cat pkg-output.txt
+          pnpm exec pkg-pr-new publish --packageManager=pnpm
 
       - name: 📊 生成摘要（含安装命令）
+        env:
+          PACKAGE_URLS: ${{ steps.publish.outputs.urls }}
         run: |
-          PKG=@karinjs/template-react
-          VERSION=${{ steps.version-gen.outputs.version }}
-          URL="https://pkg.pr.new/${{ github.repository }}/${PKG}@${VERSION}"
-          echo "## 📦 预览版发布成功" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **包名：** \`${PKG}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **版本：** \`${VERSION}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo '### 安装命令' >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "pnpm add ${URL}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          PKG='@karinjs/template-react'
+          VERSION='${{ steps.version-gen.outputs.version }}'
+          test -n "$PACKAGE_URLS"
+          {
+            echo '## 📦 预览版发布成功'
+            echo ''
+            echo "- **包名：** \`${PKG}\`"
+            echo "- **版本：** \`${VERSION}\`"
+            echo "- **pkg.pr.new 标识：** \`${{ steps.publish.outputs.sha }}\`"
+            echo ''
+            echo '### 安装命令'
+            echo '```bash'
+            echo "pnpm add ${PACKAGE_URLS}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

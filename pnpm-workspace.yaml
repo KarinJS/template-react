@@ -69,3 +69,4 @@ minimumReleaseAgeExclude:
   - puppeteer-core@25.7.0
   - puppeteer@25.7.0
   - rollup-plugin-visualizer@7.1.1
+  - pkg-pr-new@0.0.88

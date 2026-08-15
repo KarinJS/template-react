@@ -399,10 +399,10 @@ export default defineConfig({
 })
 ```
 
-运行 `pnpm build` 时自动：
+运行 `vite build` 时自动：
 
-1. `buildStart` 执行 `ktr sync` 刷新注册表
-2. `closeBundle` 编译 Tailwind CSS 到 `<打包器 outDir>/style.css`（上例为 vite 默认的 `dist/style.css`）
+1. `buildStart 钩子` 执行 `ktr sync` 刷新注册表
+2. `closeBundle 钩子` 编译 Tailwind CSS 到 `<打包器 outDir>/style.css`（上例为 vite 默认的 `dist/style.css`）
 3. 复制静态资源到 `<打包器 outDir>/assets/`
 
 生产渲染所需的 `template-registry.js` 由打包器入口产出。`mock-registry.js` 仅在生产代码主动调用 `loadMockRegistry()` 时按需构建，见 [构建发布](/docs/build/building)。
@@ -421,7 +421,7 @@ export default defineConfig({
 })
 ```
 
-适合纯 TypeScript 插件项目，打包速度比 Vite 快 10 倍以上。
+适合纯 TypeScript 插件项目，打包速度比 Vite 不相上下。
 
 **场景 3：自定义产物目录**
 
