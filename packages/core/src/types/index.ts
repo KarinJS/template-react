@@ -409,6 +409,11 @@ export interface ResolveConfigOptions {
   cwd?: string
   /** 指定配置文件路径。 */
   configFile?: string
+  /**
+   * 跳过加载 karin.template.* 用户配置，直接用默认值。
+   * 生产 bundle 场景使用：发布产物里没有配置文件，避免运行时触发 TS 加载（tsx）。
+   */
+  skipUserConfig?: boolean
   /** 命令行或测试中临时覆盖的配置。 */
   overrides?: KtrConfig
 }

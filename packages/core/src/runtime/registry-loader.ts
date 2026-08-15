@@ -15,6 +15,11 @@ export interface LoadRegistryOptions {
   configFile?: string
   /** 生产打包产物所在目录（相对 root 或绝对路径），默认按 main 字段和根目录扫描自动发现。 */
   bundledDir?: string
+  /**
+   * 是否优先加载 .ktr 源码注册表，默认 true（开发态：与外部渲染器共享同一份 React）。
+   * 渲染器自身跑在下游 bundle 里时传 false：生产产物没有 .ktr 和配置文件，直接用打包产物注册表。
+   */
+  preferSource?: boolean
 }
 
 /**
@@ -31,6 +36,10 @@ const resolveRegistryConfig = async (options?: LoadRegistryOptions) => {
   }
   if (options?.configFile) {
     resolveOptions.configFile = options.configFile
+  }
+  // preferSource: false 即生产 bundle 语义：产物里没有配置文件，跳过 TS 配置加载（不触发 tsx）。
+  if (options?.preferSource === false) {
+    resolveOptions.skipUserConfig = true
   }
   return resolveConfig(resolveOptions)
 }
@@ -100,19 +109,20 @@ const findBundledRegistry = (root: string, fileName: string, bundledDir?: string
 }
 
 /**
- * 挑选实际加载的注册表文件：.ktr 源文件存在时永远优先（开发态由 tsx 加载源码组件，
- * 与外部渲染器共享 node_modules 里的同一份 React）；.ktr 不存在时（生产环境）回退到
- * 随插件打包的产物（此时渲染器也已内联在同一份 bundle 中），产物目录由 findBundledRegistry 发现。
+ * 挑选实际加载的注册表文件：preferSource（默认）时 .ktr 源文件存在永远优先（开发态由 tsx 加载源码组件，
+ * 与外部渲染器共享 node_modules 里的同一份 React）；生产 bundle 场景传 false，直接用打包产物——
+ * 发布包里没有 .ktr 和 karin.template.ts，产物目录由 findBundledRegistry 发现。
  * 不能按 mtime 取新——构建后产物比 .ktr 新，但开发态必须用源码注册表，否则包内 React 与
  * 外部渲染器的 React 是两份副本，hooks 会立刻崩溃。
  * @param root 项目根目录。
  * @param sourcePath .ktr 中的注册表源文件路径。
  * @param bundledDir 调用方显式指定的产物目录。
+ * @param preferSource 为 false 时跳过 .ktr 源码，直接找产物。
  * @returns 实际应加载的文件路径。
  * @throws 两个候选都不存在时抛出错误，提示先运行 ktr sync 或执行构建。
  */
-const pickRegistryFile = (root: string, sourcePath: string, bundledDir?: string): string => {
-  if (fs.existsSync(sourcePath)) {
+const pickRegistryFile = (root: string, sourcePath: string, bundledDir?: string, preferSource = true): string => {
+  if (preferSource && fs.existsSync(sourcePath)) {
     return sourcePath
   }
 
@@ -120,6 +130,12 @@ const pickRegistryFile = (root: string, sourcePath: string, bundledDir?: string)
   const bundled = findBundledRegistry(root, fileName, bundledDir)
   if (bundled) {
     return bundled
+  }
+
+  // bundle 场景（preferSource: false）产物缺失时回落源码注册表兜底——
+  // React 双副本问题已由 ssrRuntime 注入解决，回落是安全的。
+  if (fs.existsSync(sourcePath)) {
+    return sourcePath
   }
 
   throw new Error(
@@ -152,8 +168,8 @@ const importRegistryModule = async <T>(filePath: string): Promise<T> => {
  * @param bundledDir 调用方显式指定的产物目录。
  * @returns 注册表文件绝对路径。
  */
-export const pickTemplateRegistryFile = (config: ResolvedKtrConfig, bundledDir?: string): string =>
-  pickRegistryFile(config.root, templateRegistryPath(config), bundledDir)
+export const pickTemplateRegistryFile = (config: ResolvedKtrConfig, bundledDir?: string, preferSource?: boolean): string =>
+  pickRegistryFile(config.root, templateRegistryPath(config), bundledDir, preferSource)
 
 /**
  * 加载约定缓存目录中的模板注册表，供 karin 插件胶水层在 Node 环境中使用。
@@ -168,7 +184,7 @@ export const loadTemplateRegistry = async (options?: LoadRegistryOptions): Promi
   const config = await resolveRegistryConfig(options)
   // 注册表模块命名空间上挂着 templates 映射，这里直接解出来，调用方拿到的是路由映射本身。
   const mod = await importRegistryModule<{ templates: LoadedRegistry }>(
-    pickRegistryFile(config.root, templateRegistryPath(config), options?.bundledDir)
+    pickRegistryFile(config.root, templateRegistryPath(config), options?.bundledDir, options?.preferSource)
   )
   return mod.templates
 }
@@ -183,5 +199,5 @@ export const loadMockRegistry = async <M extends Record<string, unknown> = Recor
   options?: LoadRegistryOptions
 ): Promise<M> => {
   const config = await resolveRegistryConfig(options)
-  return importRegistryModule<M>(pickRegistryFile(config.root, mockRegistryPath(config), options?.bundledDir))
+  return importRegistryModule<M>(pickRegistryFile(config.root, mockRegistryPath(config), options?.bundledDir, options?.preferSource))
 }

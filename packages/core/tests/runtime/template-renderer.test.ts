@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { createTemplateRenderer, capturedDataFileName, type TemplateRenderFn } from '../../src/runtime'
-import { discoverAssetsDir, resolveDownstreamSsrRuntime } from '../../src/runtime/template-renderer'
+import { discoverAssetsDir, isBundledRuntime, resolveDownstreamSsrRuntime } from '../../src/runtime/template-renderer'
 
 const testDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -140,6 +140,20 @@ describe('discoverAssetsDir', () => {
     expect(discoverAssetsDir({ root, assetsDir: path.join(root, 'ktr', 'public') })).toBe(path.join(root, 'lib', 'assets'))
   })
 
+  it('preferBundled（生产 bundle）时产物优先，源码目录只作兜底', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-assets-bundled-'))
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'test-plugin', main: 'lib/index.js' }), 'utf-8')
+    // 源码目录和产物 assets 同时存在（仓库里跑 bundle 的场景）。
+    fs.mkdirSync(path.join(root, 'resources'), { recursive: true })
+    fs.mkdirSync(path.join(root, 'lib', 'assets'), { recursive: true })
+
+    const config = { root, assetsDir: path.join(root, 'resources') }
+    // 默认（开发语义）：源码目录优先。
+    expect(discoverAssetsDir(config)).toBe(path.join(root, 'resources'))
+    // bundle 语义：产物 assets 优先，避免拿到构建后又被改动过的源码目录。
+    expect(discoverAssetsDir(config, undefined, true)).toBe(path.join(root, 'lib', 'assets'))
+  })
+
   it('源码目录和产物 assets 都不存在时返回 undefined（渲染时不做改写）', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-assets-none-'))
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'test-plugin' }), 'utf-8')
@@ -156,5 +170,21 @@ describe('resolveDownstreamSsrRuntime', () => {
 
     expect(typeof runtime?.createElement).toBe('function')
     expect(typeof runtime?.renderToReadableStream).toBe('function')
+  })
+})
+
+describe('isBundledRuntime', () => {
+  it('读取构建期注入的全局标记，缺省为 false（开发语义）', () => {
+    const globalFlag = globalThis as { __KTR_BUNDLED__?: boolean }
+    expect(isBundledRuntime()).toBe(false)
+
+    // 模拟 ktrBuildPlugin 在产物 chunk 顶部注入的标记。
+    globalFlag.__KTR_BUNDLED__ = true
+    try {
+      expect(isBundledRuntime()).toBe(true)
+    } finally {
+      delete globalFlag.__KTR_BUNDLED__
+    }
+    expect(isBundledRuntime()).toBe(false)
   })
 })

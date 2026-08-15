@@ -52,6 +52,13 @@ export const ktrBuildPlugin = (options: KtrBuildPluginOptions = {}): Plugin => {
       outDir ??= typeof output.dir === 'string' ? path.resolve(output.dir) : undefined
     },
 
+    // 在每个产物 chunk 顶部注入 bundle 标记：渲染器据此切换到生产语义
+    //（不读 karin.template.ts、不看 .ktr 源码，tsx 完全不参与）。
+    // 用 renderChunk 而不是 define——不依赖下游打包配置合并，vite / tsdown(rolldown) 都生效。
+    renderChunk(code) {
+      return { code: `globalThis.__KTR_BUNDLED__ = true;\n${code}`, map: null }
+    },
+
     async generateBundle() {
       // 资源不复制时在产物根写位置清单：渲染时据此定位随包发布的资源目录，全包只有一份资源。
       if (publishedAssetsDir && outDir) {

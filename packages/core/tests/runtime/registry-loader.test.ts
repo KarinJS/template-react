@@ -93,6 +93,24 @@ describe('registry loader', () => {
     await expect(loadTemplateRegistry({ root, bundledDir: 'anywhere' })).resolves.toEqual({ 'via/option': { name: '显式指定' } })
   })
 
+  it('preferSource: false（生产 bundle）直接用产物注册表，产物缺失时才回落源码', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-registry-'))
+    writeRegistries(path.join(root, '.ktr'))
+    fs.mkdirSync(path.join(root, 'lib'), { recursive: true })
+    fs.writeFileSync(
+      path.join(root, 'lib', 'template-registry.js'),
+      "export const templates = { 'bundled/x': { name: '打包产物' } }\n",
+      'utf-8'
+    )
+
+    // .ktr 源文件也在，但 bundle 场景必须忽略它（生产产物没有 .ktr，也不该触发 tsx）。
+    await expect(loadTemplateRegistry({ root, preferSource: false })).resolves.toEqual({ 'bundled/x': { name: '打包产物' } })
+
+    // 产物缺失时回落源码兜底（React 双副本由 ssrRuntime 注入解决，回落安全）。
+    fs.rmSync(path.join(root, 'lib', 'template-registry.js'))
+    await expect(loadTemplateRegistry({ root, preferSource: false })).resolves.toEqual({ 'hello/card': { name: '测试卡片' } })
+  })
+
   it('loads registries that import real JSX components and renders them', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-registry-jsx-'))
     // 注册表引用的组件含 JSX，验证 tsx 的 JSX 转换在真实加载链上生效。

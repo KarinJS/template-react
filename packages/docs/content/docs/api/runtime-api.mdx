@@ -196,8 +196,8 @@ const renderTemplate = createTemplateRenderer(import.meta.url, {
 `createTemplateRenderer` 返回的函数首次调用时：
 
 1. **定位包根**：从 `callerUrl` 向上最多 10 层查找 `package.json`。
-2. **加载配置**：读取 `karin.template.ts`，合并默认值。
-3. **加载注册表**：按约定优先级（`.ktr` 源文件 → 生产产物）加载模板和 mock 注册表。
+2. **判定运行形态**：产物 chunk 顶部有构建插件注入的 `__KTR_BUNDLED__` 标记即为生产 bundle——跳过 `karin.template.ts`（产物里没有，避免触发 tsx），直接用默认配置；否则读取 `karin.template.ts` 并合并默认值。
+3. **加载注册表**：生产 bundle 直接用打包产物；开发态 `.ktr` 源文件优先、缺失回退产物。
 4. **解析 CSS 路径**：开发态用 dev 缓存 `node_modules/.cache/ktr/style.css`，生产态默认按 karin 惯例发现 `lib/style.css`（可用 `renderer.cssPath` 覆盖）。
 5. **创建渲染器**：调用 `createRenderer`，传入注册表和选项。
 

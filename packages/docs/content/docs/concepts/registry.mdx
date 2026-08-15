@@ -95,7 +95,8 @@ declare function findBundledRegistry(root: string, fileName: string, bundledDir?
 export async function loadTemplateRegistry(options: { root: string; bundledDir?: string }) {
   const { root, bundledDir } = options
 
-  // 1. 开发态：.ktr 源文件存在时永远优先（tsx 即时转译）
+  // 1. 开发态：.ktr 源文件优先（tsx 即时转译）；
+  //    渲染器自身跑在下游 bundle 里时跳过这一步，直接用产物（见下方加载策略表）
   const sourceFile = path.join(root, '.ktr', 'template-registry.ts')
   if (fs.existsSync(sourceFile)) {
     const mod = await import(sourceFile)
@@ -115,10 +116,10 @@ export async function loadTemplateRegistry(options: { root: string; bundledDir?:
 
 加载策略：
 
-| 环境       | 加载路径                            | 说明                                                        |
-| ---------- | ----------------------------------- | ----------------------------------------------------------- |
-| **开发态** | `.ktr/template-registry.ts`         | tsx 动态导入，支持 HMR                                      |
-| **生产态** | 打包产物中的 `template-registry.js` | 按 `bundledDir` → package.json `main` 目录 → 根目录扫描发现 |
+| 环境       | 加载路径                            | 说明                                                                                                       |
+| ---------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **开发态** | `.ktr/template-registry.ts`         | tsx 动态导入，支持 HMR                                                                                     |
+| **生产态** | 打包产物中的 `template-registry.js` | 按 `bundledDir` → package.json `main` 目录 → 根目录扫描发现；渲染器自身在 bundle 里时直接使用，不看 `.ktr` |
 
 ## mock-registry.ts
 

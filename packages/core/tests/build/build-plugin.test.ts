@@ -64,7 +64,10 @@ describe('ktrBuildPlugin', () => {
     expect(css).toContain('.flex')
     // JS 产物与 CSS 共存，互不覆盖（vite 把入口 chunk 放在 assets/ 下）。
     const assetsDir = path.join(root, 'lib', 'assets')
-    expect(fs.readdirSync(assetsDir).some((file) => /\.m?js$/.test(file))).toBe(true)
+    const firstChunk = fs.readdirSync(assetsDir).find((file) => /\.m?js$/.test(file))
+    expect(firstChunk).toBeDefined()
+    // renderChunk 阶段：产物 chunk 顶部注入生产标记，渲染器据此跳过 TS 配置与源码注册表。
+    expect(fs.readFileSync(path.join(assetsDir, firstChunk!), 'utf-8')).toContain('globalThis.__KTR_BUNDLED__ = true')
     // CSS 临时入口不应留下 HTML、空 JS chunk 或额外目录层级。
     expect(fs.existsSync(path.join(root, 'lib', 'lib'))).toBe(false)
     expect(await fg('**/*.html', { cwd: path.join(root, 'lib') })).toEqual([])

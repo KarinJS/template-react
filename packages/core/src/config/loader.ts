@@ -127,7 +127,7 @@ const detectCssEntry = (root: string, templatesDir: string, cssEntry?: string): 
  */
 export const resolveConfig = async (options: ResolveConfigOptions = {}): Promise<ResolvedKtrConfig> => {
   const root = path.resolve(options.cwd ?? process.cwd())
-  const userConfig = await loadUserConfig(root, options.configFile)
+  const userConfig = options.skipUserConfig ? {} : await loadUserConfig(root, options.configFile)
   const overrideConfig = options.overrides ?? {}
   // defu 合并优先级：命令行覆盖 > karin.template.ts 用户配置 > 默认值。
   const merged = defu(overrideConfig, userConfig, defaults) as KtrConfig

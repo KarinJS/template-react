@@ -27,7 +27,7 @@ type TemplateRenderFn = <K extends keyof LoadedRegistry & string>(
 - `callerUrl`：调用方模块的 `import.meta.url`，用来向上定位插件包根（最多 10 层），必须原样传。
 - 惰性初始化：首次渲染时才解析配置、加载注册表、创建渲染器。
 
-**约定行为**（什么都不配时自动做的）：读 `karin.template.ts`；加载约定注册表（开发态 `.ktr` 优先，缺失回退生产产物）；CSS 开发态用 dev 缓存、生产态默认按 karin 惯例发现 `lib/style.css`（可用 `renderer.cssPath` 覆盖）；`outputDir` 默认 `dist/template/html`；真实渲染数据捕获到 `ktr/template/<路由>/data/captured.json`。
+**约定行为**（什么都不配时自动做的）：读 `karin.template.ts`；加载约定注册表（渲染器跑在下游 bundle 里时直接用产物，否则 `.ktr` 源文件优先、缺失回退产物）；CSS 开发态用 dev 缓存、生产态默认按 karin 惯例发现 `lib/style.css`（可用 `renderer.cssPath` 覆盖）；`outputDir` 默认 `dist/template/html`；真实渲染数据捕获到 `ktr/template/<路由>/data/captured.json`。
 
 ```ts title="src/utils/render.ts" twoslash
 import { createTemplateRenderer } from '@karinjs/template-react'
@@ -267,7 +267,7 @@ declare const loadTemplateRegistry: (options?: LoadRegistryOptions) => Promise<L
 declare const loadMockRegistry: <M extends Record<string, unknown> = Record<string, unknown>>(options?: LoadRegistryOptions) => Promise<M>
 ```
 
-按约定加载 `ktr sync` 生成的注册表，插件源码**不需要 import `.ktr`**。取新规则：`.ktr` 源文件存在时永远优先（开发态），缺失时回退打包产物（生产态，按 `bundledDir` → `main` 目录 → 根目录扫描发现）。
+按约定加载 `ktr sync` 生成的注册表，插件源码**不需要 import `.ktr`**。取新规则：渲染器自身跑在下游 bundle 里时（生产）直接用打包产物、忽略 `.ktr` 源码；否则 `.ktr` 源文件优先（开发态），缺失时回退产物（按 `bundledDir` → `main` 目录 → 根目录扫描发现）。也可用 `preferSource: false` 强制产物优先。
 
 返回值：`loadTemplateRegistry` 返回「路由 → 模板定义」映射（模块增强生效时逐路由精确，否则退化为 `AnyRegistry`）；`loadMockRegistry` 返回各 `mock.ts` 具名导出 + `mockDataFiles` 清单（路由 → `data/*.json` 文件名）。
 

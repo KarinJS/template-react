@@ -6,7 +6,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolveConfig } from '../config'
 import type { DataOf, LoadedRegistry, RenderContextInput, RendererOptions, RenderResult, ResolvedKtrConfig } from '../types'
 import { createRenderer } from './renderer'
-import { discoverBundledDirs, ktrAssetsManifestFileName, loadTemplateRegistry, pickTemplateRegistryFile } from './registry-loader'
+import {
+  discoverBundledDirs,
+  ktrAssetsManifestFileName,
+  loadTemplateRegistry,
+  pickTemplateRegistryFile,
+  type LoadRegistryOptions
+} from './registry-loader'
 import { resolveTemplateStyle } from './style'
 
 /** createTemplateRenderer 的可选覆盖项。 */
@@ -58,16 +64,31 @@ const findPackageRoot = (startDir: string): { root: string; pluginName: string }
 }
 
 /**
+ * 渲染器是否跑在下游 bundle 里：生产构建时 ktrBuildPlugin 会在产物 chunk 顶部注入
+ * `globalThis.__KTR_BUNDLED__ = true`（renderChunk，vite / tsdown 都生效）。
+ * 命中即生产语义：发布产物里没有 .ktr 和 karin.template.ts，
+ * 直接用打包产物注册表 + 默认配置 + 位置清单，完全不触发 TS 加载（tsx），
+ * 也避免"仓库里跑生产"时误用源码注册表（慢，且调试器下 tsx hooks 会让 import 挂起）。
+ * @returns 渲染器来自下游 bundle 时返回 true。
+ */
+export const isBundledRuntime = (): boolean => (globalThis as { __KTR_BUNDLED__?: boolean }).__KTR_BUNDLED__ === true
+
+/**
  * 定位标记资源（<img src="/..."> 等）的根目录，与注册表加载共享同一套产物目录发现：
  * 1. dir.assets 源码目录存在时优先（开发态改动即时生效；资源随包发布、copyAssets: false 的生产包也走这里）；
  * 2. 否则在产物候选目录下找 assets/（构建插件把 dir.assets 原样复制到这里）。
  * 不依赖 chunk 位置——单 chunk 或 core_chunk/ 子目录都不影响，发现的是产物根目录。
  * @param config 已解析的 ktr 配置。
  * @param bundledDir 调用方显式指定的产物目录。
+ * @param preferBundled 生产 bundle 场景为 true：先查产物（清单/assets/），源码目录只作兜底。
  * @returns 资源根目录绝对路径；都找不到时返回 undefined（渲染时不做标记资源改写）。
  */
-export const discoverAssetsDir = (config: Pick<ResolvedKtrConfig, 'root' | 'assetsDir'>, bundledDir?: string): string | undefined => {
-  if (fs.existsSync(config.assetsDir)) {
+export const discoverAssetsDir = (
+  config: Pick<ResolvedKtrConfig, 'root' | 'assetsDir'>,
+  bundledDir?: string,
+  preferBundled = false
+): string | undefined => {
+  if (!preferBundled && fs.existsSync(config.assetsDir)) {
     return config.assetsDir
   }
 
@@ -92,6 +113,11 @@ export const discoverAssetsDir = (config: Pick<ResolvedKtrConfig, 'root' | 'asse
     if (fs.existsSync(candidate)) {
       return candidate
     }
+  }
+
+  // bundle 模式下产物里没找到时，源码目录兜底（比如资源随包发布但构建版本过旧没有清单）。
+  if (preferBundled && fs.existsSync(config.assetsDir)) {
+    return config.assetsDir
   }
 
   return undefined
@@ -139,13 +165,20 @@ export const createTemplateRenderer = (callerUrl: string, options?: TemplateRend
   let rendererPromise: Promise<ReturnType<typeof createRenderer>> | undefined
   const initRenderer = () => {
     rendererPromise ??= (async () => {
-      const config = await resolveConfig({ cwd: root })
-      const templates = await loadTemplateRegistry(options?.bundledDir ? { root, bundledDir: options.bundledDir } : { root })
-      const assetsDir = discoverAssetsDir(config, options?.bundledDir)
+      // 渲染器自身在下游 bundle 里时按纯生产语义装配：产物没有 .ktr 和 karin.template.ts，
+      // 跳过 TS 配置与源码注册表，tsx 完全不参与（调试器下 tsx hooks 会让动态 import 挂起）。
+      const bundledRuntime = isBundledRuntime()
+      const config = await resolveConfig(bundledRuntime ? { cwd: root, skipUserConfig: true } : { cwd: root })
+      const registryOptions: LoadRegistryOptions = { root, preferSource: !bundledRuntime }
+      if (options?.bundledDir) {
+        registryOptions.bundledDir = options.bundledDir
+      }
+      const templates = await loadTemplateRegistry(registryOptions)
+      const assetsDir = discoverAssetsDir(config, options?.bundledDir, bundledRuntime)
       // 加载的是 .ts 源注册表时，组件从下游源码树解析依赖（dev / ktr 被 link 的场景），
       // 渲染器必须改用下游包根解析出的 React，否则双副本导致 hooks 崩溃；
       // 生产产物（.js 注册表）里组件与渲染器同在一份 bundle，保持静态导入。
-      const registryFile = pickTemplateRegistryFile(config, options?.bundledDir)
+      const registryFile = pickTemplateRegistryFile(config, options?.bundledDir, !bundledRuntime)
       const ssrRuntime = registryFile.endsWith('.ts') ? await resolveDownstreamSsrRuntime(root) : undefined
       return createRenderer(templates, {
         // resolveTemplateStyle 的默认路径是 cwd 相对的，宿主进程 cwd 不一定是插件目录，必须显式按包根定位；

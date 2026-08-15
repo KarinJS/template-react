@@ -382,10 +382,10 @@ export function createTemplateRenderer(callerUrl: string) {
 
   return async (templatePath: string, data: any, ctx?: any) => {
     rendererPromise ??= (async () => {
-      // 2. 加载配置（karin.template.ts + 默认值）
+      // 2. 加载配置（karin.template.ts + 默认值；渲染器自身在 bundle 里时跳过，直接用默认值）
       const config = await resolveConfig({ cwd: root })
 
-      // 3. 加载注册表（优先 .ktr/ 源文件，回退到打包产物）
+      // 3. 加载注册表（bundle 里直接用产物；否则优先 .ktr/ 源文件，回退到打包产物）
       const templates = await loadTemplateRegistry({ root })
 
       // 4. 创建渲染器（CSS 开发态用缓存、生产态用打包产物）

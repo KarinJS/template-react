@@ -98,6 +98,15 @@ describe('resolveConfig', () => {
     await expect(resolveConfig({ cwd: root })).rejects.toThrow('karin.template.ts')
   })
 
+  it('skipUserConfig 时忽略配置文件直接用默认值（生产 bundle 不触发 TS 加载）', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-config-'))
+    // 配置文件存在且含非法语法：被跳过时连解析都不应该发生。
+    fs.writeFileSync(path.join(root, 'karin.template.ts'), 'export default {', 'utf-8')
+
+    const config = await resolveConfig({ cwd: root, skipUserConfig: true })
+    expect(config.templateDir).toBe(path.join(root, 'ktr', 'template'))
+  })
+
   it('无 package.json 的项目（tsx 转译为 CJS）也能正确加载配置', () => {
     // vitest 的模块加载器会抹平 ESM-CJS interop，必须起真实 node 进程才能复现双层 default。
     // dist 由 pnpm test 前置的 build:runtime 保证存在。
