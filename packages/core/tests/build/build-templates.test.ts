@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import fg from 'fast-glob'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { buildTemplates } from '../../src/build'
 
@@ -67,5 +67,36 @@ describe('buildTemplates', () => {
     )
     await buildTemplates({ root: skipped })
     expect(fs.existsSync(path.join(skipped, 'dist/template/assets'))).toBe(false)
+  })
+
+  it('write: false 时不落盘、不打印日志，产物以内存形式返回', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-build-memory-'))
+    fs.cpSync(fixtureRoot, root, { recursive: true })
+    fs.unlinkSync(path.join(root, 'templates/index.ts'))
+    fs.writeFileSync(
+      path.join(root, 'karin.template.ts'),
+      "export default { dir: { template: 'templates', cssEntry: 'templates/style.css' } }\n",
+      'utf-8'
+    )
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    let result: Awaited<ReturnType<typeof buildTemplates>>
+    let logged = ''
+    try {
+      result = await buildTemplates({ root, write: false })
+      logged = logSpy.mock.calls.flat().join(' ')
+    } finally {
+      logSpy.mockRestore()
+    }
+
+    // CSS 不落盘，产物通过 outputs 返回给调用方（打包器插件 emit 进外层 bundle）。
+    expect(fs.existsSync(result!.cssPath)).toBe(false)
+    expect(logged).not.toContain('[ktr] 已构建')
+    const css = result!.outputs.find((output) => output.fileName === 'style.css')
+    expect(css).toBeDefined()
+    expect(String(css!.source)).toContain('.flex')
+    expect(result!.cssSize).toBeGreaterThan(0)
+    // 内存模式下同样不留临时入口文件。
+    expect(await fg('**/.ktr-css-entry.*', { cwd: path.join(root, 'dist/template'), dot: true })).toEqual([])
   })
 })

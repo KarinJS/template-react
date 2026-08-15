@@ -1,10 +1,14 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
 import { resolveConfig } from '../../src/config'
+
+const testDir = path.dirname(fileURLToPath(import.meta.url))
 
 describe('resolveConfig', () => {
   it('returns defaults when config file is absent', async () => {
@@ -92,5 +96,22 @@ describe('resolveConfig', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-config-'))
     fs.writeFileSync(path.join(root, 'karin.template.ts'), 'export default {', 'utf-8')
     await expect(resolveConfig({ cwd: root })).rejects.toThrow('karin.template.ts')
+  })
+
+  it('无 package.json 的项目（tsx 转译为 CJS）也能正确加载配置', () => {
+    // vitest 的模块加载器会抹平 ESM-CJS interop，必须起真实 node 进程才能复现双层 default。
+    // dist 由 pnpm test 前置的 build:runtime 保证存在。
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-config-cjs-'))
+    fs.writeFileSync(path.join(root, 'karin.template.ts'), "export default { dir: { template: 'views' } }\n", 'utf-8')
+
+    const entry = pathToFileURL(path.resolve(testDir, '../../dist/index.mjs')).href
+    const script = [
+      `const { resolveConfig } = await import(${JSON.stringify(entry)})`,
+      `const config = await resolveConfig({ cwd: ${JSON.stringify(root)} })`,
+      'console.log(config.templateDir)'
+    ].join(';')
+    const output = execFileSync(process.execPath, ['--input-type=module', '--eval', script], { encoding: 'utf-8' })
+
+    expect(output.trim()).toBe(path.join(root, 'views'))
   })
 })

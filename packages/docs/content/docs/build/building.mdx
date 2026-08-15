@@ -7,18 +7,18 @@ description: 用 vite 或 tsdown 把插件打包成 karin 生产可用的纯 JS 
 
 下面的 Vite/tsdown 集成模式会产出三样：插件逻辑 JS（`src/**/*.ts`）、模板注册表 JS（`.ktr/template-registry.ts`）、模板样式 CSS（`style.css`），全部落到**打包器自己的 outDir**（下面示例用 karin 惯例的 `lib/`，叫什么由你的打包配置决定）。独立构建的产物协议不同，CSS 内嵌在 `index.mjs`，请以[独立构建](./standalone-build)页面为准。
 
-下游本身已经使用 Vite 或 tsdown 时，在打包配置里挂 `ktrBuildPlugin()`（`@karinjs/template-react/plugin`）即可。它会在 `buildStart` 自动刷新 `.ktr` 注册表，在 `closeBundle` 把 CSS 编译到打包器自己的 outDir。下游不想维护打包器入口时，使用独立的 `ktr build`，详见[独立构建模式](./standalone-build)。
+下游本身已经使用 Vite 或 tsdown 时，在打包配置里挂 `ktrBuildPlugin()`（`@karinjs/template-react/plugin`）即可。它会在 `buildStart` 自动刷新 `.ktr` 注册表，在 `generateBundle` 把 CSS 编译后以 asset 形式注入打包器自己的 bundle——`style.css` 会出现在打包器自身的输出文件列表里。下游不想维护打包器入口时，使用独立的 `ktr build`，详见[独立构建模式](./standalone-build)。
 
 ## 方式一：Vite（推荐）
 
-`ktr dev` 的开发服务器就是 Vite，生产和开发使用相同的 TSX 与 CSS 语义。下游生产构建只需要挂 `ktrBuildPlugin()`；Vite 自身可以转换 TSX，而模板 CSS 会在插件的 `closeBundle` 阶段通过 ktr 内部的 Tailwind/Vite 管线单独编译。
+`ktr dev` 的开发服务器就是 Vite，生产和开发使用相同的 TSX 与 CSS 语义。下游生产构建只需要挂 `ktrBuildPlugin()`；Vite 自身可以转换 TSX，而模板 CSS 会在插件的 `generateBundle` 阶段通过 ktr 内部的 Tailwind/Vite 管线编译，并作为 asset 注入外层 bundle。
 
 ```ts title="vite.config.ts" twoslash
 import { defineConfig } from 'vite'
 import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
 
 export default defineConfig({
-  // ktrBuildPlugin：buildStart 刷新 .ktr 注册表，closeBundle 编译 CSS 到 outDir
+  // ktrBuildPlugin：buildStart 刷新 .ktr 注册表，generateBundle 编译 CSS 并注入 bundle（随输出表列出）
   plugins: [ktrBuildPlugin()],
   // 整包模式：除 node-karin（宿主提供）外全部内联，生产环境零安装
   ssr: {
@@ -59,6 +59,11 @@ CSS 想走别的管线时传 `ktrBuildPlugin({ css: false })`。
 
 模板 CSS 入口使用标准的 `@import 'tailwindcss';`，并保留显式 `@source './**/*.{ts,tsx}';`。ktr 会在内部构建阶段限制 Tailwind
 只扫描这些显式源码，不需要在下游 CSS 中写 Tailwind 专用的 import modifier。
+
+模板 CSS 的内容完全由 ktr 内部的独立 Vite 管线决定（不读下游的 `vite.config.ts`）：CSS 里 `url()` 引用的静态资源按 Vite 默认的
+`assetsInlineLimit` 处理——4KB 以下内联为 base64，超过的输出为 `assets/[name]-[hash]` 文件并随 CSS 一起注入 bundle。想调整这类
+行为（比如加大内联阈值、追加 PostCSS 插件），在 `karin.template.ts` 的 [`vite` 字段](/docs/api/config-cli#vite-扩展配置)里扩展内层
+构建配置，而不是改外层的打包配置；外层 `vite.config.ts` 只决定 CSS 产物的落盘位置（`build.outDir`）和它在输出列表里的展示。
 
 ## 方式二：tsdown（备选）
 

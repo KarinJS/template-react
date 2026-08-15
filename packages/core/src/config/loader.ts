@@ -66,7 +66,10 @@ const loadUserConfig = async (cwd: string, configFile?: string): Promise<KtrConf
     // tsx 惰性加载：只有真的存在 TS 配置文件才需要它，生产产物里没有配置文件，
     // 顶层不 import 就不会成为运行时的硬依赖。
     const mod = await importTsModule<{ default?: KtrConfig }>(filePath)
-    return mod.default ?? {}
+    const loaded = (mod.default ?? {}) as KtrConfig & { default?: KtrConfig }
+    // 下游项目没有 package.json（或 type 不是 module）时 tsx 会把配置转译成 CJS，
+    // node 的 ESM-CJS interop 会再包一层 default（ktr 自身只发布 ESM，这里把这一层解开即可）。
+    return loaded.default ?? loaded
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     throw new Error(`加载 karin 模板配置失败（${filePath}）：${detail}`, { cause: error })

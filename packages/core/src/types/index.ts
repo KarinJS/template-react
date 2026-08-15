@@ -374,6 +374,20 @@ export interface ResolveConfigOptions {
 export interface BuildTemplatesOptions extends Partial<ResolvedKtrConfig> {
   /** 构建目标项目根目录。 */
   root?: string
+  /**
+   * 是否把 CSS 落盘到产物目录，默认 true。
+   * 传 false 时不写盘也不打印日志，产物通过 `BuildTemplatesResult.outputs` 以内存形式返回，
+   * 供打包器插件（ktrBuildPlugin）emit 进外层 bundle，让 style.css 出现在打包器自己的输出列表里。
+   */
+  write?: boolean
+}
+
+/** 模板 CSS 构建产物（内存形式，fileName 相对产物目录）。 */
+export interface BuildTemplatesOutput {
+  /** 产物文件名（如 style.css、assets/xxx-hash.png）。 */
+  fileName: string
+  /** 产物内容。 */
+  source: string | Uint8Array
 }
 
 /** 模板 CSS 构建的产物统计。 */
@@ -384,6 +398,8 @@ export interface BuildTemplatesResult {
   templatesCount: number
   /** CSS 文件大小，单位为字节。 */
   cssSize: number
+  /** 内存形式的构建产物，仅 `write: false` 时非空。 */
+  outputs: BuildTemplatesOutput[]
 }
 
 /** `ktr build` 独立构建结果。 */

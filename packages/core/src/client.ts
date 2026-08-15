@@ -26,6 +26,7 @@ export const defineConfig = (config: KtrConfig): KtrConfig => config
 export type {
   AnyRegistry,
   BuildTemplatesOptions,
+  BuildTemplatesOutput,
   BuildTemplatesResult,
   DataOf,
   DevServerHandle,

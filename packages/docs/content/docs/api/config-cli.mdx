@@ -259,6 +259,10 @@ export default defineConfig({
 </Tab>
 </Tabs>
 
+这个字段扩展的是 ktr 自己的 Vite 管线（开发面板服务器、模板 CSS 的独立构建）。模板 CSS 的静态资源内联阈值
+（`build.assetsInlineLimit`）、PostCSS 插件等影响 CSS 内容的选项都在这里配置；下游自身打包用的 `vite.config.ts`
+不影响模板 CSS 的内容，只决定产物落盘位置（CSS 作为 bundle asset 跟随打包器 outDir）。
+
 ## CLI 命令
 
 安装 `@karinjs/template-react` 后通过 `pnpm ktr <命令>` 调用；`init` 和 `create` 也可以在装包前用 `npx @karinjs/template-react <命令>` 直接跑。
@@ -400,7 +404,7 @@ export default defineConfig({
 运行 `vite build` 时自动：
 
 1. `buildStart 钩子` 执行 `ktr sync` 刷新注册表
-2. `closeBundle 钩子` 编译 Tailwind CSS 到 `<打包器 outDir>/style.css`（上例为 vite 默认的 `dist/style.css`）
+2. `generateBundle 钩子` 编译 Tailwind CSS，并以 asset 形式注入打包器 bundle 输出 `<打包器 outDir>/style.css`（上例为 vite 默认的 `dist/style.css`），会出现在打包器自身的输出文件列表里
 3. 复制静态资源到 `<打包器 outDir>/assets/`
 
 生产渲染所需的 `template-registry.js` 由打包器入口产出。`mock-registry.js` 仅在生产代码主动调用 `loadMockRegistry()` 时按需构建，见 [构建发布](/docs/build/building)。

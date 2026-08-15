@@ -11,7 +11,7 @@ import { ensureCssEntry } from '../conventions/css-entry'
 import type { KtrConfig } from '../types'
 import { ensureConventions } from '../conventions/registry'
 import { tailwindCssAlias, tailwindSourceScopePlugin } from '../tailwind'
-import type { BuildTemplatesOptions, BuildTemplatesResult, ResolvedKtrConfig } from '../types'
+import type { BuildTemplatesOptions, BuildTemplatesOutput, BuildTemplatesResult, ResolvedKtrConfig } from '../types'
 
 /**
  * 复制下游资源目录，保证生产环境截图能访问图片等静态文件。
@@ -121,6 +121,8 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
   if (options.outDir !== undefined) {
     config.outDir = path.isAbsolute(options.outDir) ? options.outDir : path.resolve(config.root, options.outDir)
   }
+  // write: false 时产物不落盘（供打包器插件 emit 进外层 bundle），也不打印独立日志行。
+  const write = options.write !== false
   await ensureConventions(config)
   const cssEntry = ensureCssEntry(config)
   const outputCssPath = path.join(config.outDir, 'style.css')
@@ -156,6 +158,7 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
     },
     build: {
       emptyOutDir: false,
+      write,
       rollupOptions: {
         input: tempEntry,
         output: {
@@ -169,9 +172,24 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
     }
   }
 
+  const outputs: BuildTemplatesOutput[] = []
+  let cssSize = 0
   try {
     // 用户 karin.template.ts 的 vite 字段在这里合并，是下游的构建扩展位。
-    await build(mergeConfig(baseConfig, await resolveKtrViteConfig(config, 'build', 'production')))
+    const built = await build(mergeConfig(baseConfig, await resolveKtrViteConfig(config, 'build', 'production')))
+    if (write) {
+      cssSize = fs.existsSync(outputCssPath) ? fs.statSync(outputCssPath).size : 0
+    } else {
+      // write: false 时 build 返回内存中的 bundle，收集全部 asset（style.css 及其引用的 hash 资源）。
+      const rollupOutputs = (Array.isArray(built) ? built : [built]).flatMap((item) => ('output' in item ? item.output : []))
+      for (const item of rollupOutputs) {
+        if (item.type !== 'asset') continue
+        outputs.push({ fileName: item.fileName, source: item.source })
+        if (item.fileName === path.basename(outputCssPath)) {
+          cssSize = typeof item.source === 'string' ? Buffer.byteLength(item.source) : item.source.byteLength
+        }
+      }
+    }
   } finally {
     await cleanupCssEntries(config.root, config.outDir, tempEntry)
   }
@@ -181,13 +199,15 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
     await copyAssets(config)
   }
 
-  const cssSize = fs.existsSync(outputCssPath) ? fs.statSync(outputCssPath).size : 0
   const templatesCount = await countTemplates(config.templateDir)
-  console.log(`[ktr] 已构建 ${templatesCount} 个模板，CSS ${cssSize} 字节 -> ${outputCssPath}`)
+  if (write) {
+    console.log(`[ktr] 已构建 ${templatesCount} 个模板，CSS ${cssSize} 字节 -> ${outputCssPath}`)
+  }
 
   return {
     cssPath: outputCssPath,
     templatesCount,
-    cssSize
+    cssSize,
+    outputs
   }
 }

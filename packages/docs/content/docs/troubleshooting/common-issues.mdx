@@ -270,7 +270,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    ktrBuildPlugin() // ← buildStart 自动 sync，closeBundle 编译 CSS
+    ktrBuildPlugin() // ← buildStart 自动 sync，generateBundle 编译 CSS 并注入 bundle
   ],
   ssr: {
     noExternal: true,

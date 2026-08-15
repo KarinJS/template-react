@@ -1,6 +1,7 @@
 import path from 'node:path'
 
 import consola from 'consola'
+import type { Plugin } from 'vite'
 
 import { resolveConfig } from '../config'
 import { ensureConventions } from '../conventions/registry'
@@ -22,12 +23,12 @@ export interface KtrBuildPluginOptions {
  * 挂进下游自己的打包配置后，构建命令只剩打包器本身：
  * - `buildStart`：刷新 `.ktr` 约定注册表（替代 `ktr sync`）——早于模块解析，
  *   打包入口 import `.ktr` 时文件已经存在；
- * - `closeBundle`：编译模板 CSS 到产物目录——
- *   晚于打包器清空和写入产物目录，不会被清掉也不会覆盖 JS 产物；
+ * - `generateBundle`：内存编译模板 CSS 并以 asset 形式 emit 进打包器自己的 bundle——
+ *   style.css 出现在打包器自身的输出文件列表里，不再另起一行独立打印；
  * - `outputOptions`：缺省把打包器自己的输出目录当作模板产物目录，
  *   下游改 outDir 时不需要同步改任何 ktr 配置。
  */
-export const ktrBuildPlugin = (options: KtrBuildPluginOptions = {}) => {
+export const ktrBuildPlugin = (options: KtrBuildPluginOptions = {}): Plugin => {
   let outDir = options.outDir
 
   return {
@@ -45,13 +46,18 @@ export const ktrBuildPlugin = (options: KtrBuildPluginOptions = {}) => {
       outDir ??= typeof output.dir === 'string' ? path.resolve(output.dir) : undefined
     },
 
-    async closeBundle() {
+    async generateBundle() {
       if (options.css === false) return
 
-      await buildTemplates({
+      const result = await buildTemplates({
         ...(options.root ? { root: options.root } : {}),
-        ...(outDir ? { outDir } : {})
+        ...(outDir ? { outDir } : {}),
+        // 显式指定 outDir 时产物可能要在 bundle 目录之外，无法 emit，保持直接落盘。
+        write: options.outDir !== undefined
       })
+      for (const output of result.outputs) {
+        this.emitFile({ type: 'asset', fileName: output.fileName, source: output.source })
+      }
     }
   }
 }

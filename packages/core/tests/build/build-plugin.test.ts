@@ -4,8 +4,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import fg from 'fast-glob'
-import { build } from 'vite'
-import { describe, expect, it } from 'vitest'
+import { build, type Plugin } from 'vite'
+import { describe, expect, it, vi } from 'vitest'
 
 import { ktrBuildPlugin } from '../../src/plugin'
 
@@ -25,22 +25,41 @@ describe('ktrBuildPlugin', () => {
     )
     fs.writeFileSync(path.join(root, 'entry.js'), 'export const answer = 42\n', 'utf-8')
 
-    await build({
-      root,
-      configFile: false,
-      logLevel: 'silent',
-      plugins: [ktrBuildPlugin({ root })],
-      build: {
-        emptyOutDir: true,
-        minify: false,
-        outDir: path.join(root, 'lib'),
-        rollupOptions: { input: path.join(root, 'entry.js') }
+    // 探针插件：捕获外层 bundle 的文件清单，验证 style.css 是作为 bundle asset 注入的（会进打包器输出表）。
+    let bundleFiles: string[] = []
+    const probe: Plugin = {
+      name: 'ktr-test-probe',
+      writeBundle(_options, bundle) {
+        bundleFiles = Object.keys(bundle)
       }
-    })
+    }
+    // 插件路径下不应再单独打印 [ktr] 构建日志行。
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    let logged = ''
+
+    try {
+      await build({
+        root,
+        configFile: false,
+        logLevel: 'silent',
+        plugins: [ktrBuildPlugin({ root }), probe],
+        build: {
+          emptyOutDir: true,
+          minify: false,
+          outDir: path.join(root, 'lib'),
+          rollupOptions: { input: path.join(root, 'entry.js') }
+        }
+      })
+      logged = logSpy.mock.calls.flat().join(' ')
+    } finally {
+      logSpy.mockRestore()
+    }
 
     // buildStart 阶段：注册表已刷新（替代 ktr sync）。
     expect(fs.readFileSync(path.join(root, '.ktr/template-registry.ts'), 'utf-8')).toContain("'hello/card':")
-    // closeBundle 阶段：CSS 编译到了 vite 自己的 outDir（替代 ktr build --outDir lib）。
+    // generateBundle 阶段：CSS 作为 asset 注入外层 bundle，由打包器连同 JS 产物一起写入 outDir。
+    expect(bundleFiles).toContain('style.css')
+    expect(logged).not.toContain('[ktr] 已构建')
     const css = fs.readFileSync(path.join(root, 'lib/style.css'), 'utf-8')
     expect(css).toContain('.flex')
     // JS 产物与 CSS 共存，互不覆盖（vite 把入口 chunk 放在 assets/ 下）。

@@ -3,6 +3,7 @@ export { defineConfig, defineMock, defineTemplate } from './client'
 export type {
   AnyRegistry,
   BuildTemplatesOptions,
+  BuildTemplatesOutput,
   BuildTemplatesResult,
   DataOf,
   DevServerHandle,
