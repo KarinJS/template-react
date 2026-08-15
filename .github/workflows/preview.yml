@@ -106,7 +106,7 @@ jobs:
         id: publish
         working-directory: packages/core
         run: |
-          pnpm exec pkg-pr-new publish --packageManager=pnpm
+          pnpm exec pkg-pr-new publish --packageManager=pnpm --comment=update --commentWithSha --compact
 
       - name: 📊 生成摘要（含安装命令）
         env:
