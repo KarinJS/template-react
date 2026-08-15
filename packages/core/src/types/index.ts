@@ -56,6 +56,26 @@ export type KtrViteConfig =
   | ViteUserConfig
   | ((context: { command: 'serve' | 'build'; mode: string; config: ResolvedKtrConfig }) => ViteUserConfig | Promise<ViteUserConfig>)
 
+/** ktr 独立模板构建配置。 */
+export interface KtrStandaloneConfig {
+  /** 独立运行包输出目录。 @default 'dist/ktr' */
+  outDir?: string
+  /** Node.js 运行目标。 @default 'node18' */
+  target?: string
+  /** 第一阶段固定为 ESM。 @default 'esm' */
+  format?: 'esm'
+  /** 是否压缩独立运行包。 @default false */
+  minify?: boolean
+  /** 是否生成 source map。 @default false */
+  sourcemap?: boolean
+  /** 静态资源处理方式，第一阶段复制到产物 assets/。 @default 'copy' */
+  assets?: 'copy'
+  /** 保留为运行时依赖、不打进独立 chunk 的包名。 */
+  external?: string[]
+  /** 是否强制只有一个 JavaScript chunk。 @default true */
+  singleChunk?: boolean
+}
+
 /** 每个模板组件都会收到的 props。 */
 export interface TemplateProps<D> {
   /** 当前模板使用的数据，类型由 defineTemplate 的泛型决定。 */
@@ -122,7 +142,9 @@ export interface RenderPlugin {
 /** HTML 包裹器选项，主要用于 SSR 输出文件。 */
 export interface HtmlWrapperOptions {
   /** 已构建好的模板 CSS 文件路径。 */
-  cssPath: string
+  cssPath?: string
+  /** 已构建好的模板 CSS 文本，独立运行包用它避免依赖构建机路径。 */
+  cssText?: string
   /** 额外注入到 HTML 中的样式文件。 */
   extraStylePaths?: string[]
   /** 追加到 head 中的原始 HTML。 */
@@ -132,7 +154,9 @@ export interface HtmlWrapperOptions {
 /** createRenderer 的初始化选项。 */
 export interface RendererOptions {
   /** 截图模板 CSS 路径，通常来自 resolveTemplateStyle。 */
-  cssPath: string
+  cssPath?: string
+  /** 直接内嵌的模板 CSS 文本，优先用于独立运行包。 */
+  cssText?: string
   /** SSR 生成的 HTML 输出目录。 */
   outputDir: string
   /** 额外样式文件路径。 */
@@ -234,6 +258,11 @@ export interface KtrConfig {
     cssEntry?: string
   }
   /**
+   * ktr 自己完成模板编译和 SSR runtime 打包时的产物配置。
+   * 下游业务应用无需再配置 Vite 或 tsdown，只 import 生成的 index.mjs。
+   */
+  standalone?: KtrStandaloneConfig
+  /**
    * 额外注入 SSR HTML 的样式文件列表（相对项目根目录），
    * 内容会被内联进渲染产物的 `<style>` 标签，CSS 里相对路径的 `url()` 资源会转成 data URI。
    * @example extraStylePaths: ['ktr/template/print.css']
@@ -308,6 +337,25 @@ export interface ResolvedKtrConfig {
     /** 追加到 head 的原始 HTML。 */
     headExtra: string
   }
+  /** 独立模板运行包的最终构建配置。 */
+  standalone: {
+    /** 已解析为绝对路径的输出目录。 */
+    outDir: string
+    /** Node.js 运行目标。 */
+    target: string
+    /** 当前固定为 ESM。 */
+    format: 'esm'
+    /** 是否压缩 JavaScript。 */
+    minify: boolean
+    /** 是否生成 source map。 */
+    sourcemap: boolean
+    /** 静态资源处理方式。 */
+    assets: 'copy'
+    /** 允许保留的外部依赖。 */
+    external: string[]
+    /** 是否强制单一 JavaScript chunk。 */
+    singleChunk: boolean
+  }
   /** 用户传入的 Vite 扩展配置。 */
   vite?: KtrViteConfig
 }
@@ -335,6 +383,20 @@ export interface BuildTemplatesResult {
   /** 约定扫描到的模板数量。 */
   templatesCount: number
   /** CSS 文件大小，单位为字节。 */
+  cssSize: number
+}
+
+/** `ktr build` 独立构建结果。 */
+export interface StandaloneBuildResult {
+  /** 独立运行包目录。 */
+  outDir: string
+  /** 可直接被 Node.js import 的 ESM 入口。 */
+  entryPath: string
+  /** 与 ESM 入口配套的精确类型声明。 */
+  typesPath: string
+  /** 打进运行包的模板数量。 */
+  templatesCount: number
+  /** 内嵌 CSS 字节数。 */
   cssSize: number
 }
 

@@ -9,7 +9,7 @@ import { createServer, mergeConfig, type InlineConfig } from 'vite'
 
 import { resolveKtrViteConfig } from '../config/vite'
 import { discoverTemplateRoutes, ensureConventions } from '../conventions/registry'
-import { tailwindCssAlias } from '../tailwind'
+import { tailwindCssAlias, tailwindSourceScopePlugin } from '../tailwind'
 import type { DevServerHandle, ResolvedKtrConfig } from '../types'
 import { clearScreen, printStartupDetail } from './banner'
 import { ensureDevCss } from './css-watch'
@@ -92,6 +92,7 @@ export const createDevServer = async (config: ResolvedKtrConfig): Promise<DevSer
       // 注意：面板自身开发（vite.panel.config.ts）仍保留悬浮图标，方便直接点选面板组件。
       codeInspectorPlugin({ bundler: 'vite', showSwitch: false, hideConsole: true, hotKeys: ['shiftKey', 'altKey'] }),
       react(),
+      tailwindSourceScopePlugin(config.cssEntry ?? path.join(config.templateDir, 'style.css')),
       tailwindcss(),
       sandboxPlugin(config)
     ],

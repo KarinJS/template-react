@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "ktr sync && ktr dev",
-    "sync": "ktr sync"
+    "sync": "ktr sync",
+    "build": "ktr build"
   },
   "devDependencies": {
     "@heroui/react": "^3.2.3",

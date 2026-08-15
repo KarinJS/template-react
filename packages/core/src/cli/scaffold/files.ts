@@ -114,17 +114,19 @@ export const scaffoldFiles = (options: ScaffoldOptions): ScaffoldFile[] => {
 export const scaffoldDevDependencies: Record<string, string> = {
   '@heroui/react': '^3.2.3',
   '@karinjs/template-react': 'latest',
+  '@types/node': '^24.0.0',
   '@types/react': '^19.2.18',
   '@types/react-dom': '^19.2.4',
   '@vitejs/plugin-react': '^6.0.5',
   react: '^19.2.8',
-  'react-dom': '^19.2.8'
+  'react-dom': '^19.2.8',
+  typescript: '^6.0.3'
 }
 
 /** 脚手架需要写入下游 package.json 的脚本。 */
 export const scaffoldScripts: Record<string, string> = {
   template: 'ktr sync && ktr dev',
-  'template:build': 'vite build'
+  'template:build': 'ktr build'
 }
 
 /** withExample 时额外写入的开发依赖（示例模板用了 lucide 图标，版本与 packages/core 对齐）。 */

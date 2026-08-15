@@ -44,6 +44,16 @@ describe('ensureTemplateRegistry', () => {
     expect(result.routes).toEqual(['hello/card'])
   })
 
+  it('不注册 index.jsx，模板路由强制使用 TypeScript TSX', async () => {
+    const { config, root } = await setupProject()
+    const jsxDir = path.join(root, 'ktr', 'template', 'hello', 'jsx-card')
+    fs.mkdirSync(jsxDir, { recursive: true })
+    fs.writeFileSync(path.join(jsxDir, 'index.jsx'), 'export default {}\n', 'utf-8')
+
+    const result = await ensureTemplateRegistry(config)
+    expect(result.routes).toEqual(['hello/card'])
+  })
+
   it('treats components/ as an internal directory that never registers routes', async () => {
     const { config, root } = await setupProject()
     // components/ 里的子组件和普通 ts 逻辑文件都不参与路由，包括误建的 index.tsx。

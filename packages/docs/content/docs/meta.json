@@ -1,4 +1,18 @@
 {
   "title": "文档",
-  "pages": ["...开始", "index", "quick-start", "ai-skill", "guide", "concepts", "advanced", "api", "troubleshooting"]
+  "pages": [
+    "---开始---",
+    "index",
+    "quick-start",
+    "ai-skill",
+    "---使用指南---",
+    "...guide",
+    "---构建与发布---",
+    "...build",
+    "---深入与参考---",
+    "concepts",
+    "advanced",
+    "api",
+    "troubleshooting"
+  ]
 }

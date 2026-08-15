@@ -133,7 +133,7 @@ export const discoverTemplateRoutes = async (templatesDir: string): Promise<Arra
   }
 
   // 下划线开头目录与 components/ 都是内部辅助目录，不参与路由。
-  const files = await fg(['**/index.{tsx,jsx}'], {
+  const files = await fg(['**/index.tsx'], {
     cwd: templatesDir,
     onlyFiles: true,
     ignore: ['**/_*/**', '**/components/**']

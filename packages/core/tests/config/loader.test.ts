@@ -17,6 +17,16 @@ describe('resolveConfig', () => {
     expect(config.assetsDir).toBe(path.join(root, 'ktr', 'public'))
     expect(config.outDir).toBe(path.join(root, 'dist', 'template'))
     expect(config.dev.port).toBe(5180)
+    expect(config.standalone).toEqual({
+      outDir: path.join(root, 'dist', 'ktr'),
+      target: 'node18',
+      format: 'esm',
+      minify: false,
+      sourcemap: false,
+      assets: 'copy',
+      external: [],
+      singleChunk: true
+    })
   })
 
   it('assetsDir 跟随自定义 dir.template，也可单独覆盖', async () => {
@@ -50,6 +60,32 @@ describe('resolveConfig', () => {
     const config = await resolveConfig({ cwd: root })
     expect(config.templateDir).toBe(path.join(root, 'templates'))
     expect(config.mockDataDir).toBe(path.join(root, 'templates'))
+  })
+
+  it('解析 standalone 输出目录和构建选项', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-config-'))
+    const config = await resolveConfig({
+      cwd: root,
+      overrides: {
+        standalone: {
+          outDir: 'build/templates',
+          target: 'node20',
+          minify: true,
+          sourcemap: true,
+          external: ['sharp'],
+          singleChunk: false
+        }
+      }
+    })
+
+    expect(config.standalone).toMatchObject({
+      outDir: path.join(root, 'build', 'templates'),
+      target: 'node20',
+      minify: true,
+      sourcemap: true,
+      external: ['sharp'],
+      singleChunk: false
+    })
   })
 
   it('throws readable config path errors', async () => {

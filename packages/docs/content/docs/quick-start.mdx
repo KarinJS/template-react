@@ -318,6 +318,8 @@ pnpm dev
 
 开发完成后，需要把插件打包成纯 JS 产物以便发布。产物目录由你的打包配置决定（karin 插件惯例是 `lib/`，本文示例都用它）。
 
+如果宿主应用只是普通的 JavaScript Node 程序，不希望维护 Vite 或 tsdown 入口，可以改用 [`ktr build`](/docs/build/standalone-build)，直接生成可被 Node 导入的独立运行包。
+
 执行构建命令：
 
 ```bash
@@ -336,7 +338,7 @@ vite build
 
 1. 打包前自动执行 `ktr sync` 刷新注册表和类型定义
 2. 打包后将所有 CSS 编译到 `<产物目录>/style.css`（跟随打包器 outDir）
-3. 生成 `template-registry.js` 和 `mock-registry.js` 用于生产环境
+3. 由打包器生成 `template-registry.js`，供生产渲染器发现模板组件
 
 **✓ 成功标志**：
 
@@ -344,9 +346,10 @@ vite build
   - `apps/*.js`（你的指令文件）
   - `utils/render.js`（渲染工具）
   - `template-registry.js`（模板注册表）
-  - `mock-registry.js`（mock 数据注册表）
   - `style.css`（编译后的样式）
 - 发布后用户只需安装你的插件包，无需 `ktr/template/` 源码目录
+
+`mock-registry.js` 不是普通生产渲染的必需产物。只有插件代码明确调用 `loadMockRegistry()`、希望在生产环境读取示例数据时才把它加入打包入口。
 
 **配置示例** `vite.config.ts`：
 
@@ -359,7 +362,7 @@ export default defineConfig({
 })
 ```
 
-完整的构建配置和发布流程见 [构建发布](/docs/guide/building)。
+完整的构建配置和发布流程见 [构建发布](/docs/build/building)。
 
 <Callout type="info">
   **打包优化**：所有依赖（包括 React）都会打包进产物，用户安装后无需额外安装依赖。生产环境只需要 `node-karin` 作为外部依赖。
@@ -368,7 +371,7 @@ export default defineConfig({
 <Callout type="error">
   **构建失败？** 常见问题： - **找不到 ktrBuildPlugin**：确认已安装 `@karinjs/template-react` 并在 `vite.config.ts` 中正确导入 -
   **类型错误**：执行 `npx ktr sync` 重新生成类型定义 - **CSS 缺失**：确认构建配置挂了 `ktrBuildPlugin()` 且没有传 `{ css: false }` 更多帮助见
-  [构建发布](/docs/guide/building) 和 [故障排查](/docs/troubleshooting)。
+  [构建发布](/docs/build/building) 和 [故障排查](/docs/troubleshooting)。
 </Callout>
 
 </Step>

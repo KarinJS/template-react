@@ -42,9 +42,8 @@ export default defineConfig({
     lib: {
       entry: {
         'apps/template': 'src/apps/template.ts',
-        // ✅ 注册表入口必须包含
-        'template-registry': '.ktr/template-registry.ts',
-        'mock-registry': '.ktr/mock-registry.ts'
+        // ✅ 生产渲染器需要模板注册表
+        'template-registry': '.ktr/template-registry.ts'
       },
       formats: ['es']
     }
@@ -183,7 +182,6 @@ ls -la lib/   # 产物目录（你的打包器 outDir）
 # style.css  ← CSS 编译产物
 # apps/
 # template-registry.js
-# mock-registry.js
 ```
 
 `style.css` 大小应在 10KB 以上（包含 Tailwind reset + HeroUI 样式 + 实际用到的类）。
@@ -343,8 +341,7 @@ export default defineConfig({
   entry: {
     // ✅ 入口路径必须带 ./ 前缀
     'apps/template': './src/apps/template.ts',
-    'template-registry': './.ktr/template-registry.ts',
-    'mock-registry': './.ktr/mock-registry.ts'
+    'template-registry': './.ktr/template-registry.ts'
   },
   plugins: [ktrBuildPlugin()],
   format: ['esm'],
@@ -423,7 +420,7 @@ pnpm add -D tsdown
 tsdown
 ```
 
-配置见 [构建发布 - 方式二](/docs/guide/building#方式二tsdown备选)。
+配置见 [构建发布 - 方式二](/docs/build/building#方式二tsdown备选)。
 
 ---
 
@@ -574,7 +571,7 @@ ktr/template/
 ## 相关资源
 
 <Cards>
-  <Card title="构建发布" href="/docs/guide/building" description="Vite 和 tsdown 的完整配置" />
+  <Card title="构建发布" href="/docs/build/building" description="Vite 和 tsdown 的完整配置" />
   <Card title="常见问题" href="/docs/troubleshooting/common-issues" description="高频问题快速诊断" />
   <Card title="依赖问题详解" href="/docs/troubleshooting/dependency-issues" description="React 版本冲突、monorepo 场景" />
 </Cards>

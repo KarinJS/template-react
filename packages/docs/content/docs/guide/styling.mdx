@@ -15,9 +15,11 @@ description: ktr/template/style.css 的结构、继承自 HeroUI 的颜色 token
 @source './**/*.{ts,tsx}';
 ```
 
-- 第 1 行：Tailwind v4 本体。
+- 第 1 行：Tailwind v4 本体；保持标准 CSS import 写法，编辑器和 CSS 工具链都能正常识别。
 - 第 2 行：ktr 样式基座（含 HeroUI 全套样式与默认主题变量，随包自带，不用单独装）。
 - 第 3 行：让 Tailwind 扫描模板目录下的类名（v4 按需生成）。
+
+ktr 会在内部把 Tailwind 扫描范围收紧到显式 `@source`，避免 Vite 与 tsdown 的不同 JS 产物带来无关工具类。下游 CSS 不需要写 `source(none)`。
 
 <Callout type="error">
   **不要再写 `@theme { --color-accent: var(--accent); ... }` 这类颜色映射块。** HeroUI 已用 `@theme inline`

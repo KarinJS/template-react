@@ -283,9 +283,8 @@ export default defineConfig({
     lib: {
       entry: {
         'apps/template': 'src/apps/template.ts',
-        // ↓ 注册表入口必须包含
-        'template-registry': '.ktr/template-registry.ts',
-        'mock-registry': '.ktr/mock-registry.ts'
+        // ↓ 生产渲染器需要模板注册表
+        'template-registry': '.ktr/template-registry.ts'
       },
       formats: ['es']
     },
@@ -314,7 +313,6 @@ lib/
 ├── apps/
 │   └── template.js
 ├── template-registry.js
-├── mock-registry.js
 └── style.css  ← CSS 编译产物
 ```
 

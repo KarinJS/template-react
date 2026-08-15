@@ -31,6 +31,7 @@ export type {
   DevServerHandle,
   HtmlWrapperOptions,
   KtrConfig,
+  KtrStandaloneConfig,
   KtrViteConfig,
   LoadedRegistry,
   PluginContext,
@@ -42,6 +43,7 @@ export type {
   RenderResult,
   ResolvedKtrConfig,
   ResolveConfigOptions,
+  StandaloneBuildResult,
   TemplateDef,
   TemplateProps,
   ThemeContext

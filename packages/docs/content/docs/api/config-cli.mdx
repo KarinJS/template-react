@@ -1,6 +1,6 @@
 ---
 title: 配置与 CLI
-description: karin.template.ts 的全部配置项，以及 ktr create / init / sync / dev 四个命令的用法
+description: karin.template.ts 的全部配置项，以及 ktr create / init / sync / dev / build 命令的用法
 ---
 
 ## 配置文件 karin.template.ts
@@ -33,6 +33,7 @@ export default defineConfig({
 | `dev.host`        | `string`   | `'localhost'`    | `ktr dev` 监听主机；暴露给局域网设 `'0.0.0.0'`。                                      |
 | `dev.open`        | `boolean`  | `true`           | 启动后是否自动打开浏览器。                                                            |
 | `html.headExtra`  | `string`   | `''`             | 追加到 SSR HTML `<head>` 的原始 HTML（字体 link 等）。                                |
+| `standalone`      | `object`   | 见下方           | `ktr build` 独立构建配置；由 ktr 打包完整 Node ESM 运行时。                           |
 | `vite`            | 对象或函数 | 无               | 合并到内部 Vite dev/build 配置，见下。                                                |
 
 ### 配置项实际使用场景
@@ -200,7 +201,30 @@ export default defineConfig({
   `headExtra` 注入的内容在截图时**不会生效**（无网络请求），仅用于开发面板预览。字体等资源应使用 `extraStylePaths` 内联。
 </Callout>
 
-不可配置的固定位置：框架缓存强制为项目根的 `.ktr/`；mock 数据固定在各模板自己的 `data/` 子目录；构建产物目录由 `ktrBuildPlugin` 跟随打包器的 outDir。
+#### standalone 独立构建
+
+`standalone` 用于不希望维护 Vite 或 tsdown 生产入口的项目。`ktr build` 会扫描所有 `index.tsx` 模板，严格检查数据类型，并生成可被 Node ESM 直接导入的运行包。
+
+```ts title="karin.template.ts"
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  standalone: {
+    outDir: 'dist/ktr',
+    target: 'node18',
+    format: 'esm',
+    minify: false,
+    sourcemap: false,
+    assets: 'copy',
+    external: [],
+    singleChunk: true
+  }
+})
+```
+
+字段说明：`outDir` 是产物目录；`target` 是 Node 语法目标；第一阶段 `format` 固定为 `esm`；`assets: 'copy'` 将 `ktr/public/` 复制到产物的 `assets/`；`external` 是允许保留为运行时依赖的包名；`singleChunk` 默认要求只有一个 JavaScript chunk。
+
+不可配置的固定位置：框架缓存强制为项目根的 `.ktr/`；mock 数据固定在各模板自己的 `data/` 子目录。独立构建的产物目录由 `standalone.outDir` 控制；使用 `ktrBuildPlugin` 的 npm 模式则继续跟随打包器的 outDir。
 
 ### vite 扩展配置
 
@@ -324,9 +348,43 @@ pnpm ktr dev --no-open
 3. 修改 `ktr/template/hello/card/mock.ts` 的 mock 数据
 4. 保存后自动重新渲染，无需手动刷新
 
+### ktr build
+
+```bash
+pnpm ktr build
+```
+
+独立构建会执行模板扫描、`.ktr` 注册、严格 TypeScript 检查、Tailwind CSS 编译和 Node ESM 打包。默认产物为：
+
+```text
+dist/ktr/
+├── index.mjs       # 运行时入口，包含 React、SSR runtime、模板和内嵌 CSS
+├── index.d.mts     # 路由与 data 的精确声明
+└── assets/         # ktr/public/ 的静态资源（assets: 'copy'）
+```
+
+构建完成后，宿主应用不需要配置 Vite 或 tsdown：
+
+```js title="app.js"
+import { renderTemplate } from './dist/ktr/index.mjs'
+
+const result = await renderTemplate('hello/card', {
+  title: 'Hello',
+  items: []
+})
+
+if (!result.success) {
+  throw new Error(result.error)
+}
+
+console.log(result.htmlPath)
+```
+
+CSS 在构建时内嵌到 `index.mjs`，不是单独的 `style.css`。HTML 文件只在实际调用渲染函数时按 `outputDir` 写出，构建过程本身不会生成 HTML。
+
 ### 生产构建
 
-**没有 `ktr build` 命令**：在 `vite.config.ts`（或 `tsdown.config.ts`）里挂 `ktrBuildPlugin()`（来自 `@karinjs/template-react/plugin`），打包时自动同步 `.ktr` 注册表并把 CSS 编译到打包器自己的 outDir。完整配置见 [构建发布](/docs/guide/building)。
+如果宿主本身就是 npm 包并且已经有 Vite 或 tsdown 入口，继续使用 `ktrBuildPlugin()`（来自 `@karinjs/template-react/plugin`）；它会自动同步 `.ktr` 注册表并把 CSS 编译到打包器自己的 outDir。完整配置见 [构建发布](/docs/build/building)。
 
 #### 使用场景
 
@@ -347,7 +405,7 @@ export default defineConfig({
 2. `closeBundle` 编译 Tailwind CSS 到 `<打包器 outDir>/style.css`（上例为 vite 默认的 `dist/style.css`）
 3. 复制静态资源到 `<打包器 outDir>/assets/`
 
-注册表 JS（`template-registry.js`、`mock-registry.js`）由打包器入口产出，见 [构建发布](/docs/guide/building)。
+生产渲染所需的 `template-registry.js` 由打包器入口产出。`mock-registry.js` 仅在生产代码主动调用 `loadMockRegistry()` 时按需构建，见 [构建发布](/docs/build/building)。
 
 **场景 2：tsdown 极速打包**
 
@@ -475,7 +533,7 @@ pnpm ktr dev --no-open
 
 1. 检查 `ktr/template/style.css` 存在且包含 `@import 'tailwindcss'`。
 2. 开发态确认 `.ktr/style.css` 已生成（`ktr dev` 自动生成）。
-3. 生产态确认打包产物目录包含 `style.css`（如 `lib/style.css`）。
+3. 集成打包器模式确认产物目录包含 `style.css`（如 `lib/style.css`）；standalone 模式不生成独立 CSS 文件，CSS 已内嵌在 `dist/ktr/index.mjs`。
 4. 额外样式检查 `extraStylePaths` 路径正确且文件存在。
 
 ### 资源 404

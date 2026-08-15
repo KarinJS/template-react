@@ -73,12 +73,14 @@ const themeVariables = (theme?: Partial<RenderContext['theme']>): string => {
 }
 
 export class HtmlWrapper {
-  private readonly cssPath: string
+  private readonly cssPath: string | undefined
+  private readonly cssText: string | undefined
   private readonly extraStylePaths: string[]
   private readonly headExtra: string
 
   constructor(options: HtmlWrapperOptions) {
     this.cssPath = options.cssPath
+    this.cssText = options.cssText
     this.extraStylePaths = options.extraStylePaths ?? []
     this.headExtra = options.headExtra ?? ''
   }
@@ -92,10 +94,8 @@ export class HtmlWrapper {
    * @returns 完整的 HTML 文档字符串。
    */
   wrapContent(htmlContent: string, ctx: RenderContext): string {
-    const inlineStyles = [this.cssPath, ...this.extraStylePaths]
-      .map((filePath) => this.loadInlineCss(filePath))
-      .filter(Boolean)
-      .join('\n')
+    const stylePaths = [...(this.cssPath ? [this.cssPath] : []), ...this.extraStylePaths]
+    const inlineStyles = [this.cssText ?? '', ...stylePaths.map((filePath) => this.loadInlineCss(filePath))].filter(Boolean).join('\n')
 
     const mode = ctx.theme?.mode
     const variables = attr(themeVariables(ctx.theme))

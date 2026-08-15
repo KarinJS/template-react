@@ -2,6 +2,7 @@ import { cac } from 'cac'
 import { consola } from 'consola'
 
 import { resolveConfig } from '../config'
+import { buildStandalone } from '../build/standalone'
 import { ensureConventions } from '../conventions/registry'
 import { createDevServer } from '../dev/server'
 import { explicitOpenFlag } from './args'
@@ -53,6 +54,12 @@ cli.command('sync', '扫描 template/ 并生成约定注册表文件').action(as
   const config = await resolveConfig()
   const result = await ensureConventions(config)
   consola.success(`模板注册表已就绪：${result.routes.length} 个模板 -> ${result.registryPath}`)
+})
+
+cli.command('build', '构建可被 Node.js 直接导入的独立模板运行包').action(async () => {
+  const config = await resolveConfig()
+  const result = await buildStandalone(config)
+  consola.success(`已构建 ${result.templatesCount} 个模板，CSS ${result.cssSize} 字节 -> ${result.entryPath}`)
 })
 
 cli.help()

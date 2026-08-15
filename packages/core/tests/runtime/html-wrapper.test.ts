@@ -68,6 +68,15 @@ describe('HtmlWrapper', () => {
     expect(html).toContain('<div id="container"><p>hi</p></div>')
   })
 
+  it('直接内嵌 cssText，不依赖构建机上的 CSS 文件', () => {
+    const html = new HtmlWrapper({ cssText: '.standalone{display:flex}' }).wrapContent('<div class="standalone">standalone</div>', {
+      scale: 1
+    })
+
+    expect(html).toContain('.standalone{display:flex}')
+    expect(html).toContain('class="standalone"')
+  })
+
   it('keeps remote and absolute URLs as-is and tolerates missing CSS', () => {
     const wrapper = new HtmlWrapper({ cssPath: path.join(tempDir(), 'missing.css') })
     const html = wrapper.wrapContent('<div style="background:url(https://example.com/a.png)"></div>', context(true))

@@ -1,0 +1,127 @@
+---
+title: 打包器集成
+description: 用 vite 或 tsdown 把插件打包成 karin 生产可用的纯 JS 产物，ktrBuildPlugin 自动完成注册表同步和 CSS 编译
+---
+
+开发时写的 `.tsx` 组件和 Tailwind CSS，Node 直接跑不了——发布前必须构建。本页介绍两种生产构建模式：下游打包器集成模式，以及由 ktr 自己完成运行时打包的[独立构建模式](./standalone-build)。
+
+下面的 Vite/tsdown 集成模式会产出三样：插件逻辑 JS（`src/**/*.ts`）、模板注册表 JS（`.ktr/template-registry.ts`）、模板样式 CSS（`style.css`），全部落到**打包器自己的 outDir**（下面示例用 karin 惯例的 `lib/`，叫什么由你的打包配置决定）。独立构建的产物协议不同，CSS 内嵌在 `index.mjs`，请以[独立构建](./standalone-build)页面为准。
+
+下游本身已经使用 Vite 或 tsdown 时，在打包配置里挂 `ktrBuildPlugin()`（`@karinjs/template-react/plugin`）即可。它会在 `buildStart` 自动刷新 `.ktr` 注册表，在 `closeBundle` 把 CSS 编译到打包器自己的 outDir。下游不想维护打包器入口时，使用独立的 `ktr build`，详见[独立构建模式](./standalone-build)。
+
+## 方式一：Vite（推荐）
+
+`ktr dev` 的开发服务器就是 Vite，生产和开发使用相同的 TSX 与 CSS 语义。下游生产构建只需要挂 `ktrBuildPlugin()`；Vite 自身可以转换 TSX，而模板 CSS 会在插件的 `closeBundle` 阶段通过 ktr 内部的 Tailwind/Vite 管线单独编译。
+
+```ts title="vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  // ktrBuildPlugin：buildStart 刷新 .ktr 注册表，closeBundle 编译 CSS 到 outDir
+  plugins: [ktrBuildPlugin()],
+  // 整包模式：除 node-karin（宿主提供）外全部内联，生产环境零安装
+  ssr: {
+    noExternal: true,
+    external: ['node-karin']
+  },
+  build: {
+    ssr: true, // 产物跑在 karin 宿主（Node），不是浏览器
+    target: 'node18',
+    outDir: 'lib',
+    lib: {
+      entry: {
+        // 你的插件入口，按需增删（karin 约定 lib/apps 结构）
+        'apps/template': 'src/apps/template.ts',
+        // createTemplateRenderer 生产态自动发现这个模板注册表
+        'template-registry': '.ktr/template-registry.ts'
+      },
+      formats: ['es']
+    },
+    rollupOptions: {
+      external: [/^node:/, 'node-karin']
+    }
+  }
+})
+```
+
+```bash
+vite build
+```
+
+CSS 想走别的管线时传 `ktrBuildPlugin({ css: false })`。
+
+<Callout type="info" title="什么时候需要额外插件？">
+  `@vitejs/plugin-react` 主要用于 Vite 开发服务器中的 React Fast Refresh、React Compiler 或自定义 Babel/Oxc 转换；只执行这里的 Node SSR
+  生产构建时不是必需项。`@tailwindcss/vite` 只在宿主自己的 Vite 模块图还直接导入其他 Tailwind CSS 时才需要；固定的 `ktr/template/style.css`
+  已由 `ktrBuildPlugin()` 内部编译，不要重复挂载。
+</Callout>
+
+模板 CSS 入口使用标准的 `@import 'tailwindcss';`，并保留显式 `@source './**/*.{ts,tsx}';`。ktr 会在内部构建阶段限制 Tailwind
+只扫描这些显式源码，不需要在下游 CSS 中写 Tailwind 专用的 import modifier。
+
+## 方式二：tsdown（备选）
+
+```bash
+pnpm add -D tsdown
+```
+
+```ts title="tsdown.config.ts" twoslash
+import { defineConfig } from 'tsdown'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  entry: {
+    // 入口路径必须带 ./ 前缀，否则会被当成 npm 包名解析
+    'apps/template': './src/apps/template.ts',
+    'template-registry': './.ktr/template-registry.ts'
+  },
+  plugins: [ktrBuildPlugin()],
+  format: ['esm'],
+  platform: 'node',
+  target: 'node18',
+  outDir: 'lib',
+  // 注册表发现按 .js 文件名查找，ESM 产物也要固定为 .js，不要用默认的 .mjs
+  outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+  deps: {
+    // 只有 node-karin（宿主提供）保持外部
+    neverBundle: ['node-karin']
+  }
+})
+```
+
+```bash
+tsdown
+```
+
+<Callout type="info" title="mock-registry 不是生产必需入口">
+  正常生产渲染的数据由调用方直接传给渲染函数，`createTemplateRenderer()` 只会加载 `template-registry.js`，不会读取 mock。
+  只有生产代码明确调用 `loadMockRegistry()`、需要把示例数据作为运行时功能发布时，才额外加入 `'mock-registry':
+  './.ktr/mock-registry.ts'`。开发面板会直接读取模板旁的 `mock.ts` 和 `data/*.json`，也不依赖打包后的 `mock-registry.js`。
+</Callout>
+
+## 验证
+
+构建后在 karin 里触发一次模板渲染指令，能正常出图即链路完整。ktr 的集成测试会用同一份含 React Hook 的 TSX 模板分别执行 Vite 和 tsdown 构建，并比较最终完整 HTML，确保模板内容、主题上下文和编译后 CSS 一致。
+
+两条硬性要求：`node-karin` 必须保持外部（由宿主提供）；产物里只能有一份 React（link 本地 ktr 开发时出现两份时，用 `resolve.dedupe: ['react', 'react-dom']` 去重）。
+
+## 渲染器怎么找到产物
+
+`createTemplateRenderer` 按约定自动发现，不需要配置：
+
+- **注册表**：`.ktr` 源文件存在时优先（开发态），否则按 `bundledDir` 选项 → `package.json` 的 `main` 目录 → 根目录扫描发现打包产物（生产态）。
+- **样式**：开发态读 dev server 实时编译的缓存，生产态默认按 karin 惯例读 `lib/style.css`。
+
+产物目录不叫 `lib/` 时显式指定：
+
+```ts twoslash
+import path from 'node:path'
+
+import { createTemplateRenderer } from '@karinjs/template-react'
+// ---cut---
+const render = createTemplateRenderer(import.meta.url, {
+  bundledDir: 'dist', // 注册表产物目录
+  renderer: { cssPath: path.resolve('dist/style.css') } // CSS 产物路径
+})
+```

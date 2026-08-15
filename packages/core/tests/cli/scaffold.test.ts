@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { exampleTemplateFiles } from 'virtual:ktr-scaffold-examples'
 
 import { collectExampleTemplateFiles } from '../../build/scaffold-examples'
-import { scaffoldFiles, type ScaffoldOptions } from '../../src/cli/scaffold/files'
+import { scaffoldDevDependencies, scaffoldFiles, scaffoldScripts, type ScaffoldOptions } from '../../src/cli/scaffold/files'
 
 const baseOptions: ScaffoldOptions = {
   style: 'builtin',
@@ -32,10 +32,22 @@ describe('scaffoldFiles', () => {
   })
 
   it('withExample 为 false 时不生成任何模板文件（style.css 入口除外）', () => {
-    const paths = scaffoldFiles({ ...baseOptions, withExample: false }).map((file) => file.path)
+    const files = scaffoldFiles({ ...baseOptions, withExample: false })
+    const paths = files.map((file) => file.path)
     const templatePaths = paths.filter((item) => item.startsWith('ktr/template/'))
 
     expect(templatePaths).toEqual(['ktr/template/style.css'])
+    expect(files.find((file) => file.path === 'ktr/template/style.css')?.content).toContain("@import 'tailwindcss';")
+  })
+
+  it('新项目安装严格 TSX 构建依赖并使用 ktr build', () => {
+    expect(scaffoldDevDependencies).toMatchObject({
+      typescript: expect.any(String),
+      '@types/node': expect.any(String),
+      '@types/react': expect.any(String),
+      '@types/react-dom': expect.any(String)
+    })
+    expect(scaffoldScripts['template:build']).toBe('ktr build')
   })
 })
 

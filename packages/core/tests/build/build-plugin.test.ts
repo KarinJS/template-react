@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import fg from 'fast-glob'
 import { build } from 'vite'
 import { describe, expect, it } from 'vitest'
 
@@ -45,8 +46,10 @@ describe('ktrBuildPlugin', () => {
     // JS 产物与 CSS 共存，互不覆盖（vite 把入口 chunk 放在 assets/ 下）。
     const assetsDir = path.join(root, 'lib', 'assets')
     expect(fs.readdirSync(assetsDir).some((file) => /\.m?js$/.test(file))).toBe(true)
-    // 临时入口的 emit 残留也应被清理。
+    // CSS 临时入口不应留下 HTML、空 JS chunk 或额外目录层级。
     expect(fs.existsSync(path.join(root, 'lib', 'lib'))).toBe(false)
+    expect(await fg('**/*.html', { cwd: path.join(root, 'lib') })).toEqual([])
+    expect(await fg('**/.ktr-css-entry.*', { cwd: path.join(root, 'lib'), dot: true })).toEqual([])
   })
 
   it('css: false 时只做 sync，不编译样式', async () => {

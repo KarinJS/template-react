@@ -1,0 +1,294 @@
+---
+title: 独立构建
+description: 使用 ktr build 生成包含模板、React SSR runtime、CSS 和精确类型声明的 Node ESM 运行包
+---
+
+独立构建适合宿主应用本身不使用 Vite、tsdown 等打包器的场景。例如业务程序只是普通的 `node app.js`，但模板作者仍希望使用 React、Tailwind CSS 和严格 TypeScript。
+
+`ktr build` 只构建模板运行包，不接管宿主应用。开发阶段仍然使用 `ktr dev` 和现有开发面板。
+
+## 与 npm 打包器模式的区别
+
+| 模式       | 适用项目                                | 构建入口           | CSS                                | 运行时                                               |
+| ---------- | --------------------------------------- | ------------------ | ---------------------------------- | ---------------------------------------------------- |
+| 独立构建   | 普通 Node ESM、JavaScript 宿主          | `ktr build`        | 内嵌在 `index.mjs`                 | React、SSR runtime、模板和普通依赖默认打进单一 chunk |
+| 打包器集成 | 已经使用 Vite、tsdown 的 npm/Karin 插件 | `ktrBuildPlugin()` | 输出到打包器 outDir 的 `style.css` | 跟随下游打包配置                                     |
+
+已经有成熟打包流程时继续使用 [构建发布](./building) 中的 `ktrBuildPlugin()`。宿主只想直接加载模板运行包时使用本页方案。
+
+## 前置要求
+
+- 宿主运行环境为 Node.js 18+ ESM。
+- 模板路由文件必须是 `ktr/template/<板块>/<模板>/index.tsx`。
+- 下游项目需要安装 `typescript`、React 和对应类型声明。
+- 模板 data 必须有明确类型，不能退化为 `any`、`unknown` 或 `never`。
+- 第一阶段不支持 `index.jsx`、CJS 和模板动态 import。
+
+宿主业务代码可以是 JavaScript；TypeScript 只用于模板开发和构建检查。
+
+## 目录结构
+
+```text
+项目根目录/
+├── app.js
+├── karin.template.ts
+├── package.json
+└── ktr/
+    ├── public/
+    │   └── logo.png
+    └── template/
+        ├── style.css
+        └── hello/
+            └── card/
+                └── index.tsx
+```
+
+模板需要暴露明确的 data 类型：
+
+```tsx twoslash title="ktr/template/hello/card/index.tsx"
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+
+const Card = ({ data }: TemplateProps<CardData>) => (
+  <main className="flex w-160 flex-col gap-4 p-8">
+    <h1 className="text-3xl font-bold">{data.title}</h1>
+    {data.items.map((item) => (
+      <div key={item.label} className="flex justify-between">
+        <span>{item.label}</span>
+        <strong>{item.value}</strong>
+      </div>
+    ))}
+  </main>
+)
+
+export default defineTemplate<CardData>({ component: Card })
+```
+
+## 配置
+
+所有配置都有默认值，最小配置可以为空：
+
+```ts twoslash title="karin.template.ts"
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({})
+```
+
+完整的独立构建配置：
+
+```ts twoslash title="karin.template.ts"
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  standalone: {
+    outDir: 'dist/ktr',
+    target: 'node18',
+    format: 'esm',
+    minify: false,
+    sourcemap: false,
+    assets: 'copy',
+    external: [],
+    singleChunk: true
+  }
+})
+```
+
+| 配置          | 默认值     | 说明                                                          |
+| ------------- | ---------- | ------------------------------------------------------------- |
+| `outDir`      | `dist/ktr` | 独立运行包输出目录                                            |
+| `target`      | `node18`   | JavaScript 语法目标                                           |
+| `format`      | `esm`      | 当前固定为 ESM                                                |
+| `minify`      | `false`    | 是否压缩 JavaScript                                           |
+| `sourcemap`   | `false`    | 是否生成 source map                                           |
+| `assets`      | `copy`     | 把 `ktr/public/` 复制到产物 `assets/`                         |
+| `external`    | `[]`       | 允许保留为运行时依赖的包名，适合 native 模块                  |
+| `singleChunk` | `true`     | 要求只有一个 JavaScript chunk；模板动态 import 会导致构建失败 |
+
+## 执行构建
+
+```bash
+pnpm ktr build
+```
+
+也可以写入 `packages.json`：
+
+```json title="packages.json"
+{
+  "type": "module",
+  "scripts": {
+    "template:dev": "ktr dev",
+    "template:build": "ktr build"
+  }
+}
+```
+
+默认产物：
+
+```text
+dist/ktr/
+├── index.mjs
+├── index.d.mts
+└── assets/          # 存在静态资源时生成
+```
+
+- `index.mjs` 包含模板 Registry、React JSX runtime、React SSR runtime、ktr renderer、模板依赖和编译后的 CSS。
+- `index.d.mts` 保留模板路由与 data 的一一对应关系。
+- `assets/` 是 `ktr/public/` 的副本。
+
+<Callout type="info">
+  standalone CSS 内嵌在 `index.mjs`，因此不会额外生成 `style.css`。构建过程也不会生成 HTML；只有实际调用渲染函数时，renderer 才会写出
+  `RenderResult.htmlPath` 对应的 HTML 文件。
+</Callout>
+
+构建时还会在缓存目录生成 `.ktr/standalone-entry.ts`。它是 ktr 交给 TypeScript 和 Rolldown 的中间入口，内部汇总所有模板、检查每个路由的 data 类型、嵌入编译后的 CSS，并导出最终的渲染函数。它不属于 `dist/ktr/` 发布产物，已被 `.gitignore` 忽略；再次执行 `ktr build` 时会自动覆盖，不要手动编辑。
+
+## JavaScript 宿主调用
+
+```ts twoslash title="app.js"
+type CardData = {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+
+type RenderResult = { success: true; htmlPath: string } | { success: false; error: string }
+
+declare const renderTemplate: (templatePath: 'hello/card', data: CardData) => Promise<RenderResult>
+// ---cut---
+// @ts-check
+// 实际代码：import { renderTemplate } from './dist/ktr/index.mjs'
+const result = await renderTemplate('hello/card', {
+  title: '运行状态',
+  items: [{ label: '服务', value: '正常' }]
+})
+
+if (!result.success) {
+  throw new Error(result.error)
+}
+
+console.log(result.htmlPath)
+```
+
+默认 HTML 输出到 `dist/ktr/html/`，每个路由使用固定文件名并覆盖旧文件，例如 `hello/card` 对应 `hello_card.html`。
+
+JavaScript 项目启用 `checkJs` 后，也能从 `index.d.mts` 获得路由补全和 data 错误检查：
+
+```ts twoslash title="app.js"
+type CardData = {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+
+declare const renderTemplate: (templatePath: 'hello/card', data: CardData) => Promise<unknown>
+// @errors: 2345 2322
+// ---cut---
+// @ts-check
+// 实际代码：import { renderTemplate } from './dist/ktr/index.mjs'
+await renderTemplate('hello/card', { title: '正确', items: [] })
+
+// 路由不存在，编辑器和 tsc 会报错
+await renderTemplate('hello/missing', {})
+
+// title 类型错误，编辑器和 tsc 会报错
+await renderTemplate('hello/card', { title: 123, items: [] })
+```
+
+## 自定义运行时选项
+
+需要调整 HTML 输出目录、文件名或插件时，使用产物导出的 `createTemplateRenderer`：
+
+```ts twoslash title="app.js"
+type CardData = {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+
+interface RendererOptions {
+  outputDir?: string
+  captureDir?: string
+  htmlFileName?: 'route' | 'timestamp'
+}
+
+declare const createTemplateRenderer: (options?: RendererOptions) => (templatePath: 'hello/card', data: CardData) => Promise<unknown>
+// ---cut---
+// @ts-check
+// 实际代码：import { createTemplateRenderer } from './dist/ktr/index.mjs'
+import path from 'node:path'
+
+const renderTemplate = createTemplateRenderer({
+  outputDir: path.resolve('runtime-html'),
+  htmlFileName: 'timestamp',
+  captureDir: path.resolve('captured-data')
+})
+
+const result = await renderTemplate('hello/card', {
+  title: '自定义输出',
+  items: []
+})
+```
+
+运行时可以覆盖 `outputDir`、`captureDir`、`htmlFileName`、`plugins` 和 `html` 等 renderer 选项。CSS 已在构建时固定到运行包中，不能用 `cssPath` 或 `cssText` 覆盖。
+
+## 类型行为
+
+生成的声明等价于以下精确映射：
+
+```ts twoslash
+interface CardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+
+interface ProfileData {
+  name: string
+}
+
+interface RenderResult {
+  success: boolean
+}
+
+// ---cut---
+type TemplateDataMap = {
+  'hello/card': CardData
+  'user/profile': ProfileData
+}
+
+declare function renderTemplate<K extends keyof TemplateDataMap>(templatePath: K, data: TemplateDataMap[K]): Promise<RenderResult>
+```
+
+因此非法路由、缺少字段、字段类型错误和不同路由之间的 data 串用都会在构建或消费端类型检查时报错。
+
+第一阶段的 `index.d.mts` 会引用项目内的模板 TSX 源文件。运行时加载 `index.mjs` 不依赖源码，但希望保留 TypeScript / `checkJs` 类型提示时，应同时保留 `ktr/template/`。
+
+## 常见构建错误
+
+### data 退化为 any 或 unknown
+
+为组件声明明确的 `TemplateProps<Data>`，并把同一个 `Data` 传给 `defineTemplate<Data>()`。
+
+### 生成多个 chunk
+
+默认 `singleChunk: true`。移除模板中的动态 import，或等待后续多 chunk 支持。
+
+### 未声明的外部依赖
+
+普通 JavaScript 依赖默认会被打进运行包。native 模块或必须由宿主提供的包加入 `standalone.external`：
+
+```ts twoslash title="karin.template.ts"
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  standalone: {
+    external: ['sharp']
+  }
+})
+```
+
+宿主运行时需要自行安装这些 external 依赖。
+
+### 没有单独的 style.css
+
+这是预期行为。独立构建把最终 CSS 内嵌到 `index.mjs`；npm 打包器模式才会生成独立的 `style.css`。

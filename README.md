@@ -56,7 +56,7 @@ npx ktr dev    # 打开开发面板 http://localhost:5180/__ktr/panel/
 
 完整教程见 **[文档站](https://karinjs.github.io/template-react/)**（含快速开始、开发面板导览、API 参考、art-template 迁移指南）。
 
-## AI 技能包
+## 使用 AI
 
 用 AI 助手开发时，一条命令让它掌握最新文档：
 

@@ -77,7 +77,8 @@ class SSRRenderer<R extends Record<keyof R, TemplateDef<any>>> {
     this.templates = templates
     this.options = options
     this.htmlWrapper = new HtmlWrapper({
-      cssPath: options.cssPath,
+      ...(options.cssPath ? { cssPath: options.cssPath } : {}),
+      ...(options.cssText ? { cssText: options.cssText } : {}),
       extraStylePaths: options.extraStylePaths ?? [],
       headExtra: options.html?.headExtra ?? ''
     })

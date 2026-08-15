@@ -30,7 +30,17 @@ const configFor = (mockDataDir: string): ResolvedKtrConfig => ({
   cssEntry: path.join(fixtureRoot, 'templates/style.css'),
   extraStylePaths: [],
   dev: { port: 0, host: '127.0.0.1', open: false },
-  html: { headExtra: '' }
+  html: { headExtra: '' },
+  standalone: {
+    outDir: path.join(mockDataDir, '../dist/ktr'),
+    target: 'node18',
+    format: 'esm',
+    minify: false,
+    sourcemap: false,
+    assets: 'copy',
+    external: [],
+    singleChunk: true
+  }
 })
 
 const readJson = async <T>(response: Response): Promise<T> => {

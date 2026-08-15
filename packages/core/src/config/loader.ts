@@ -22,6 +22,16 @@ const defaults: KtrConfig = {
   },
   html: {
     headExtra: ''
+  },
+  standalone: {
+    outDir: 'dist/ktr',
+    target: 'node18',
+    format: 'esm',
+    minify: false,
+    sourcemap: false,
+    assets: 'copy',
+    external: [],
+    singleChunk: true
   }
 }
 
@@ -133,6 +143,7 @@ export const resolveConfig = async (options: ResolveConfigOptions = {}): Promise
   const outDir = resolvePath(root, 'dist/template')
   const extraStylePaths = (merged.extraStylePaths ?? []).map((item) => resolvePath(root, item))
   const cssEntry = detectCssEntry(root, templateDir, mergedDir.cssEntry)
+  const standaloneOutDir = resolvePath(root, merged.standalone?.outDir ?? 'dist/ktr')
 
   const resolved: ResolvedKtrConfig = {
     root,
@@ -151,6 +162,16 @@ export const resolveConfig = async (options: ResolveConfigOptions = {}): Promise
     },
     html: {
       headExtra: merged.html?.headExtra ?? ''
+    },
+    standalone: {
+      outDir: standaloneOutDir,
+      target: merged.standalone?.target ?? 'node18',
+      format: merged.standalone?.format ?? 'esm',
+      minify: merged.standalone?.minify ?? false,
+      sourcemap: merged.standalone?.sourcemap ?? false,
+      assets: merged.standalone?.assets ?? 'copy',
+      external: [...(merged.standalone?.external ?? [])],
+      singleChunk: merged.standalone?.singleChunk ?? true
     }
   }
 

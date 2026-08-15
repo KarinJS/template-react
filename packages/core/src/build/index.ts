@@ -10,7 +10,7 @@ import { resolveKtrViteConfig } from '../config/vite'
 import { ensureCssEntry } from '../conventions/css-entry'
 import type { KtrConfig } from '../types'
 import { ensureConventions } from '../conventions/registry'
-import { tailwindCssAlias } from '../tailwind'
+import { tailwindCssAlias, tailwindSourceScopePlugin } from '../tailwind'
 import type { BuildTemplatesOptions, BuildTemplatesResult, ResolvedKtrConfig } from '../types'
 
 /**
@@ -47,12 +47,51 @@ const countTemplates = async (templatesDir: string): Promise<number> => {
     return 0
   }
 
-  const files = await fg(['**/index.{tsx,jsx}'], {
+  const files = await fg(['**/index.tsx'], {
     cwd: templatesDir,
     onlyFiles: true,
     ignore: ['**/_*/**', '**/components/**']
   })
   return files.length
+}
+
+/** 删除 CSS 构建入口以及旧版本遗留的 HTML 入口和空目录。 */
+const cleanupCssEntries = async (root: string, outDir: string, tempEntry: string): Promise<void> => {
+  const entries = new Set([tempEntry])
+  const legacyEntry = path.resolve(outDir, path.relative(root, path.join(outDir, '.ktr-css-entry.html')))
+  const legacyRelative = path.relative(outDir, legacyEntry)
+  if (legacyRelative && !legacyRelative.startsWith('..') && !path.isAbsolute(legacyRelative)) {
+    entries.add(legacyEntry)
+  }
+  if (fs.existsSync(outDir)) {
+    const generated = await fg(['**/.ktr-css-entry.html', '**/.ktr-css-entry.{js,mjs}'], {
+      absolute: true,
+      cwd: outDir,
+      dot: true,
+      onlyFiles: true
+    })
+    generated.forEach((filePath) => entries.add(filePath))
+  }
+
+  for (const filePath of entries) {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+    }
+
+    let dir = path.dirname(filePath)
+    let relativeDir = path.relative(outDir, dir)
+    while (
+      relativeDir &&
+      !relativeDir.startsWith('..') &&
+      !path.isAbsolute(relativeDir) &&
+      fs.existsSync(dir) &&
+      fs.readdirSync(dir).length === 0
+    ) {
+      fs.rmdirSync(dir)
+      dir = path.dirname(dir)
+      relativeDir = path.relative(outDir, dir)
+    }
+  }
 }
 
 /**
@@ -87,17 +126,31 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
   const outputCssPath = path.join(config.outDir, 'style.css')
   fs.mkdirSync(config.outDir, { recursive: true })
 
-  // 手法：写一个只含 <link> 的临时 HTML 作为构建入口，让 Vite 把 Tailwind 编译产物当静态资源输出。
-  const tempEntry = path.join(config.outDir, '.ktr-css-entry.html')
-  const relativeCssEntry = path.relative(config.outDir, cssEntry).replace(/\\/g, '/')
-  fs.writeFileSync(tempEntry, `<link rel="stylesheet" href="${relativeCssEntry}">`, 'utf-8')
+  // 用临时 JS import 触发 Vite/Tailwind 编译 CSS，避免 HTML 入口被复制进产物并生成额外目录层级。
+  const tempEntry = path.join(config.outDir, '.ktr-css-entry.mjs')
+  const relativeCssEntry = path.relative(path.dirname(tempEntry), cssEntry).replace(/\\/g, '/')
+  const cssImportPath = relativeCssEntry.startsWith('.') ? relativeCssEntry : `./${relativeCssEntry}`
+  fs.writeFileSync(tempEntry, `import ${JSON.stringify(cssImportPath)}\n`, 'utf-8')
 
   const baseConfig: InlineConfig = {
     root: config.root,
     // 不加载下游项目自己的 vite.config.ts（那是生产打包配置），扩展统一走 karin.template.ts 的 vite 字段。
     configFile: false,
     logLevel: 'silent',
-    plugins: [tailwindcss()],
+    plugins: [
+      tailwindSourceScopePlugin(cssEntry),
+      tailwindcss(),
+      {
+        name: 'ktr-css-entry-cleanup',
+        generateBundle(_options, bundle) {
+          for (const [fileName, output] of Object.entries(bundle)) {
+            if (output.type === 'chunk' && output.facadeModuleId && path.resolve(output.facadeModuleId) === path.resolve(tempEntry)) {
+              delete bundle[fileName]
+            }
+          }
+        }
+      }
+    ],
     resolve: {
       alias: [tailwindCssAlias]
     },
@@ -108,7 +161,7 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
         output: {
           // CSS 产物固定命名为 style.css，其余资源走带 hash 的 assets 目录。
           assetFileNames: (assetInfo) => (assetInfo.name?.endsWith('.css') ? 'style.css' : 'assets/[name]-[hash][extname]'),
-          entryFileNames: 'assets/[name].js'
+          entryFileNames: '.ktr-css-entry.js'
         }
       },
       outDir: config.outDir,
@@ -116,24 +169,11 @@ export const buildTemplates = async (options: BuildTemplatesOptions = {}): Promi
     }
   }
 
-  // 用户 karin.template.ts 的 vite 字段在这里合并，是下游的构建扩展位。
-  await build(mergeConfig(baseConfig, await resolveKtrViteConfig(config, 'build', 'production')))
-
-  // 临时入口只在构建期间存在，结束后立即清理，不污染产物目录。
-  if (fs.existsSync(tempEntry)) {
-    fs.unlinkSync(tempEntry)
-  }
-
-  // vite 会把 html 入口按 root 相对路径再 emit 一份到产物目录
-  //（如 lib/lib/.ktr-css-entry.html），连同产生的空目录链一并清掉。
-  const emittedEntry = path.join(config.outDir, path.relative(config.root, tempEntry))
-  if (fs.existsSync(emittedEntry)) {
-    fs.unlinkSync(emittedEntry)
-    let dir = path.dirname(emittedEntry)
-    while (dir !== config.outDir && fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
-      fs.rmdirSync(dir)
-      dir = path.dirname(dir)
-    }
+  try {
+    // 用户 karin.template.ts 的 vite 字段在这里合并，是下游的构建扩展位。
+    await build(mergeConfig(baseConfig, await resolveKtrViteConfig(config, 'build', 'production')))
+  } finally {
+    await cleanupCssEntries(config.root, config.outDir, tempEntry)
   }
 
   // 资源目录已随包发布在固定位置时可以关掉复制（dir.copyAssets: false），避免重复打包。
