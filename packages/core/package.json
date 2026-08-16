@@ -61,8 +61,7 @@
     "build:panel": "vite build --config vite.panel.config.ts",
     "typecheck": "tsc --noEmit",
     "demo": "pnpm --filter ktr-examples run dev",
-    "test": "pnpm build:runtime && vitest run --typecheck",
-    "prepublishOnly": "pnpm test && pnpm build"
+    "test": "pnpm build:runtime && vitest run --typecheck"
   },
   "dependencies": {
     "@heroui/styles": "3.2.4",
