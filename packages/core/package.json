@@ -50,7 +50,8 @@
   },
   "publishConfig": {
     "access": "public",
-    "registry": "https://registry.npmjs.org"
+    "registry": "https://registry.npmjs.org",
+    "removeDevDependencies": true
   },
   "scripts": {
     "dev": "tsdown --watch",
@@ -110,5 +111,5 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "time": "2026-08-17 05:29:59"
+  "time": "2026-08-17 05:50:42"
 }

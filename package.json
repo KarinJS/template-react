@@ -13,10 +13,6 @@
   "license": "MIT",
   "author": "ikenxuan",
   "type": "module",
-  "publishConfig": {
-    "access": "public",
-    "removeDevDependencies": true
-  },
   "scripts": {
     "dev": "pnpm --filter @karinjs/template-react run dev",
     "panel": "pnpm --filter @karinjs/template-react run panel",

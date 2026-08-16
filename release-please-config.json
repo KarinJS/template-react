@@ -5,7 +5,7 @@
       "release-type": "node",
       "package-name": "@karinjs/template-react",
       "changelog-path": "CHANGELOG.md",
-      "release-as": "0.0.1-beta.1",
+      "release-as": "0.0.1-beta.2",
       "changelog-sections": [
         {
           "type": "feat",

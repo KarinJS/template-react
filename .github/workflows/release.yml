@@ -22,8 +22,13 @@ jobs:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
         with:
           version: 11.20.0
@@ -32,16 +37,17 @@ jobs:
           node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org
+
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      - run: pnpm format
+      - run: pnpm format:check
       - run: pnpm test
       - run: pnpm --filter @karinjs/template-react run build
       - run: cp LICENSE packages/core/LICENSE
 
-      # 版本号由 release-please 的 release-as 手动指定，dist-tag 跟随版本号里的
-      # 预发布标识自动推导（0.0.1-beta.1 → beta，正式版 → latest），避免 beta 打上 latest。
-      - name: 从版本号推导 npm dist-tag
+      # 版本号由 release‑please 的 release‑as 手动指定，dist‑tag 跟随版本号里的
+      # 预发布标识自动推导（0.0.1‑beta.1 → beta，正式版 → latest），避免 beta 打上 latest。
+      - name: 从版本号推导 npm dist‑tag
         id: dist-tag
         run: |
           version=$(node -p "require('./packages/core/package.json').version")
@@ -49,6 +55,4 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version, tag=$tag"
 
-      - run: pnpm --filter @karinjs/template-react publish --access public --no-git-checks --tag ${{ steps.dist-tag.outputs.tag }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: pnpm --filter @karinjs/template-react publish --access public --no-git-checks --tag ${{ steps.dist-tag.outputs.tag }} --provenance
