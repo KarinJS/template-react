@@ -1,6 +1,6 @@
 {
   "name": "@karinjs/template-react",
-  "version": "0.0.0",
+  "version": "0.0.1-beta.0",
   "description": "React + Tailwind CSS screenshot template kit for Karin plugins.",
   "author": "ikenxuan, KarinJS Team",
   "bin": {
