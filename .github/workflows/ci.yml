@@ -20,7 +20,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      - run: pnpm format:check
+      - run: pnpm format
       - run: pnpm test
       - run: pnpm --filter @karinjs/template-react run build
       - run: pnpm --filter template-react-docs run build

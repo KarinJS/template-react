@@ -13,6 +13,10 @@
   "license": "MIT",
   "author": "ikenxuan",
   "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "removeDevDependencies": true
+  },
   "scripts": {
     "dev": "pnpm --filter @karinjs/template-react run dev",
     "panel": "pnpm --filter @karinjs/template-react run panel",
@@ -20,7 +24,6 @@
     "build": "pnpm -r run build",
     "lint": "oxlint .",
     "format": "oxfmt --write .github package.json pnpm-workspace.yaml tsconfig.base.json tsconfig.json oxfmt.config.ts oxlint.config.ts vitest.config.ts packages",
-    "format:check": "oxfmt --check .github package.json pnpm-workspace.yaml tsconfig.base.json tsconfig.json oxfmt.config.ts oxlint.config.ts vitest.config.ts packages",
     "test": "pnpm --filter @karinjs/template-react run build:runtime && vitest run --typecheck",
     "typecheck": "pnpm -r run typecheck"
   },

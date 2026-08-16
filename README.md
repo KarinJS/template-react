@@ -85,7 +85,7 @@ npx skills add KarinJS/template-react@karin-template-react
 pnpm install
 pnpm test          # core 单元测试 + 类型测试
 pnpm lint          # oxlint
-pnpm format:check  # oxfmt
+pnpm format  # oxfmt
 pnpm build         # 构建全部子包
 ```
 

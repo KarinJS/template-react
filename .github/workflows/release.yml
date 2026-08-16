@@ -34,14 +34,11 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      - run: pnpm format:check
+      - run: pnpm format
       - run: pnpm test
       - run: pnpm --filter @karinjs/template-react run build
-      # 仅在发布前处理：带入根目录 LICENSE（npm 会自动打进产物）；剥离 devDependencies
-      # 注意必须在 lint/test/build 之后执行，前面的步骤依赖 devDependencies 字段
       - run: cp LICENSE packages/core/LICENSE
-      - run: pnpm pkg delete devDependencies
-        working-directory: packages/core
+
       - run: pnpm --filter @karinjs/template-react publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
