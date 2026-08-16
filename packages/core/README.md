@@ -5,11 +5,11 @@ Karin 插件的 React 截图模板工具链：用 React + Tailwind CSS + TypeScr
 ## 安装
 
 ```bash
-pnpm add @karinjs/template-react react react-dom
+pnpm add -D @karinjs/template-react react react-dom
 ```
 
 > [!IMPORTANT]
-> 推荐把本包与 react 一起打进你的插件产物（tsdown 整包，渲染器与组件共享产物内同一份 React 副本，生产零安装）。只有在**外部引用**本包运行时的场景，才需要把 `react` / `react-dom` 装为直接依赖（hooks 依赖单例，两种模式不要混用）。
+> 推荐把本包与 react 一起打进你的插件产物（vite/tsdown 整包，渲染器与组件共享产物内同一份 React 副本，生产零安装），因此装为 devDependencies 即可。只有在**外部引用**本包运行时的场景，才需要去掉 `-D` 装为直接依赖（hooks 依赖单例，两种模式不要混用）。
 
 ## 用法一览
 

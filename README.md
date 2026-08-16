@@ -27,9 +27,11 @@ npx @karinjs/template-react create my-plugin
 已有项目接入：
 
 ```bash
-pnpm add @karinjs/template-react react react-dom
+pnpm add -D @karinjs/template-react react react-dom
 pnpm ktr init   # 生成 ktr/template 目录结构、karin.template.ts 与渲染胶水层
 ```
+
+推荐整包构建（依赖全打进产物，生产零安装），所以装为 devDependencies；只有**外部引用**本包运行时（不打进产物）的场景才去掉 `-D` 装为直接依赖。
 
 模板长这样：
 
