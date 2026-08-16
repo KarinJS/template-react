@@ -14,6 +14,11 @@
   ],
   "license": "MIT",
   "author": "ikenxuan, KarinJS Team",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KarinJS/template-react.git",
+    "directory": "packages/core"
+  },
   "bin": {
     "ktr": "./bin/ktr.mjs"
   },
@@ -111,5 +116,5 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "time": "2026-08-17 05:56:31"
+  "time": "2026-08-17 06:14:40"
 }
