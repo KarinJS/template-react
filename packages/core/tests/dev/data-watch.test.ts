@@ -126,9 +126,21 @@ describe('data watch', () => {
 
     const received = await subscribeDataEvents(base)
 
-    // 新建模板数据文件，触发 watcher 的 add 事件。
+    // chokidar 初始化期间（Vite 的 watcher 是 ignoreInitial）可能吞掉太早落盘的文件，
+    // CI 上偶发丢第一个 add 事件。先反复写探针文件直到收到事件，确认 watcher 就位后再做正式断言。
+    // 写入间隔必须大于 100ms 去抖窗口，否则 debounce 一直被重置、永远收不到。
     const dataDir = path.join(mockDataDir, 'hello/card', 'data')
     fs.mkdirSync(dataDir, { recursive: true })
+    await vi.waitFor(
+      () => {
+        fs.writeFileSync(path.join(dataDir, 'canary.json'), `{"t":${Date.now()}}`, 'utf-8')
+        expect(received).toContainEqual({ templatePath: 'hello/card', file: 'canary.json' })
+      },
+      { timeout: 10000, interval: 300 }
+    )
+
+    // 新建模板数据文件，触发 watcher 的 add 事件。
+    received.length = 0
     fs.writeFileSync(path.join(dataDir, 'extra.json'), '{"a":1}', 'utf-8')
 
     // 去抖 100ms 加上文件系统事件延迟，轮询等待事件到达。
@@ -165,5 +177,5 @@ describe('data watch', () => {
     fs.writeFileSync(path.join(mockDataDir, 'loose.json'), '{}', 'utf-8')
     await new Promise((resolve) => setTimeout(resolve, 600))
     expect(received).toEqual([])
-  }, 20000)
+  }, 30000)
 })

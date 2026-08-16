@@ -8,26 +8,32 @@
 
 ## 特性
 
-- **组件即模板**：`template/<板块>/<模板>/index.tsx` 目录即路由，自动注册，强类型推导
+- **组件即模板**：`ktr/template/<板块>/<模板>/index.tsx` 目录即路由，自动注册，强类型推导
 - **全链路类型**：`renderImage('hello/card', data)` 的路由和 data 都有编译期约束，写错直接报错
 - **可视化开发面板**：模板预览、HMR、mock 数据切换/编辑、主题色、缩放、截图预览
 - **数据闭环**：真实渲染数据自动捕获为 `captured.json`，面板实时同步并选中
 - **样式零污染**：面板预构建 + iframe 沙盒，框架不注入任何默认主题色
-- **生产就绪**：`tsdown` 一次构建产出 JS + CSS，随插件包发布
+- **静态资源全链路**：`ktr/public/` 里的资源用 `/xxx` 引用，开发、打包、生产截图位置始终正确（自动内联或转绝对路径）
+- **生产就绪**：`ktrBuildPlugin()` 挂进 vite / tsdown 随包构建（CSS 进打包器输出表），或 `ktr build` 产出独立运行包
 
 ## 快速开始
 
+新项目一条命令（交互式脚手架，可选官方示例模板）：
+
+```bash
+npx @karinjs/template-react create my-plugin
+```
+
+已有项目接入：
+
 ```bash
 pnpm add @karinjs/template-react react react-dom
+pnpm ktr init   # 生成 ktr/template 目录结构、karin.template.ts 与渲染胶水层
 ```
 
-```ts title="karin.template.ts"
-import { defineConfig } from '@karinjs/template-react'
+模板长这样：
 
-export default defineConfig({ dev: { port: 5180 } })
-```
-
-```tsx title="template/hello/card/index.tsx"
+```tsx title="ktr/template/hello/card/index.tsx"
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
 interface CardData {
@@ -50,8 +56,7 @@ export default defineTemplate({ name: '问候卡片', component: Card })
 ```
 
 ```bash
-npx ktr sync   # 生成 .ktr 注册表与类型增强
-npx ktr dev    # 打开开发面板 http://localhost:5180/__ktr/panel/
+pnpm ktr dev    # 打开开发面板 http://localhost:5180/__ktr/panel/（注册表自动同步）
 ```
 
 完整教程见 **[文档站](https://karinjs.github.io/template-react/)**（含快速开始、开发面板导览、API 参考、art-template 迁移指南）。
