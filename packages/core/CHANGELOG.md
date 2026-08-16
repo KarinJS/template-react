@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.1-beta.3](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.2...template-react-v0.0.1-beta.3) (2026-08-16)
+
+
+### 🐛 修复
+
+* ci ([3c00afb](https://github.com/KarinJS/template-react/commit/3c00afb9df77601214f77c548b5e5d584b9b3f0f))
+
 ## [0.0.1-beta.2](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.1...template-react-v0.0.1-beta.2) (2026-08-16)
 
 
