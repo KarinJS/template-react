@@ -1,0 +1,9 @@
+{
+  "title": "vite 构建冒烟",
+  "items": [
+    {
+      "label": "JSX",
+      "value": "compiled"
+    }
+  ]
+}

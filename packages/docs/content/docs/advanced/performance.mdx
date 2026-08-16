@@ -1,0 +1,875 @@
+---
+title: 性能优化
+description: 构建体积优化、渲染速度优化、CSS 优化、开发服务器性能与实际优化案例
+---
+
+模板项目的性能优化涉及构建体积、渲染速度、CSS 大小和开发体验。本页讲解实用优化技巧和实际案例。
+
+## 构建体积优化
+
+### Tree-shaking
+
+确保只打包使用的代码：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    build: {
+      rollupOptions: {
+        treeshake: {
+          moduleSideEffects: false // 移除无副作用的未使用代码
+        }
+      }
+    }
+  }
+})
+```
+
+**具名导入而非全量导入**：
+
+```tsx twoslash
+// ✅ 好：tree-shakable
+import { Button, Card } from '@heroui/react'
+
+export const good = <Button>好的写法</Button>
+```
+
+```tsx twoslash
+// ❌ 差：命名空间导入，打包器无法 tree-shake，整库进产物
+import * as HeroUI from '@heroui/react'
+
+export const bad = <HeroUI.Button>差的写法</HeroUI.Button>
+```
+
+### 动态导入
+
+大组件或第三方库按需加载：
+
+```tsx title="ktr/template/chart/stats/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+import { lazy, Suspense } from 'react'
+
+// 懒加载图表库
+const Chart = lazy(() => import('react-chartjs-2').then((m) => ({ default: m.Line })))
+
+interface StatsData {
+  labels: string[]
+  values: number[]
+}
+
+const Stats = ({ data }: TemplateProps<StatsData>) => (
+  <Suspense fallback={<div>加载中...</div>}>
+    <Chart data={{ labels: data.labels, datasets: [{ data: data.values }] }} />
+  </Suspense>
+)
+
+export default defineTemplate({
+  component: Stats
+})
+```
+
+### 依赖分析
+
+使用 rollup-plugin-visualizer 查看打包体积：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+import { visualizer } from 'rollup-plugin-visualizer'
+// ---cut---
+export default defineConfig({
+  vite: ({ command }) =>
+    command === 'build'
+      ? {
+          plugins: [
+            visualizer({
+              filename: 'dist/stats.html',
+              open: true,
+              gzipSize: true,
+              brotliSize: true
+            })
+          ]
+        }
+      : {}
+})
+```
+
+### 外部化依赖
+
+生产环境不打包 React（假设运行时已提供）：
+
+```ts title="vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+// ---cut---
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      external: ['react', 'react-dom', 'react/jsx-runtime'],
+      output: {
+        globals: {
+          react: 'React',
+          'react-dom': 'ReactDOM'
+        }
+      }
+    }
+  }
+})
+```
+
+### 压缩优化
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+import compression from 'vite-plugin-compression'
+// ---cut---
+export default defineConfig({
+  vite: {
+    plugins: [
+      compression({
+        algorithm: 'brotliCompress',
+        ext: '.br',
+        threshold: 1024 // 只压缩 > 1KB 的文件
+      })
+    ],
+    build: {
+      minify: 'esbuild',
+      cssMinify: 'lightningcss'
+    }
+  }
+})
+```
+
+## 渲染速度优化
+
+### 组件懒加载
+
+仅在使用时加载组件：
+
+```tsx title="ktr/template/dashboard/index.tsx" twoslash
+// @filename: ../../components/HeavyChart.tsx
+export default function HeavyChart() {
+  return <div>chart</div>
+}
+// @filename: ../../components/HeavyTable.tsx
+export default function HeavyTable() {
+  return <div>table</div>
+}
+// @filename: index.tsx
+// ---cut---
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+import { lazy, Suspense } from 'react'
+
+const HeavyChart = lazy(() => import('../../components/HeavyChart'))
+const HeavyTable = lazy(() => import('../../components/HeavyTable'))
+
+interface DashboardData {
+  showChart: boolean
+  showTable: boolean
+}
+
+const Dashboard = ({ data }: TemplateProps<DashboardData>) => (
+  <div>
+    {data.showChart && (
+      <Suspense fallback={<div>加载图表...</div>}>
+        <HeavyChart />
+      </Suspense>
+    )}
+    {data.showTable && (
+      <Suspense fallback={<div>加载表格...</div>}>
+        <HeavyTable />
+      </Suspense>
+    )}
+  </div>
+)
+
+export default defineTemplate({
+  component: Dashboard
+})
+```
+
+### React.memo 避免重渲染
+
+```tsx title="ktr/template/components/UserCard.tsx" twoslash
+import React from 'react'
+
+interface UserCardProps {
+  name: string
+  avatar: string
+}
+
+export const UserCard = React.memo<UserCardProps>(({ name, avatar }) => {
+  console.log('UserCard 渲染')
+
+  return (
+    <div className="flex items-center gap-3">
+      <img src={avatar} alt={name} className="size-12 rounded-full" />
+      <span className="font-medium">{name}</span>
+    </div>
+  )
+})
+```
+
+### useMemo 缓存计算
+
+```tsx twoslash
+import { useMemo } from 'react'
+
+interface Item {
+  score: number
+}
+interface Props {
+  items: Item[]
+}
+
+function Component({ items }: Props) {
+  const total = useMemo(() => {
+    console.log('计算总分')
+    return items.reduce((sum, item) => sum + item.score, 0)
+  }, [items])
+
+  return <div>总分: {total}</div>
+}
+```
+
+### 虚拟列表
+
+长列表使用 react-window：
+
+```tsx title="ktr/template/user/list/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+import { List, type RowComponentProps } from 'react-window'
+
+interface User {
+  id: string
+  name: string
+}
+
+interface ListData {
+  users: User[]
+}
+
+const Row = ({ index, style, users }: RowComponentProps<{ users: User[] }>) => (
+  <div style={style} className="px-4 py-2 border-b">
+    {users[index].name}
+  </div>
+)
+
+const UserList = ({ data }: TemplateProps<ListData>) => (
+  <List rowComponent={Row} rowCount={data.users.length} rowHeight={48} rowProps={{ users: data.users }} style={{ height: 600 }} />
+)
+
+export default defineTemplate({
+  component: UserList
+})
+```
+
+### 图片优化
+
+使用现代图片格式和懒加载：
+
+```tsx twoslash
+import React from 'react'
+
+const OptimizedImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => (
+  <picture>
+    <source srcSet={`${src}?format=avif`} type="image/avif" />
+    <source srcSet={`${src}?format=webp`} type="image/webp" />
+    <img src={src} alt={alt} loading="lazy" decoding="async" className="w-full" />
+  </picture>
+)
+```
+
+## CSS 优化
+
+### 按需生成 Tailwind
+
+只打包使用的类名：
+
+```css title="ktr/template/style.css"
+@import 'tailwindcss';
+
+/* 限制扫描范围 */
+@source '../ktr/template';
+
+/* 或手动指定 */
+@source '../ktr/template/**/*.tsx';
+```
+
+### PurgeCSS 移除未使用样式
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+import purgecss from '@fullhuman/postcss-purgecss'
+// ---cut---
+export default defineConfig({
+  vite: {
+    css: {
+      postcss: {
+        plugins: [
+          purgecss({
+            content: ['./ktr/template/**/*.{tsx,ts}'],
+            safelist: [/^bg-/, /^text-/, /^hover:/] // 保留动态类名
+          })
+        ]
+      }
+    }
+  }
+})
+```
+
+### CSS 压缩
+
+使用 Lightning CSS：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    build: {
+      cssMinify: 'lightningcss'
+    },
+    css: {
+      transformer: 'lightningcss'
+    }
+  }
+})
+```
+
+### 内联关键 CSS
+
+小文件内联到 HTML：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+
+const inlineCriticalCSS: RenderPlugin = {
+  name: 'inline-critical-css',
+  afterRender: (ctx) => {
+    const criticalCSS = fs.readFileSync('dist/critical.css', 'utf-8')
+    return ctx.html.replace('</head>', `<style>${criticalCSS}</style>\n</head>`)
+  }
+}
+```
+
+### 拆分 CSS
+
+按模板拆分 CSS 文件：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    build: {
+      cssCodeSplit: true // 每个入口生成独立 CSS
+    }
+  }
+})
+```
+
+## 开发服务器性能
+
+### 预构建依赖
+
+加速首次启动：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    optimizeDeps: {
+      include: ['react', 'react-dom', '@heroui/react', 'framer-motion']
+    }
+  }
+})
+```
+
+### 减少文件监听
+
+排除不必要的目录：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    server: {
+      watch: {
+        ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**', '**/coverage/**']
+      }
+    }
+  }
+})
+```
+
+### HMR 优化
+
+限制热更新边界：
+
+```tsx title="ktr/template/user/card/index.tsx" twoslash
+import { defineTemplate } from '@karinjs/template-react'
+
+const Component = () => <div>User Card</div>
+
+export default defineTemplate({
+  component: Component
+})
+
+// HMR 边界
+if (import.meta.hot) {
+  import.meta.hot.accept()
+}
+```
+
+### 并发限制
+
+控制并发请求数：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    server: {
+      fs: {
+        strict: true
+      },
+      preTransformRequests: true
+    }
+  }
+})
+```
+
+## 实际优化案例
+
+### 案例 1：减少首屏体积 70%
+
+**问题**：首次加载需要下载 800KB JS。
+
+**优化**：
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+import { visualizer } from 'rollup-plugin-visualizer'
+
+export default defineConfig({
+  vite: {
+    plugins: [
+      visualizer({ open: true }) // 1. 分析体积
+    ],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            // 2. 拆分第三方库（vite 8 / rolldown 的 manualChunks 是函数形式）
+            if (id.includes('node_modules/react')) return 'vendor'
+            if (id.includes('@heroui')) return 'ui'
+          }
+        }
+      }
+    }
+  }
+})
+```
+
+```tsx twoslash
+// @filename: ./HeavyChart.tsx
+export default function HeavyChart() {
+  return <div>chart</div>
+}
+// @filename: index.tsx
+// ---cut---
+import { lazy } from 'react'
+
+// 3. 懒加载重组件
+const HeavyChart = lazy(() => import('./HeavyChart'))
+```
+
+**结果**：首屏减少到 240KB。
+
+### 案例 2：优化大列表渲染
+
+**问题**：渲染 1000 个用户卡片卡顿。
+
+**优化**：
+
+```tsx title="ktr/template/user/list/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+import React from 'react'
+import { List, type RowComponentProps } from 'react-window'
+
+interface User {
+  id: string
+  name: string
+  avatar: string
+}
+
+interface ListData {
+  users: User[]
+}
+
+// 1. memo 避免重渲染
+const UserRow = React.memo<{ user: User }>(({ user }) => (
+  <div className="flex items-center gap-3 px-4 py-2">
+    <img src={user.avatar} alt="" className="size-10 rounded-full" />
+    <span>{user.name}</span>
+  </div>
+))
+
+// 2. 虚拟列表
+const Row = ({ index, style, users }: RowComponentProps<{ users: User[] }>) => (
+  <div style={style}>
+    <UserRow user={users[index]} />
+  </div>
+)
+
+const UserList = ({ data }: TemplateProps<ListData>) => (
+  <List rowComponent={Row} rowCount={data.users.length} rowHeight={56} rowProps={{ users: data.users }} style={{ height: 600 }} />
+)
+
+export default defineTemplate({
+  component: UserList
+})
+```
+
+**结果**：渲染时间从 2.5s 降到 80ms。
+
+### 案例 3：CSS 体积减少 60%
+
+**问题**：Tailwind CSS 产物 350KB。
+
+**优化**：
+
+```css title="ktr/template/style.css"
+/* 1. 限制扫描范围 */
+@import 'tailwindcss';
+@source '../ktr/template';
+
+/* 2. 只导入需要的 HeroUI 组件 */
+@import '@heroui/theme/button';
+@import '@heroui/theme/card';
+```
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  vite: {
+    build: {
+      cssMinify: 'lightningcss' // 3. 使用更好的压缩
+    }
+  }
+})
+```
+
+**结果**：CSS 减少到 140KB。
+
+### 案例 4：开发启动加速 3 倍
+
+**问题**：开发服务器启动需要 12s。
+
+**优化**：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  vite: {
+    // 1. 预构建常用依赖
+    optimizeDeps: {
+      include: ['react', 'react-dom', '@heroui/react', 'framer-motion', 'date-fns']
+    },
+    // 2. 减少监听范围
+    server: {
+      watch: {
+        ignored: ['**/node_modules/**', '**/dist/**']
+      }
+    },
+    // 3. 关闭不必要的功能
+    build: {
+      sourcemap: false
+    }
+  }
+})
+```
+
+**结果**：启动时间降到 4s。
+
+### 案例 5：SSR 渲染性能
+
+**问题**：单个模板 SSR 渲染耗时 800ms。
+
+**优化**：
+
+```tsx twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+import { useMemo } from 'react'
+
+interface Data {
+  users: Array<{ id: string; score: number }>
+}
+
+const Template = ({ data }: TemplateProps<Data>) => {
+  // 1. 缓存计算结果
+  const sortedUsers = useMemo(() => [...data.users].sort((a, b) => b.score - a.score), [data.users])
+
+  return (
+    <div>
+      {sortedUsers.map((user) => (
+        // 2. 使用 key 优化 reconciliation
+        <div key={user.id}>{user.score}</div>
+      ))}
+    </div>
+  )
+}
+
+export default defineTemplate({
+  component: Template
+})
+```
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+// 3. 性能监控插件
+const perfPlugin: RenderPlugin = {
+  name: 'perf',
+  beforeRender: (ctx) => {
+    ;(ctx as any).__startTime = Date.now()
+  },
+  afterRender: (ctx) => {
+    const duration = Date.now() - (ctx as any).__startTime
+    if (duration > 500) {
+      console.warn(`[慢渲染] ${ctx.path}: ${duration}ms`)
+    }
+  }
+}
+```
+
+**结果**：渲染时间降到 120ms。
+
+### 案例 6：图片优化
+
+**问题**：模板包含大量高清图片，加载慢。
+
+**优化**：
+
+```tsx twoslash
+import React from 'react'
+
+// 1. 响应式图片
+const Avatar: React.FC<{ src: string; alt: string }> = ({ src, alt }) => (
+  <picture>
+    <source srcSet={`${src}?w=64&format=avif 1x, ${src}?w=128&format=avif 2x`} type="image/avif" />
+    <source srcSet={`${src}?w=64&format=webp 1x, ${src}?w=128&format=webp 2x`} type="image/webp" />
+    <img src={`${src}?w=64`} alt={alt} loading="lazy" decoding="async" className="size-16 rounded-full" />
+  </picture>
+)
+```
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+import path from 'node:path'
+
+// 2. 小图片内联（框架已内置该能力：html.assetsInlineLimit 默认 4096 字节，
+//    需要更定制的规则时才用这种 afterRender 插件，比如按路径前缀区分阈值）
+const inlineSmallImages: RenderPlugin = {
+  name: 'inline-small-images',
+  afterRender: (ctx) => {
+    return ctx.html.replace(/<img[^>]+src="\/assets\/([^"]+\.(?:png|jpg|svg))"[^>]*>/g, (match, filename) => {
+      const filepath = path.join(ctx.outputDir, '../assets', filename)
+      if (!fs.existsSync(filepath)) return match
+
+      const stat = fs.statSync(filepath)
+      if (stat.size > 5120) return match // 只内联 < 5KB
+
+      const ext = path.extname(filename).slice(1)
+      const base64 = fs.readFileSync(filepath, 'base64')
+      return match.replace(`src="/assets/${filename}"`, `src="data:image/${ext};base64,${base64}"`)
+    })
+  }
+}
+```
+
+**结果**：图片加载时间减少 80%。
+
+### 案例 7：减少重渲染
+
+**问题**：父组件更新导致子组件不必要的重渲染。
+
+**优化**：
+
+```tsx twoslash
+import React, { useState } from 'react'
+
+interface User {
+  id: string
+  name: string
+}
+
+// 1. memo + 原始值 props
+const UserCard = React.memo<{ user: User }>(({ user }) => {
+  console.log('UserCard 渲染')
+  return <div>{user.name}</div>
+})
+
+// 2. 回调使用 useCallback
+const UserList: React.FC<{ users: User[] }> = ({ users }) => {
+  const [selected, setSelected] = useState<string | null>(null)
+
+  const handleSelect = React.useCallback((id: string) => {
+    setSelected(id)
+  }, [])
+
+  return (
+    <div>
+      {users.map((user) => (
+        <UserCard key={user.id} user={user} />
+      ))}
+    </div>
+  )
+}
+```
+
+**结果**：更新时只重渲染必要的组件。
+
+### 案例 8：Monorepo 构建缓存
+
+**问题**：Monorepo 每次全量构建耗时 5 分钟。
+
+**优化**：
+
+```json title="turbo.json"
+{
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "lib/**"],
+      "cache": true
+    }
+  }
+}
+```
+
+```bash
+# 使用 Turborepo 缓存
+pnpm turbo build
+
+# 或使用 Nx
+pnpm nx run-many --target=build --all
+```
+
+**结果**：增量构建只需 30s。
+
+## 性能监控
+
+### 构建时监控
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  vite: {
+    build: {
+      reportCompressedSize: true, // 报告压缩后大小
+      chunkSizeWarningLimit: 500 // 超过 500KB 警告
+    }
+  }
+})
+```
+
+### 运行时监控
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const metricsPlugin: RenderPlugin = {
+  name: 'metrics',
+  enforce: 'post',
+  afterRender: async (ctx) => {
+    const metrics = {
+      path: ctx.path,
+      htmlSize: ctx.html.length,
+      timestamp: Date.now()
+    }
+
+    const metricsFile = path.join(ctx.outputDir, 'metrics.jsonl')
+    await fs.promises.appendFile(metricsFile, JSON.stringify(metrics) + '\n')
+  }
+}
+```
+
+### 性能预算
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  vite: {
+    build: {
+      rollupOptions: {
+        output: {
+          assetFileNames: (assetInfo) => {
+            // 检查文件大小
+            if (assetInfo.name?.endsWith('.css')) {
+              console.log(`CSS: ${assetInfo.name}`)
+            }
+            return 'assets/[name]-[hash][extname]'
+          }
+        }
+      }
+    }
+  }
+})
+```
+
+## 优化检查清单
+
+### 构建优化
+
+- [ ] 启用 tree-shaking
+- [ ] 动态导入大组件
+- [ ] 分析打包体积
+- [ ] 外部化运行时依赖
+- [ ] 启用 Brotli 压缩
+- [ ] 拆分 vendor chunk
+- [ ] 移除 console 和 debugger
+
+### 渲染优化
+
+- [ ] 使用 React.memo
+- [ ] useMemo 缓存计算
+- [ ] useCallback 稳定回调
+- [ ] 虚拟列表处理长列表
+- [ ] 懒加载非关键组件
+- [ ] 优化图片格式和大小
+- [ ] 避免内联大对象
+
+### CSS 优化
+
+- [ ] PurgeCSS 移除未使用样式
+- [ ] 限制 Tailwind 扫描范围
+- [ ] 使用 Lightning CSS
+- [ ] 内联关键 CSS
+- [ ] 按需导入组件库样式
+- [ ] 压缩 CSS
+
+### 开发优化
+
+- [ ] 预构建依赖
+- [ ] 减少文件监听
+- [ ] HMR 边界优化
+- [ ] 关闭 sourcemap（生产）
+- [ ] 使用 SWC/esbuild
+
+<Cards>
+  <Card title="调试技巧" href="./debugging" description="性能分析工具" />
+  <Card title="插件开发" href="./plugin-dev" description="性能监控插件" />
+</Cards>

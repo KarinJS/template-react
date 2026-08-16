@@ -1,0 +1,72 @@
+import { Camera, Database, Package, PanelsTopLeft } from 'lucide-react'
+import Link from 'next/link'
+
+import { HeroParticleText } from '@/components/hero-particle-text'
+
+const features = [
+  {
+    icon: PanelsTopLeft,
+    title: '模板即组件',
+    description: 'React + Tailwind CSS + TypeScript，目录即路由。'
+  },
+  {
+    icon: Camera,
+    title: '面板实时预览',
+    description: '切换模板、数据和主题即改即见，一键截图。'
+  },
+  {
+    icon: Database,
+    title: '数据自动捕获',
+    description: '真实渲染数据自动写回，面板即时回放。'
+  },
+  {
+    icon: Package,
+    title: '构建零安装',
+    description: '整包进产物，生产环境零依赖安装。'
+  }
+] as const
+
+/** 主视觉文案（粒子聚合效果渲染）；特性卡里有对应的展开说明。 */
+const heroTagline = '类型安全 · 实时预览 · 数据捕获'
+
+export default function HomePage() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-14 px-6 py-16 text-center">
+      <div className="flex w-full flex-col items-center">
+        <p className="mb-4 text-sm font-semibold tracking-widest text-fd-muted-foreground">@karinjs/template-react</p>
+        <h1 className="mb-2 text-3xl font-bold">用 React 写 Karin 截图模板</h1>
+        {/* 主视觉：PC 上约占屏幕 80% 宽度；小屏回退为纯文本 */}
+        <div className="hidden w-full md:block">
+          <HeroParticleText text={heroTagline} />
+        </div>
+        <p className="mx-auto mb-8 mt-4 max-w-xl text-lg font-medium text-fd-muted-foreground md:hidden">{heroTagline}</p>
+        <div className="mt-4 flex justify-center gap-3 md:mt-0">
+          <Link href="/docs/quick-start" className="rounded-lg bg-fd-primary px-5 py-2.5 font-medium text-fd-primary-foreground">
+            快速开始
+          </Link>
+          <Link href="/docs" className="rounded-lg border border-fd-border px-5 py-2.5 font-medium">
+            阅读文档
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid w-full max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
+        {features.map((feature) => (
+          <div key={feature.title} className="rounded-xl border border-fd-border p-5 text-left">
+            <feature.icon className="mb-3 size-5 text-fd-primary" />
+            <div className="mb-1 font-semibold">{feature.title}</div>
+            <p className="text-sm text-fd-muted-foreground">{feature.description}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-xl border border-fd-border px-5 py-3 font-mono text-sm text-fd-muted-foreground">
+        <span>pnpm add -D @karinjs/template-react</span>
+        <span className="text-fd-border">→</span>
+        <span>ktr/template/**/index.tsx</span>
+        <span className="text-fd-border">→</span>
+        <span>ktr dev</span>
+      </div>
+    </div>
+  )
+}

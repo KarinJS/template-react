@@ -1,0 +1,110 @@
+---
+title: 接入 Karin
+description: 装配渲染器、封装 renderImage、编写指令，让用户发消息就能收到截图
+---
+
+本页讲怎么让机器人把模板发出去：用户发指令，机器人渲染、截图、回复图片。只涉及 `src/utils/render.ts`（渲染封装）和 `src/apps/*.ts`（指令入口）。
+
+## 整体流程
+
+1. **SSR 渲染**：ktr 把 React 组件在 Node 里渲染成自带样式的 HTML 文件。
+2. **截图**：node-karin 的 `render.render` 用无头浏览器打开 HTML，对 `#container` 截 PNG。
+3. **回复**：截图以 base64 包成 karin 图片消息元素，`event.reply` 发出。
+
+## 装配渲染器
+
+```ts title="src/utils/render.ts" twoslash
+// @filename: ./src/dir.ts
+/** 插件目录常量，见 src/dir.ts。 */
+export const dir = { pluginName: 'karin-plugin-example' }
+// @filename: ./src/utils/render.ts
+// ---cut---
+import path from 'node:path'
+
+import { karinPathHtml } from 'node-karin'
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+import { dir } from '../dir'
+
+// ktr 侧按约定装配（包根定位、配置解析、注册表加载、CSS 定位、捕获目录）；
+// outputDir 是 karin 领域的位置，由插件显式指定。
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: { outputDir: path.join(karinPathHtml, dir.pluginName) }
+})
+```
+
+- **`import.meta.url`**：ktr 用它向上找最近的 `package.json` 定位插件包根（开发跑 `src/`、生产跑打包产物如 `lib/` 都命中同一包根），必须原样传。
+- **`renderer.outputDir`**：唯一要指定的位置——SSR 生成的 HTML 放哪。放到 `karinPathHtml/<插件名>`，karin 截图服务从那里读文件。
+- 返回函数签名 `(路由, data, ctx?) => Promise<RenderResult>`，惰性初始化：首次渲染时才解析配置、加载注册表。路由补全和 data 类型由 `.ktr` 模块增强提供，不需要 import 任何 `.ktr` 文件。
+
+## 封装 renderImage
+
+```ts title="src/utils/render.ts" twoslash
+import { render, segment, type ImageElement } from 'node-karin'
+import { createTemplateRenderer, type DataOf, type LoadedRegistry } from '@karinjs/template-react'
+
+/** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
+type Registry = LoadedRegistry
+declare const dir: { pluginName: string }
+declare const renderTemplate: ReturnType<typeof createTemplateRenderer>
+// ---cut---
+export const renderImage = async <K extends keyof Registry & string>(
+  templatePath: K,
+  data: DataOf<Registry[K]>,
+  options?: Record<string, unknown>
+): Promise<ImageElement[]> => {
+  const { success, htmlPath, error } = await renderTemplate(templatePath, data)
+  if (!success) {
+    throw new Error(`模板渲染失败 ${templatePath}：${error}`)
+  }
+
+  const result = await render.render({
+    name: `${dir.pluginName}/${templatePath}`,
+    file: htmlPath,
+    selector: '#container',
+    type: 'png',
+    omitBackground: true,
+    ...options
+  })
+
+  const list = Array.isArray(result) ? result : [result]
+  return list.map((img) => segment.image(`base64://${img}`))
+}
+```
+
+- 泛型 `<K extends keyof Registry & string>` 把 `data` 绑定到该路由模板声明的数据类型，字段写错编译期报红。
+- SSR 不抛异常：成败看 `success`，失败原因在 `error`（如没过 `validate`），转成 `throw` 进 karin 日志。
+- `render.render` 关键参数：`selector: '#container'`（截图边界由框架提供，模板根元素别自己写这个 id）、`type: 'png'` + `omitBackground: true`（透明背景，配 `rounded-*` 才是真圆角）、`...options` 透传额外截图参数。
+
+## 编写指令
+
+```ts title="src/apps/template.ts" twoslash
+import { karin, type ImageElement } from 'node-karin'
+import { type DataOf, type LoadedRegistry } from '@karinjs/template-react'
+
+/** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
+type Registry = LoadedRegistry
+declare const renderImage: <K extends keyof Registry & string>(
+  templatePath: K,
+  data: DataOf<Registry[K]>,
+  options?: Record<string, unknown>
+) => Promise<ImageElement[]>
+// ---cut---
+export const templateTest = karin.command('^(#)?测试模板$', async (event) => {
+  const images = await renderImage('hello/card', {
+    title: 'Karin Template React',
+    items: [{ label: '渲染方式', value: 'SSR HTML' }]
+  })
+  await event.reply(images)
+  return true
+})
+```
+
+路由写死成字面量时类型最安全。路由必须由用户输入（如 `#渲染模板 <路由>`）时，编译期绑不住 `data`，显式放宽后靠模板里的 `validate` 做运行时兜底；示例数据按"先 `data/default.json`、再 TS mock"的顺序读取。枚举全部模板用 `loadTemplateRegistry()`，用法见 [渲染器 API](/docs/api/renderer)。
+
+## 依赖放在哪里
+
+<Callout type="error">
+  **全部放进 `devDependencies`，构建时整体打进产物**——包括 `react`/`react-dom` 和 ktr 运行时。组件和渲染器必须共用产物内同一份
+  React，只打包一半会因两份 React 并存导致 hooks 崩溃。保持外部的只有 `node-karin`（宿主 karin 提供）。
+</Callout>

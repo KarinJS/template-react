@@ -1,0 +1,753 @@
+---
+title: 类型体操
+description: 模块增强原理深入、DataOf 类型推导链路、条件类型和映射类型、高级类型推导场景与最佳实践
+---
+
+`@karinjs/template-react` 使用 TypeScript 模块增强实现逐路由精确类型推导。本页深入讲解类型系统原理和高级应用。
+
+## 模块增强原理
+
+### 核心机制
+
+框架通过三个步骤实现类型安全：
+
+```ts
+// 1. 定义可增强的接口
+// packages/core/src/registry-types.ts
+export interface ProjectRegistry {}
+
+// 2. 约定生成增强文件
+// .ktr/registry-types.d.ts
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'user/card': typeof import('../ktr/template/user/card/index.tsx').default
+  }
+}
+
+// 3. 类型推导使用增强
+// packages/core/src/types/index.ts
+export type LoadedRegistry = keyof ProjectRegistry extends never ? AnyRegistry : ProjectRegistry
+```
+
+### 为什么使用子路径导出
+
+```json title="packages/core/package.json"
+{
+  "exports": {
+    ".": "./src/index.ts",
+    "./registry-types": "./src/registry-types.ts"
+  }
+}
+```
+
+子路径 `@karinjs/template-react/registry-types` 确保：
+
+1. **模块增强可合并**：多个 `.d.ts` 增强同一个模块 ID
+2. **打包后路径不变**：`import('@karinjs/template-react/registry-types')` 在源码和产物中都指向同一模块
+3. **避免循环依赖**：registry-types 独立于主入口
+
+### 类型增强生效流程
+
+```ts
+// 步骤 1：约定扫描生成注册表
+// conventions/registry.ts
+const routes = await discoverTemplateRoutes(config.templateDir)
+// → ['user/card', 'user/profile']
+
+await generateTypeAugmentation(routes, config.cacheDir)
+```
+
+生成的类型文件：
+
+```ts title=".ktr/registry-types.d.ts" twoslash
+// @filename: ktr/template/user/card/index.tsx
+import { defineTemplate } from '@karinjs/template-react'
+interface UserCardData {
+  name: string
+}
+export default defineTemplate<UserCardData>({ component: () => null })
+
+// @filename: .ktr/registry-types.d.ts
+// ---cut---
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'user/card': typeof import('../ktr/template/user/card/index.tsx').default
+  }
+}
+```
+
+```ts
+// 步骤 2：类型推导消费增强
+// packages/core/src/types/index.ts
+import type { ProjectRegistry } from '@karinjs/template-react/registry-types'
+
+export type LoadedRegistry = keyof ProjectRegistry extends never
+  ? AnyRegistry // 未增强：退化为任意路由
+  : ProjectRegistry // 已增强：精确路由类型
+```
+
+```ts
+// 步骤 3：用户代码享受类型推导
+import { loadTemplateRegistry } from '@karinjs/template-react'
+
+const templates = await loadTemplateRegistry({ root: '.' })
+//    ^?
+
+// templates 类型：LoadedRegistry
+// 键名：'user/card' | 'user/profile'（精确联合类型）
+// 值类型：TemplateDef<具体数据类型>
+```
+
+## DataOf 类型推导链路
+
+### 推导步骤
+
+```tsx twoslash
+import { defineTemplate, type TemplateProps, type DataOf } from '@karinjs/template-react'
+
+// 1. 定义数据类型
+interface UserCardData {
+  name: string
+  avatar: string
+}
+
+// 2. 组件标注 TemplateProps
+const UserCard = ({ data }: TemplateProps<UserCardData>) => {
+  //                ^?
+  return <div>{data.name}</div>
+}
+
+// 3. defineTemplate 自动推导
+const def = defineTemplate({
+  component: UserCard
+})
+
+// 4. DataOf 提取类型
+type ExtractedData = DataOf<typeof def>
+//   ^?
+
+// 验证类型一致
+const _check: ExtractedData extends UserCardData ? true : false = true
+```
+
+### 推导链路详解
+
+```ts twoslash
+import type React from 'react'
+
+// 1. TemplateProps 携带泛型
+export interface TemplateProps<D> {
+  data: D
+  ctx: { scale: number; theme?: any }
+}
+
+// 2. TemplateDef 保留泛型
+export interface TemplateDef<D> {
+  component: React.ComponentType<TemplateProps<D>>
+  validate?: (data: unknown) => data is D
+  readonly __data?: D // 类型占位符
+}
+
+// 3. DataOf 条件推导
+export type DataOf<T> = T extends TemplateDef<infer D> ? D : never
+//                                                 ^^^^
+//                                          推导出数据类型
+```
+
+### 实际应用
+
+```ts title="src/utils/render.ts" twoslash
+// @filename: registry-augment.d.ts
+import type { TemplateDef } from '@karinjs/template-react'
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'user/card': TemplateDef<{ name: string; avatar: string }>
+  }
+}
+// @filename: render.ts
+import { createTemplateRenderer, type DataOf } from '@karinjs/template-react'
+import type { LoadedRegistry } from '@karinjs/template-react'
+
+const render = createTemplateRenderer(import.meta.url)
+
+// 类型安全的渲染函数
+async function renderTemplate<K extends keyof LoadedRegistry & string>(path: K, data: DataOf<LoadedRegistry[K]>) {
+  await render(path, data)
+}
+// ---cut---
+// ✅ 类型正确
+await renderTemplate('user/card', { name: 'Alice', avatar: '/a.png' })
+
+// ❌ 类型错误
+// @errors: 2345
+await renderTemplate('user/card', { name: 'Alice' }) // 缺少 avatar
+```
+
+## 条件类型
+
+### 基础条件类型
+
+```ts twoslash
+type IsString<T> = T extends string ? true : false
+
+type A = IsString<'hello'>
+//   ^?
+type B = IsString<42>
+//   ^?
+```
+
+### 分布式条件类型
+
+```ts twoslash
+type ToArray<T> = T extends any ? T[] : never
+
+type Result = ToArray<string | number>
+//   ^?
+// 等价于 string[] | number[]
+```
+
+### 推导 infer
+
+```ts twoslash
+// 提取数组元素类型
+type Unpack<T> = T extends Array<infer U> ? U : T
+
+type A = Unpack<string[]>
+//   ^?
+type B = Unpack<string>
+//   ^?
+
+// 提取 Promise 类型
+type Awaited<T> = T extends Promise<infer U> ? U : T
+
+type C = Awaited<Promise<number>>
+//   ^?
+```
+
+### 框架中的条件类型
+
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+
+// 提取数据类型
+export type DataOf<T> = T extends TemplateDef<infer D> ? D : never
+
+// 提取组件类型
+export type ComponentOf<T> = T extends TemplateDef<any> ? (T extends { component: infer C } ? C : never) : never
+
+// 检查是否为模板定义
+export type IsTemplateDef<T> = T extends TemplateDef<any> ? true : false
+```
+
+## 映射类型
+
+### 基础映射
+
+```ts twoslash
+interface User {
+  name: string
+  age: number
+}
+
+// 全部可选
+type Partial<T> = {
+  [K in keyof T]?: T[K]
+}
+
+type PartialUser = Partial<User>
+//   ^?
+
+// 全部只读
+type Readonly<T> = {
+  readonly [K in keyof T]: T[K]
+}
+
+type ReadonlyUser = Readonly<User>
+//   ^?
+```
+
+### 高级映射
+
+```ts twoslash
+interface User {
+  name: string
+  age: number
+}
+
+// 挑选指定键
+type Pick<T, K extends keyof T> = {
+  [P in K]: T[P]
+}
+
+type UserName = Pick<User, 'name'>
+//   ^?
+
+// 排除指定键
+type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>
+
+type UserWithoutAge = Omit<User, 'age'>
+//   ^?
+```
+
+### 框架中的映射类型
+
+```ts twoslash
+import type { TemplateDef, AnyRegistry } from '@karinjs/template-react'
+
+// 提取所有路由
+export type TemplateRoutes<R extends AnyRegistry> = keyof R
+
+// 提取所有数据类型
+export type TemplateDataMap<R extends AnyRegistry> = {
+  [K in keyof R]: R[K] extends TemplateDef<infer D> ? D : never
+}
+
+// 过滤特定前缀的路由
+export type RoutesWithPrefix<R extends AnyRegistry, Prefix extends string> = {
+  [K in keyof R as K extends `${Prefix}${string}` ? K : never]: R[K]
+}
+
+// 使用示例
+declare const registry: {
+  'user/card': TemplateDef<{ name: string }>
+  'user/profile': TemplateDef<{ age: number }>
+  'admin/dashboard': TemplateDef<{ total: number }>
+}
+
+type UserRoutes = RoutesWithPrefix<typeof registry, 'user/'>
+//   ^?
+```
+
+## 高级类型推导场景
+
+### 场景 1：类型守卫
+
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+
+function isTemplateDef<D>(value: unknown): value is TemplateDef<D> {
+  return typeof value === 'object' && value !== null && 'component' in value && typeof (value as any).component === 'function'
+}
+
+// 使用
+const maybeTemplate: unknown = {}
+
+if (isTemplateDef(maybeTemplate)) {
+  // 此处 maybeTemplate 类型缩窄为 TemplateDef<unknown>
+  maybeTemplate.component
+  //            ^?
+}
+```
+
+### 场景 2：重载签名
+
+```ts twoslash
+import type { LoadedRegistry, DataOf } from '@karinjs/template-react'
+
+// 精确路由重载
+function render<K extends keyof LoadedRegistry>(path: K, data: DataOf<LoadedRegistry[K]>): Promise<void>
+
+// 任意路由回退
+function render(path: string, data: unknown): Promise<void>
+
+// 实现
+function render(path: string, data: unknown): Promise<void> {
+  return Promise.resolve()
+}
+
+// 使用
+declare const registry: LoadedRegistry
+// ---cut---
+// ✅ 精确路由：类型推导
+await render('user/card', { name: 'Alice', avatar: '/a.png' })
+
+// ✅ 动态路由：接受任意数据
+const dynamicPath = 'user/' + 'card'
+await render(dynamicPath, { name: 'Alice', avatar: '/a.png' })
+```
+
+### 场景 3：泛型约束
+
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+
+// 约束泛型必须是模板定义
+function extractData<T extends TemplateDef<any>>(template: T): T extends TemplateDef<infer D> ? D : never {
+  // @ts-ignore
+  return template.__data
+}
+
+// 使用
+import { defineTemplate } from '@karinjs/template-react'
+const template = defineTemplate<{ name: string }>({ component: () => null })
+const data = extractData(template)
+//    ^?
+```
+
+### 场景 4：递归类型
+
+```ts twoslash
+// 深度只读
+type DeepReadonly<T> = {
+  readonly [K in keyof T]: T[K] extends object ? DeepReadonly<T[K]> : T[K]
+}
+
+interface User {
+  name: string
+  profile: {
+    age: number
+    address: {
+      city: string
+    }
+  }
+}
+
+type ReadonlyUser = DeepReadonly<User>
+//   ^?
+
+// profile.address.city 也是只读
+```
+
+### 场景 5：模板字面量类型
+
+```ts twoslash
+import type { AnyRegistry } from '@karinjs/template-react'
+
+// 提取板块名
+type ExtractSection<Path extends string> = Path extends `${infer Section}/${string}` ? Section : never
+
+type Sections = ExtractSection<'user/card' | 'user/profile' | 'admin/dashboard'>
+//   ^?
+
+// 构建路由
+type BuildRoute<Section extends string, Template extends string> = `${Section}/${Template}`
+
+type UserCard = BuildRoute<'user', 'card'>
+//   ^?
+
+// 框架应用：路由补全
+type RoutesBySection<R extends AnyRegistry, Section extends string> = Extract<keyof R, `${Section}/${string}`>
+
+declare const registry: {
+  'user/card': any
+  'user/profile': any
+  'admin/dashboard': any
+}
+
+type UserRoutes = RoutesBySection<typeof registry, 'user'>
+//   ^?
+```
+
+### 场景 6：类型谓词
+
+```ts twoslash
+import type { LoadedRegistry, DataOf } from '@karinjs/template-react'
+
+// 验证数据类型
+function validateData<K extends keyof LoadedRegistry>(path: K, data: unknown): data is DataOf<LoadedRegistry[K]> {
+  // 运行时校验逻辑
+  return typeof data === 'object' && data !== null
+}
+
+// 使用
+declare const path: keyof LoadedRegistry
+declare const data: unknown
+// ---cut---
+if (validateData(path, data)) {
+  // 此处 data 类型已缩窄为 DataOf<LoadedRegistry[typeof path]>
+  await render(path, data)
+}
+
+declare function render(path: string, data: unknown): Promise<void>
+```
+
+### 场景 7：联合类型分发
+
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+
+// 为每个路由生成渲染函数类型
+type RenderFnMap<R> = {
+  [K in keyof R]: R[K] extends TemplateDef<infer D> ? (data: D) => Promise<void> : never
+}
+
+declare const registry: {
+  'user/card': TemplateDef<{ name: string }>
+  'user/profile': TemplateDef<{ age: number }>
+}
+
+type Fns = RenderFnMap<typeof registry>
+//   ^?
+
+// 使用
+const fns: Fns = {
+  'user/card': async (data) => {
+    data.name
+    //  ^?
+  },
+  'user/profile': async (data) => {
+    data.age
+    //  ^?
+  }
+}
+```
+
+### 场景 8：协变与逆变
+
+```ts twoslash
+// 协变（Covariant）：子类型 → 子类型
+type CovariantArray<T> = T[]
+
+const strings: CovariantArray<string> = ['a', 'b']
+const values: CovariantArray<string | number> = strings // ✅ 安全
+
+// 逆变（Contravariant）：父类型 → 子类型
+type Consumer<T> = (value: T) => void
+
+const consumeValue: Consumer<string | number> = (v) => {}
+const consumeString: Consumer<string> = consumeValue // ✅ 安全
+
+// 双变（Bivariant）：不安全
+interface UnsafeConsumer<T> {
+  consume(value: T): void
+}
+
+const unsafeAny: UnsafeConsumer<any> = { consume: () => {} }
+const unsafeString: UnsafeConsumer<string> = unsafeAny // ⚠️ 不安全
+```
+
+框架应用：
+
+```ts twoslash
+import type { TemplateProps } from '@karinjs/template-react'
+import type React from 'react'
+
+// 组件 props 是逆变的
+type Component<D> = React.ComponentType<TemplateProps<D>>
+
+// 可以用更宽泛的组件替代
+const anyComponent: Component<any> = () => null
+const stringComponent: Component<{ name: string }> = anyComponent // ✅
+```
+
+## 类型推导调试
+
+### 使用 TypeScript Playground
+
+```ts
+// 复制到 https://www.typescriptlang.org/play
+
+import type { TemplateDef, DataOf } from '@karinjs/template-react'
+
+interface UserData {
+  name: string
+}
+
+const template: TemplateDef<UserData> = {} as any
+
+type Extracted = DataOf<typeof template>
+//   ^?  // 悬停查看推导结果
+```
+
+### 使用 @ts-expect-error
+
+```ts twoslash
+import type { DataOf, TemplateDef } from '@karinjs/template-react'
+
+// DataOf 对非 TemplateDef 的类型推导出 never
+type InvalidExtract = DataOf<string>
+//   ^?
+
+// 所以任何值都赋不进去
+// @errors: 2322
+const bad: InvalidExtract = { name: 'test' }
+
+// 验证类型正确
+const template: TemplateDef<{ name: string }> = {} as any
+type ValidExtract = DataOf<typeof template>
+const _check: ValidExtract = { name: 'test' } // ✅
+```
+
+### 使用类型断言
+
+```ts twoslash
+import type { LoadedRegistry, DataOf } from '@karinjs/template-react'
+
+// 强制显示中间类型
+type Step1 = LoadedRegistry
+//   ^?
+type Step2 = keyof Step1
+//   ^?
+type Step3 = Step1['user/card']
+//   ^?
+type Step4 = DataOf<Step3>
+//   ^?
+```
+
+## 类型体操最佳实践
+
+### 1. 保持类型简单
+
+```ts
+// ✅ 好：直接明了
+type UserData = { name: string; age: number }
+
+// ❌ 差：过度抽象
+type UserData<T extends Record<string, any>> = {
+  [K in keyof T]: T[K] extends infer U ? U : never
+}
+```
+
+### 2. 使用工具类型
+
+```ts
+// ✅ 好：复用内置工具类型
+type PartialUser = Partial<User>
+
+// ❌ 差：重新实现
+type PartialUser = { [K in keyof User]?: User[K] }
+```
+
+### 3. 渐进式类型推导
+
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+
+// 第一步：提取数据类型
+type DataOf<T> = T extends TemplateDef<infer D> ? D : never
+
+// 第二步：添加约束
+type StrictDataOf<T extends TemplateDef<any>> = DataOf<T>
+
+// 第三步：添加默认值
+type SafeDataOf<T, Default = unknown> = T extends TemplateDef<infer D> ? D : Default
+```
+
+### 4. 类型注释
+
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+
+/**
+ * 从模板定义中提取数据类型。
+ *
+ * @example
+ * const template = defineTemplate<{ name: string }>({ component: MyCard })
+ * type Data = DataOf<typeof template>  // { name: string }
+ */
+export type DataOf<T> = T extends TemplateDef<infer D> ? D : never
+```
+
+### 5. 测试类型
+
+```ts title="types.test.ts" twoslash
+import { expectType } from 'tsd'
+import type { DataOf, TemplateDef } from '@karinjs/template-react'
+
+// 测试 DataOf 推导
+const template: TemplateDef<{ name: string }> = {} as any
+expectType<{ name: string }>(undefined as any as DataOf<typeof template>)
+
+// 测试联合类型
+type Union = { a: string } | { b: number }
+expectType<Union>(undefined as any as DataOf<TemplateDef<Union>>)
+```
+
+### 6. 类型文档
+
+```ts title="types/README.md"
+# 类型系统
+
+## LoadedRegistry
+
+精确的模板注册表类型，由 `ktr sync` 自动生成。
+
+未增强时退化为 `AnyRegistry`（任意路由）。
+
+## DataOf<T>
+
+从模板定义中提取数据类型。
+
+**用法**：
+- `DataOf<LoadedRegistry[K]>` 提取指定路由的数据类型
+- `DataOf<typeof template>` 提取模板定义的数据类型
+```
+
+### 7. 避免类型断言
+
+```ts twoslash
+import type { LoadedRegistry, DataOf } from '@karinjs/template-react'
+
+declare function render(path: string, data: unknown): void
+
+// ❌ 差：类型断言
+render('user/card', { name: 'Alice' } as any)
+
+// ✅ 好：类型推导
+function typedRender<K extends keyof LoadedRegistry>(path: K, data: DataOf<LoadedRegistry[K]>) {
+  render(path, data)
+}
+
+typedRender('user/card', { name: 'Alice' })
+```
+
+### 8. 类型兼容性
+
+```ts twoslash
+import type { TemplateDef } from '@karinjs/template-react'
+
+// 向后兼容：新类型包含旧类型
+type OldData = { name: string }
+type NewData = { name: string; age?: number }
+
+const oldTemplate: TemplateDef<OldData> = {} as any
+const newTemplate: TemplateDef<NewData> = oldTemplate // ❌ 不安全
+
+// 正确：显式转换
+function upgrade(old: TemplateDef<OldData>): TemplateDef<NewData> {
+  return {
+    ...old,
+    validate: (data): data is NewData => {
+      return old.validate?.(data) ?? true
+    }
+  }
+}
+```
+
+## 类型调试工具
+
+### tsserver 日志
+
+```bash
+# VS Code 命令面板
+# TypeScript: Open TS Server log
+
+# 查看类型推导过程
+```
+
+### tsc --traceResolution
+
+```bash
+pnpm tsc --traceResolution | grep registry-types
+```
+
+### tsd 类型测试
+
+```ts title="types.test-d.ts" twoslash
+// @errors: 2345
+import { expectType, expectError } from 'tsd'
+import type { DataOf, TemplateDef } from '@karinjs/template-react'
+
+// 类型断言测试
+const template: TemplateDef<{ name: string }> = {} as any
+expectType<{ name: string }>(undefined as any as DataOf<typeof template>)
+
+// 类型错误测试
+expectError<DataOf<string>>(undefined)
+```
+
+<Cards>
+  <Card title="类型工具" href="/docs/api/type-utilities" description="完整类型 API" />
+  <Card title="调试技巧" href="./debugging" description="类型推导调试" />
+</Cards>

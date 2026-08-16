@@ -1,0 +1,443 @@
+---
+title: 开发面板架构
+description: 面板 + 沙盒的分离设计、postMessage 通信协议和技术实现细节
+---
+
+ktr 开发面板采用**面板 + 沙盒分离**架构：面板是预构建的 React 静态应用，用户模板在 iframe 沙盒里渲染，两者通过 `postMessage` 通信，确保调试界面与模板渲染环境互不干扰。
+
+## 架构设计
+
+### 整体架构图
+
+```
+┌──────────────────────────────────────────────────────┐
+│             Vite Dev Server (localhost:5180)         │
+│                                                      │
+│  ┌────────────────────┐  ┌─────────────────────┐     │
+│  │   面板中间件        │  │  沙盒虚拟模块        │     │
+│  │  /__ktr/panel      │  │  virtual:ktr-sandbox │     │
+│  │  (预构建静态应用)   │  │  (动态生成)          │     │
+│  └────────────────────┘  └─────────────────────┘     │
+│                                                      │
+│  ┌──────────────────────────────────────────────┐    │
+│  │   Mock API (/__ktr/api)                      │    │
+│  │   - GET /templates        (模板列表)         │    │
+│  │   - GET /data             (列表/读取数据)    │    │
+│  │   - PUT /data             (保存 JSON)        │    │
+│  │   - DELETE /data          (删除 JSON)        │    │
+│  │   - GET /stream           (SSE 数据推送)     │    │
+│  └──────────────────────────────────────────────┘    │
+│                                                      │
+│  ┌──────────────────────────────────────────────┐    │
+│  │   WebSocket HMR                              │    │
+│  │   - 模板源码热更新（沙盒内生效）             │    │
+│  └──────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────┘
+
+┌──────────────────────┐          ┌──────────────────────┐
+│   开发面板            │          │  沙盒 iframe          │
+│   (React)            │◄────────►│  (React 环境)         │
+│                      │postMessage│                      │
+│  - 模板导航           │          │  - 动态 import 组件   │
+│  - 数据选择/编辑      │          │  - React 渲染        │
+│  - 主题构建器         │          │  - 尺寸测量上报      │
+│  - 画布缩放/平移      │          │  - 错误边界          │
+└──────────────────────┘          └──────────────────────┘
+```
+
+### 分离设计的优势
+
+| 方面             | 传统方案             | ktr 分离架构        |
+| ---------------- | -------------------- | ------------------- |
+| **样式隔离**     | 面板样式污染模板     | iframe 完全隔离     |
+| **React 上下文** | 共享 context，易冲突 | 独立 root，互不干扰 |
+| **错误隔离**     | 模板错误影响面板     | 沙盒崩溃不影响面板  |
+| **热更新**       | 整体刷新             | 模板更新不刷新面板  |
+
+## 面板前端
+
+### 技术栈
+
+- **框架**：React 19 + HeroUI（`@heroui/react`）
+- **样式**：Tailwind CSS v4
+- **路由**：react-router-dom，模板地址 `/templates/<板块>/<模板>?data=<数据名>`，可分享、可刷新
+- **画布**：react-zoom-pan-pinch（滚轮缩放、拖拽平移、双击适应）
+- **分发形式**：随包预构建为静态资源（`panel/dist`），dev server 的面板中间件挂在 `/__ktr/panel` 托管，不需要下游构建面板源码
+
+### 核心功能模块
+
+面板源码在 `packages/core/panel`，主要组件：
+
+| 模块     | 组件                                            | 职责                                                 |
+| -------- | ----------------------------------------------- | ---------------------------------------------------- |
+| 模板导航 | `App.tsx`                                       | 按板块分组展示模板树，路由同步当前选中项             |
+| 数据选择 | `DataFileSelector.tsx`                          | 列出 TS mock / JSON mock / captured.json，切换数据源 |
+| 数据编辑 | `JsonEditor.tsx`、`MockDataEditorModal.tsx`     | 编辑并保存 JSON mock（TS mock 只读）                 |
+| 主题     | `ThemeBuilderPanel.tsx`、`PanelThemeSelect.tsx` | 构建下发给模板的主题变量；切换面板自身明暗           |
+| 预览画布 | `PreviewPanel.tsx`                              | 承载沙盒 iframe，缩放/平移/截图预览                  |
+
+### 加载模板列表
+
+面板从 Mock API 读取模板清单（每次读取前 dev server 会先刷新 `.ktr` 注册表，新增模板无需重启）：
+
+```tsx twoslash
+// panel/App.tsx（简化示意）
+import { useEffect, useState } from 'react'
+// ---cut---
+interface TemplateMeta {
+  path: string
+  name?: string
+  description?: string
+}
+
+export function useTemplateList() {
+  const [templates, setTemplates] = useState<TemplateMeta[]>([])
+
+  useEffect(() => {
+    // GET /__ktr/api/templates → { templates: [...] }
+    fetch('/__ktr/api/templates')
+      .then((res) => res.json())
+      .then((body) => setTemplates(body.templates))
+  }, [])
+
+  return templates
+}
+```
+
+### 下发数据到沙盒
+
+用户选择模板和数据后，面板把路由、数据和运行时上下文一起发给沙盒：
+
+```tsx twoslash
+// 面板代码（简化示意）
+declare function getIframe(): HTMLIFrameElement
+declare function getCurrentContext(): Record<string, unknown>
+// ---cut---
+function sendTemplateData(path: string, data: unknown) {
+  const iframe = getIframe()
+  iframe.contentWindow?.postMessage(
+    {
+      source: 'ktr-panel',
+      type: 'ktr:data',
+      payload: { path, data, ctx: getCurrentContext() }
+    },
+    window.location.origin
+  )
+}
+```
+
+## 沙盒虚拟模块
+
+### 生成逻辑
+
+沙盒入口是 Vite 虚拟模块 `virtual:ktr-sandbox`，由 `sandboxPlugin` 在 `load` 阶段动态生成：约定扫描出全部模板路由后，逐路由生成 `/@fs/` 动态导入，并引入 CSS 入口：
+
+```typescript twoslash
+// dev/sandbox.ts（简化示意）
+import path from 'node:path'
+
+declare function discoverTemplateRoutes(templateDir: string): Promise<Array<{ route: string; file: string }>>
+declare const config: { templateDir: string }
+// ---cut---
+export async function sandboxCode(): Promise<string> {
+  // 逐路由动态导入而不是整包导入 .ktr 注册表：
+  // 注册表是单模块，导入即同步拉起全部模板，无法按模块粒度上报进度
+  const routes = await discoverTemplateRoutes(config.templateDir)
+  const loaderItems = routes
+    .map((item) => `  ['${item.route}', () => import('/@fs/${path.join(config.templateDir, item.file)}')]`)
+    .join(',\n')
+
+  return `
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+
+const templateLoaders = [
+${loaderItems}
+]
+const templates = {}
+
+// 逐个加载模板，每完成一个上报一次进度
+for (const [route, load] of templateLoaders) {
+  templates[route] = (await load()).default
+  window.parent.postMessage({
+    source: 'ktr-sandbox',
+    type: 'ktr:register-progress',
+    payload: { loaded: Object.keys(templates).length, total: templateLoaders.length, path: route }
+  }, window.location.origin)
+}
+
+// 全部加载完，上报模板元信息
+window.parent.postMessage({
+  source: 'ktr-sandbox',
+  type: 'ktr:ready',
+  payload: { templates: Object.entries(templates).map(([path, def]) => ({ path, name: def.name, description: def.description })) }
+}, window.location.origin)
+`
+}
+```
+
+### 渲染与主题
+
+沙盒内维护当前选中的路由、数据和上下文，收到 `ktr:data` / `ktr:theme` 消息后重新渲染。主题变量同时写到 `html` 和 `body` 上，只注入面板显式提供的字段：
+
+```typescript twoslash
+// 沙盒内的主题应用逻辑（简化示意）
+import type { ThemeContext } from '@karinjs/template-react'
+// ---cut---
+const themeVarNames = [
+  ['--background', 'background'],
+  ['--foreground', 'foreground'],
+  ['--accent', 'accent'],
+  ['--accent-foreground', 'accentForeground']
+  // 其余语义色同理
+] as const
+
+function applyTheme(theme: Partial<ThemeContext>) {
+  const mode = theme.mode === 'dark' ? 'dark' : 'light'
+  document.documentElement.classList.toggle('dark', mode === 'dark')
+  document.body.dataset.theme = mode
+
+  for (const [name, key] of themeVarNames) {
+    const value = theme[key]
+    // 显式提供的写入，未提供的移除——框架不发明默认色，组件库自身主题生效
+    if (typeof value === 'string' && value) {
+      document.documentElement.style.setProperty(name, value)
+    } else {
+      document.documentElement.style.removeProperty(name)
+    }
+  }
+}
+```
+
+渲染出错时由错误边界接管：用固定尺寸的占位卡替换模板位置，画布的测量、缩放、拖拽行为与正常模板一致，同时向面板上报 `ktr:error`。
+
+### 尺寸测量与上报
+
+React 渲染是异步的，沙盒按帧轮询容器尺寸，连续几帧稳定后才上报 `ktr:rendered`，避免把半截高度发给面板：
+
+```typescript twoslash
+// 沙盒内的尺寸上报（简化示意）
+declare function post(type: string, payload: unknown): void
+declare const selectedPath: string
+// ---cut---
+function reportRendered(startedAt: number) {
+  let lastWidth = 0
+  let lastHeight = 0
+  let stableFrames = 0
+
+  const tick = () => {
+    const rect = document.getElementById('container')!.getBoundingClientRect()
+    const width = Math.max(1, Math.ceil(rect.width))
+    const height = Math.max(1, Math.ceil(rect.height))
+
+    stableFrames = width === lastWidth && height === lastHeight ? stableFrames + 1 : 0
+    lastWidth = width
+    lastHeight = height
+
+    if (stableFrames < 3) {
+      requestAnimationFrame(tick)
+      return
+    }
+
+    post('ktr:rendered', {
+      path: selectedPath,
+      elapsed: Math.round(performance.now() - startedAt),
+      size: { width, height }
+    })
+  }
+
+  requestAnimationFrame(tick)
+}
+```
+
+## postMessage 通信协议
+
+所有消息都带 `source` 字段（`'ktr-panel'` / `'ktr-sandbox'`）区分方向，目标 origin 限定为当前窗口源。
+
+### 消息类型定义
+
+```typescript twoslash
+// dev/protocol.ts
+import type { ThemeContext } from '@karinjs/template-react'
+// ---cut---
+// ===== 面板 → 沙盒消息 =====
+export type PanelMessage =
+  | { source: 'ktr-panel'; type: 'ktr:select'; payload: { path: string } }
+  | { source: 'ktr-panel'; type: 'ktr:data'; payload: { path: string; data: unknown; ctx?: Record<string, unknown> } }
+  | { source: 'ktr-panel'; type: 'ktr:theme'; payload: { theme?: Partial<ThemeContext> } }
+  | { source: 'ktr-panel'; type: 'ktr:panel-theme'; payload: { dark: boolean } }
+  | { source: 'ktr-panel'; type: 'ktr:scale'; payload: { scale: number } }
+  | { source: 'ktr-panel'; type: 'ktr:inspect'; payload: { enabled: boolean } }
+
+// ===== 沙盒 → 面板消息 =====
+export type SandboxMessage =
+  | { source: 'ktr-sandbox'; type: 'ktr:ready'; payload: { templates: Array<{ path: string; name?: string; description?: string }> } }
+  | { source: 'ktr-sandbox'; type: 'ktr:register-progress'; payload: { loaded: number; total: number; path: string } }
+  | { source: 'ktr-sandbox'; type: 'ktr:rendered'; payload: { path: string; elapsed: number; size?: { width: number; height: number } } }
+  | { source: 'ktr-sandbox'; type: 'ktr:error'; payload: { path?: string; message: string; stack?: string } }
+  | { source: 'ktr-sandbox'; type: 'ktr:hmr'; payload: { path: string } }
+```
+
+`ktr:panel-theme` 控制的是 iframe 画布背板的明暗（来自面板外壳主题），与下发给模板的 `ktr:theme` 解耦。
+
+### 通信流程
+
+#### 1. 初始化
+
+```
+面板加载
+    ↓
+创建 iframe（src="/__ktr/sandbox"）
+    ↓
+iframe 加载 virtual:ktr-sandbox
+    ↓
+沙盒逐个 import 模板组件
+    ↓
+每加载一个，发送 ktr:register-progress
+    ↓
+全部加载完，发送 ktr:ready（携带模板元信息）
+    ↓
+面板收到 ready，展示模板树
+```
+
+#### 2. 渲染模板
+
+```
+用户点击模板
+    ↓
+面板发送 ktr:select { path }
+    ↓
+面板从 Mock API 加载数据列表，用户选择数据
+    ↓
+面板发送 ktr:data { path, data, ctx }
+    ↓
+沙盒渲染组件（错误边界兜底）
+    ↓
+沙盒等待尺寸稳定（连续 3 帧无变化）
+    ↓
+沙盒发送 ktr:rendered { path, elapsed, size }
+    ↓
+面板按上报尺寸调整画布
+```
+
+#### 3. 主题切换
+
+```
+用户在主题构建器中调整
+    ↓
+面板发送 ktr:theme { theme }
+    ↓
+沙盒把显式提供的变量写到 html/body，移除未提供的
+    ↓
+沙盒重新渲染当前模板
+    ↓
+沙盒发送 ktr:rendered { size }
+```
+
+## Mock API 设计
+
+Mock API 是挂在 Vite dev server 上的中间件（`/__ktr/api` 前缀），不是独立的 Express 服务。
+
+### 接口一览
+
+| 方法   | 路径                                      | 说明                                                   |
+| ------ | ----------------------------------------- | ------------------------------------------------------ |
+| GET    | `/__ktr/api/templates`                    | 模板列表（读取前先刷新 `.ktr` 注册表）                 |
+| GET    | `/__ktr/api/data?path=<路由>`             | 数据源列表 `{ entries: [{ name, source, readonly }] }` |
+| GET    | `/__ktr/api/data?path=<路由>&name=<名称>` | 读取单条数据                                           |
+| PUT    | `/__ktr/api/data?path=<路由>&name=<名称>` | 保存 JSON mock                                         |
+| DELETE | `/__ktr/api/data?path=<路由>&name=<名称>` | 删除 JSON mock                                         |
+| GET    | `/__ktr/api/stream`                       | 数据文件变更的 SSE 推送                                |
+
+读取单条数据时**同名 JSON 优先于 TS mock**；TS mock 在面板中只读（PUT 返回 409），因为它是类型安全的源码，应直接编辑文件。`captured.json` 是 `{ data, ctx }` 完整快照，接口会解包后连同 `ctx` 一起下发，面板回放时能还原后端真实下发的主题等上下文。
+
+```typescript twoslash
+// dev/mock-api.ts（简化示意）
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+
+declare const config: { mockDataDir: string }
+declare function loadTsMocks(templatePath: string): Promise<Array<{ name: string; data: unknown }>>
+declare function json(res: any, status: number, body: unknown): void
+// ---cut---
+export async function readDataEntry(req: any, res: any) {
+  const url = new URL(req.url, 'http://ktr.local')
+  const templatePath = url.searchParams.get('path')!
+  const name = url.searchParams.get('name')!
+
+  // 1. 优先 JSON mock（面板可编辑）
+  const jsonFile = path.join(config.mockDataDir, templatePath, 'data', `${name}.json`)
+  if (fs.existsSync(jsonFile)) {
+    const data = JSON.parse(fs.readFileSync(jsonFile, 'utf-8'))
+    return json(res, 200, { name, source: 'json', readonly: false, data })
+  }
+
+  // 2. 回退 TS mock（面板只读）
+  const tsMock = (await loadTsMocks(templatePath)).find((mock) => mock.name === name)
+  if (tsMock) {
+    return json(res, 200, { name, source: 'ts', readonly: true, data: tsMock.data })
+  }
+
+  json(res, 404, { error: 'Data entry not found' })
+}
+```
+
+## SSE 数据推送
+
+dev server 监听 mock 目录下的 `data/*.json` 变更（复用 Vite 的 watcher，按模板路由 100ms 去抖），通过 `/__ktr/api/stream` 的 SSE 通道推送给面板。事件名固定为 `ktr:data-files-changed`，负载为 `{ templatePath, file }`：
+
+```typescript twoslash
+// dev/data-watch.ts（简化示意）
+import type { ViteDevServer } from 'vite'
+
+declare const config: { mockDataDir: string }
+declare function broadcast(payload: { templatePath: string; file: string }): void
+// ---cut---
+export function registerDataWatch(server: ViteDevServer) {
+  server.watcher.add(config.mockDataDir)
+
+  const notify = (file: string) => {
+    // 只有各模板 data/ 子目录里的 JSON 才推送给面板
+    if (!file.endsWith('.json') || !file.includes('data')) return
+
+    // 去抖后广播：{ templatePath: 'hello/card', file: 'captured.json' }
+    broadcast({ templatePath: 'hello/card', file: file.split('/').pop()! })
+  }
+
+  server.watcher.on('add', notify)
+  server.watcher.on('change', notify)
+  server.watcher.on('unlink', notify)
+}
+```
+
+面板侧用 `EventSource` 监听，`captured.json` 变更时自动刷新并选中——真实渲染一发生，面板里就能立刻看到这份数据：
+
+```typescript twoslash
+// panel/useDataFileSync.ts（简化示意）
+declare function handleDataFilesChanged(templatePath: string, file: string): void
+// ---cut---
+export function useDataFileSync() {
+  const eventSource = new EventSource('/__ktr/api/stream')
+
+  eventSource.addEventListener('ktr:data-files-changed', (event) => {
+    const { templatePath, file } = JSON.parse((event as MessageEvent).data)
+    handleDataFilesChanged(templatePath, file)
+  })
+
+  return () => eventSource.close()
+}
+```
+
+用 SSE 而不是 Vite 的 HMR WebSocket：Vite 8 的 HMR WebSocket 对浏览器同源连接强制校验 token，面板内手写 WS 客户端拿不到 token，SSE 通道不受此限制。
+
+## WebSocket HMR
+
+模板源码的热更新走 Vite 自带的 HMR：模板文件保存后，沙盒 iframe 里的模块直接热替换并重新渲染（沙盒随后向面板上报 `ktr:hmr`）。面板自身不受影响，因为与沙盒隔离。
+
+## 下一步
+
+<Cards>
+  <Card title="数据流" href="./data-flow" description="开发态完整数据流向" />
+  <Card title="开发面板" href="/docs/guide/dev-panel" description="面板使用指南" />
+  <Card title="约定式路由" href="./routing" description="模板注册机制" />
+</Cards>

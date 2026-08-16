@@ -1,0 +1,29 @@
+---
+title: 介绍
+description: 用 React + Tailwind CSS + TypeScript 为 Karin 插件编写"数据到图片"的截图模板
+---
+
+# Karin Template React
+
+`@karinjs/template-react`（简称 ktr）是 Karin 插件的截图模板工具链：你用 React 组件 + Tailwind CSS 描述"数据长什么样"，框架负责 SSR 渲染成 HTML，交给 Karin 截图发出图片。
+
+## 能力一览
+
+- **约定大于配置**：模板放在 `ktr/template/<板块>/<模板>/index.tsx` 即注册为路由，无需手动登记。
+- **全链路类型**：`renderImage('板块/模板', data)` 的路由补全和 data 类型自动推导，写错编译期报红。
+- **开发面板**：`ktr dev` 实时预览，切换模板、mock 数据、主题，一键截图。
+- **数据闭环**：真实渲染的数据自动捕获为 `captured.json`，面板即时回放。
+
+## 从这里开始
+
+<Cards>
+  <Card title="快速开始" href="/docs/quick-start" description="从初始化到在群里发出第一张图片" />
+  <Card title="目录约定" href="/docs/guide/conventions" description="本工具的核心：目录即路由" />
+  <Card title="使用 AI" href="/docs/ai-skill" description="让 AI 助手按最新文档带你接入" />
+  <Card title="API 参考" href="/docs/api/define-template" description="defineTemplate、渲染器、配置与 CLI" />
+</Cards>
+
+<Callout type="info">
+  还不会 React 或 Tailwind？先看 [React 中文官方教程](https://zh-hans.react.dev/learn) 和 [Tailwind CSS
+  文档](https://tailwindcss.com/docs)，再回来开工。
+</Callout>

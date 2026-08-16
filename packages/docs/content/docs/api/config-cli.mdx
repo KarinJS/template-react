@@ -1,0 +1,573 @@
+---
+title: 配置与 CLI
+description: karin.template.ts 的全部配置项，以及 ktr create / init / sync / dev / build 命令的用法
+---
+
+## 配置文件 karin.template.ts
+
+放在项目根目录，只配置工具链自身行为；模板、mock、JSON 数据按 `ktr/template/` 约定自动发现，**不要**手写模板清单。按 `.ts` → `.mts` → `.js` → `.mjs` 顺序查找，取第一个存在的：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  dev: {
+    port: 5180,
+    open: true
+  }
+})
+```
+
+合并优先级：**CLI 命令行覆盖 > `karin.template.ts` > 内置默认值**。
+
+## 配置项一览
+
+顶层字段（由源码 JSDoc 自动生成）：
+
+<AutoTypeTable path="../core/src/types/index.ts" name="KtrConfig" />
+
+`dir` 目录配置：
+
+<AutoTypeTable path="../core/src/types/index.ts" type="KtrConfig['dir']" />
+
+`dev` 开发面板配置：
+
+<AutoTypeTable path="../core/src/types/index.ts" type="KtrConfig['dev']" />
+
+### 配置项实际使用场景
+
+#### dir.template
+
+**场景**：调整模板目录位置，适配现有项目结构。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    template: 'src/templates' // 使用 src/templates 代替 ktr/template
+  }
+})
+```
+
+修改后，模板文件从 `src/templates/<板块>/<模板>/index.tsx` 读取，`style.css` 从 `src/templates/style.css` 读取。
+
+#### dir.assets
+
+**场景**：存放字体、图标、背景图等静态资源。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    assets: 'public' // 使用项目根的 public/ 目录
+  }
+})
+```
+
+模板中引用资源：
+
+```tsx
+<img src="/assets/avatar.png" alt="头像" />
+```
+
+引用约定只有一条：`/` 开头的路径始终等于 `<dir.assets>/` 下的相对路径（上例即 `public/assets/avatar.png`）。这条不变量在三种环境下由不同机制保证，模板写法不用变：
+
+- **开发**：`ktr dev` 把 `dir.assets` 作为 publicDir 挂在根路径，引用直接可访问；
+- **构建**：`ktrBuildPlugin` / `ktr build` 把 `dir.assets` 原样复制到 `<产物目录>/assets/`，目录结构不变；
+- **渲染**：SSR 产出 HTML 时框架自动改写这些引用——资源根目录开发态取 `dir.assets`、生产态自动发现产物里的 `assets/`（与 chunk 落点无关，单 chunk 打包也不影响），不超过 [`html.assetsInlineLimit`](#htmlassetsinlinelimit) 的内联为 base64，超过的转为 `file://` 绝对路径，截图引擎用 `file://` 打开也能正确加载。
+
+#### dir.copyAssets
+
+**场景**：资源目录已随 npm 包发布，构建时避免重复复制。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    copyAssets: false // 不复制资源，假设 ktr/public 已在 package.json files 中
+  }
+})
+```
+
+适用于资源体积大、或资源目录本身就在产物目录的场景。设为 `false` 时构建会在产物根额外生成一份 `ktr-assets.json` 位置清单，渲染时据此定位随包发布的资源目录（无需随包发布 `karin.template.ts`）——包里始终只有一份资源，模板里的 `/xxx` 引用照常工作。
+
+#### dir.cssEntry
+
+**场景**：自定义 Tailwind CSS 入口位置，或使用多个样式文件。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    cssEntry: 'src/styles/main.css' // 自定义入口
+  }
+})
+```
+
+`main.css` 内容示例：
+
+```css title="src/styles/main.css"
+@import 'tailwindcss';
+@import './custom-utilities.css';
+```
+
+#### extraStylePaths
+
+**场景**：注入字体、图标库、自定义 CSS 到 SSR HTML。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  extraStylePaths: ['ktr/public/fonts.css', 'ktr/public/icons.css']
+})
+```
+
+这些文件会在渲染时**内联到 HTML** 的 `<style>` 标签中，确保截图包含完整样式。
+
+#### dev.port
+
+**场景**：端口冲突时固定使用特定端口，或多个项目同时开发。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dev: {
+    port: 3000 // 使用 3000 端口，被占用时自动尝试 3001、3002...
+  }
+})
+```
+
+#### dev.host
+
+**场景**：局域网内其他设备访问开发面板（手机预览、多屏调试）。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dev: {
+    host: '0.0.0.0' // 监听所有网络接口
+  }
+})
+```
+
+启动后可通过局域网 IP 访问，如 `http://192.168.1.100:5180`。
+
+#### dev.open
+
+**场景**：CI 环境或无头服务器启动时不打开浏览器。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dev: {
+    open: false // 启动后不自动打开浏览器
+  }
+})
+```
+
+或通过命令行覆盖：
+
+```bash
+pnpm ktr dev --no-open
+```
+
+#### html.headExtra
+
+**场景**：注入 Google Fonts、外部脚本、meta 标签到 SSR HTML。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  html: {
+    headExtra: `
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+      <meta name="author" content="Karin Team">
+    `
+  }
+})
+```
+
+所有 SSR HTML 都会包含这些内容。
+
+<Callout type="warn">
+  `headExtra` 注入的内容在截图时**不会生效**（无网络请求），仅用于开发面板预览。字体等资源应使用 `extraStylePaths` 内联。
+</Callout>
+
+#### html.assetsInlineLimit
+
+**类型**：`number | ((filePath: string) => boolean)`，**默认**：`4096`
+
+模板标记里本地资源引用（`<img src="/...">` 等，对应 `<dir.assets>/` 下的文件）的内联阈值，语义同 Vite 的 `assetsInlineLimit`：SSR 产出 HTML 时，不超过阈值（字节）的资源内联为 base64 data URI，超过的转为 `file://` 绝对路径；函数形式按文件自行决定是否内联。
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  html: {
+    // 全部内联，产出的 HTML 完全自包含
+    assetsInlineLimit: 100 * 1024 * 1024
+  }
+})
+```
+
+<Callout type="info">独立构建（`ktr build`）的运行包无法序列化函数形式，函数会回退为默认的 4096（构建期有警告提示）。</Callout>
+
+#### standalone 独立构建
+
+`standalone` 用于不希望维护 Vite 或 tsdown 生产入口的项目。`ktr build` 会扫描所有 `index.tsx` 模板，严格检查数据类型，并生成可被 Node ESM 直接导入的运行包。
+
+```ts title="karin.template.ts"
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  standalone: {
+    outDir: 'dist/ktr',
+    target: 'node18',
+    format: 'esm',
+    minify: false,
+    sourcemap: false,
+    assets: 'copy',
+    external: [],
+    singleChunk: true
+  }
+})
+```
+
+字段说明：`outDir` 是产物目录；`target` 是 Node 语法目标；第一阶段 `format` 固定为 `esm`；`assets: 'copy'` 将 `ktr/public/` 复制到产物的 `assets/`；`external` 是允许保留为运行时依赖的包名；`singleChunk` 默认要求只有一个 JavaScript chunk。
+
+不可配置的固定位置：框架缓存强制为项目根的 `.ktr/`；mock 数据固定在各模板自己的 `data/` 子目录。独立构建的产物目录由 `standalone.outDir` 控制；使用 `ktrBuildPlugin` 的 npm 模式则继续跟随打包器的 outDir。
+
+### vite 扩展配置
+
+<Tabs items={['对象形式', '函数形式']}>
+<Tab value="对象形式">
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    resolve: { alias: { '@': '/src' } }
+  }
+})
+```
+
+普通的 Vite 配置对象，直接合并。
+
+</Tab>
+<Tab value="函数形式">
+
+```ts twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: ({ command, mode, config }) => ({
+    define: { __DEV__: command === 'serve' }
+  })
+})
+```
+
+接收 `{ command, mode, config }`，返回配置对象或 Promise——按环境区分配置时用。
+
+</Tab>
+</Tabs>
+
+这个字段扩展的是 ktr 自己的 Vite 管线（开发面板服务器、模板 CSS 的独立构建）。模板 CSS 的静态资源内联阈值
+（`build.assetsInlineLimit`）、PostCSS 插件等影响 CSS 内容的选项都在这里配置；下游自身打包用的 `vite.config.ts`
+不影响模板 CSS 的内容，只决定产物落盘位置（CSS 作为 bundle asset 跟随打包器 outDir）。
+
+## CLI 命令
+
+安装 `@karinjs/template-react` 后通过 `pnpm ktr <命令>` 调用；`init` 和 `create` 也可以在装包前用 `npx @karinjs/template-react <命令>` 直接跑。
+
+### ktr create
+
+```bash
+npx @karinjs/template-react create <项目名>
+```
+
+从零新建模板项目：建目录、写 `package.json` 和 `tsconfig.json`，然后走与 `init` 相同的问答。目标目录已存在且非空时报错退出。
+
+### ktr init
+
+```bash
+npx @karinjs/template-react init
+```
+
+在**已有**的 Karin 插件项目里初始化。交互问答四项：样式方案（默认继承 HeroUI 主题，或额外生成带注释的主题变量块）、是否生成示例模板（官方 7 个）、是否生成 `src/utils/render.ts` 胶水层、开发面板端口。
+
+产出：`karin.template.ts`、`ktr/template/style.css`、可选的示例模板与胶水层；给 `tsconfig.json` 补 `jsx: "react-jsx"`；给 `package.json` 补开发依赖和 `template` 脚本。已存在的依赖版本和同名脚本一律保留；文件名冲突时先列出清单再问是否覆盖。
+
+<Callout type="warn">`create` 和 `init` 需要真实终端——单选框靠逐键读取 stdin，用管道或重定向喂输入会直接报错。</Callout>
+
+### ktr sync
+
+```bash
+pnpm ktr sync
+```
+
+扫描 `ktr/template/`，生成或刷新 `.ktr/` 三个产物（模板注册表、mock 注册表、类型增强声明）。新增、删除、移动模板或 mock 之后跑；挂了 `ktrBuildPlugin()` 的打包会自动同步，不用单独跑。
+
+### ktr dev
+
+```bash
+pnpm ktr dev --port 5180 --host localhost --no-open
+```
+
+启动开发面板（先自动执行一次 `sync`）。选项 `--port` / `--host` / `--open` / `--no-open` 只覆盖 `dev` 子配置，其余仍读配置文件。端口被占用时自动换端口，并在启动详情里打印占用进程（名称 + PID）和释放命令。
+
+#### 使用场景
+
+**场景 1：快速预览模板**
+
+```bash
+pnpm ktr dev
+```
+
+自动打开浏览器，访问 `http://localhost:5180`，左侧选择模板，右侧实时预览。
+
+**场景 2：多设备调试**
+
+```bash
+pnpm ktr dev --host 0.0.0.0
+```
+
+局域网内其他设备通过 IP 访问（如 `http://192.168.1.100:5180`），适合手机预览、多屏对比。
+
+**场景 3：端口冲突处理**
+
+```bash
+pnpm ktr dev --port 3000
+```
+
+指定端口，被占用时自动尝试下一个可用端口（3001、3002...），并在终端打印：
+
+```
+Port 3000 is in use by process "node" (PID: 12345)
+To release: kill -9 12345
+Using port 3001 instead
+```
+
+**场景 4：CI 环境或无头服务器**
+
+```bash
+pnpm ktr dev --no-open
+```
+
+启动面板但不打开浏览器，适合远程开发或 CI 流水线中的预览环境。
+
+**场景 5：热更新开发流程**
+
+1. 修改 `ktr/template/hello/card/index.tsx` 组件代码
+2. 保存后浏览器自动刷新，立即看到效果
+3. 修改 `ktr/template/hello/card/mock.ts` 的 mock 数据
+4. 保存后自动重新渲染，无需手动刷新
+
+### ktr build
+
+```bash
+pnpm ktr build
+```
+
+独立构建会执行模板扫描、`.ktr` 注册、严格 TypeScript 检查、Tailwind CSS 编译和 Node ESM 打包。默认产物为：
+
+```text
+dist/ktr/
+├── index.mjs       # 运行时入口，包含 React、SSR runtime、模板和内嵌 CSS
+├── index.d.mts     # 路由与 data 的精确声明
+└── assets/         # ktr/public/ 的静态资源（assets: 'copy'）
+```
+
+构建完成后，宿主应用不需要配置 Vite 或 tsdown：
+
+```js title="app.js"
+import { renderTemplate } from './dist/ktr/index.mjs'
+
+const result = await renderTemplate('hello/card', {
+  title: 'Hello',
+  items: []
+})
+
+if (!result.success) {
+  throw new Error(result.error)
+}
+
+console.log(result.htmlPath)
+```
+
+CSS 在构建时内嵌到 `index.mjs`，不是单独的 `style.css`。HTML 文件只在实际调用渲染函数时按 `outputDir` 写出，构建过程本身不会生成 HTML。
+
+### 生产构建
+
+如果宿主本身就是 npm 包并且已经有 Vite 或 tsdown 入口，继续使用 `ktrBuildPlugin()`（来自 `@karinjs/template-react/plugin`）；它会自动同步 `.ktr` 注册表并把 CSS 编译到打包器自己的 outDir。完整配置见 [构建发布](/docs/build/building)。
+
+#### 使用场景
+
+**场景 1：标准 Vite 项目打包**
+
+```ts title="vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  plugins: [ktrBuildPlugin()]
+})
+```
+
+运行 `vite build` 时自动：
+
+1. `buildStart 钩子` 执行 `ktr sync` 刷新注册表
+2. `generateBundle 钩子` 编译 Tailwind CSS，并以 asset 形式注入打包器 bundle 输出 `<打包器 outDir>/style.css`（上例为 vite 默认的 `dist/style.css`），会出现在打包器自身的输出文件列表里
+3. 复制静态资源到 `<打包器 outDir>/assets/`
+
+生产渲染所需的 `template-registry.js` 由打包器入口产出。`mock-registry.js` 仅在生产代码主动调用 `loadMockRegistry()` 时按需构建，见 [构建发布](/docs/build/building)。
+
+**场景 2：tsdown 极速打包**
+
+```ts title="tsdown.config.ts" twoslash
+import { defineConfig } from 'tsdown'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  entry: ['src/index.ts'],
+  format: ['esm'],
+  dts: true,
+  plugins: [ktrBuildPlugin()]
+})
+```
+
+适合纯 TypeScript 插件项目，打包速度比 Vite 不相上下。
+
+**场景 3：自定义产物目录**
+
+```ts title="vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  build: {
+    outDir: 'output' // 自定义产物目录
+  },
+  plugins: [ktrBuildPlugin()] // CSS 自动输出到 output/style.css
+})
+```
+
+**场景 4：跳过资源复制**
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  dir: {
+    copyAssets: false // ktr/public 已在 package.json files 中，不重复复制
+  }
+})
+```
+
+适合资源目录本身已随包发布的场景。
+
+**场景 5：生产环境验证**
+
+```bash
+# 打包
+pnpm build
+
+# 验证产物结构
+ls -R dist/lib
+# 应包含：
+# - style.css（编译后的 CSS）
+# - assets/（静态资源）
+# - .ktr/（生产注册表）
+
+# 验证渲染功能
+node -e "
+  import('./dist/index.js').then(async (mod) => {
+    const render = mod.createTemplateRenderer(import.meta.url);
+    const result = await render('hello/card', { title: 'Test' });
+    console.log('渲染结果:', result);
+  });
+"
+```
+
+## CLI 选项优先级
+
+命令行选项 > `karin.template.ts` > 内置默认值
+
+```bash
+# 配置文件设置 port: 5180
+# 命令行覆盖为 3000
+pnpm ktr dev --port 3000
+# 最终使用 3000
+```
+
+```bash
+# 配置文件设置 open: true
+# 命令行覆盖为 false
+pnpm ktr dev --no-open
+# 最终不打开浏览器
+```
+
+## 常见问题
+
+### 端口被占用
+
+**症状**：启动时提示 `Port 5180 is in use`。
+
+**解决**：
+
+1. 自动换端口（推荐）：启动详情会打印新端口，直接访问即可。
+2. 手动释放端口：复制终端打印的 `kill` 命令执行。
+3. 指定其他端口：`pnpm ktr dev --port 3000`。
+
+### 类型推导失效
+
+**症状**：`renderTemplate('hello/card', data)` 中 `data` 没有类型提示。
+
+**解决**：
+
+1. 运行 `pnpm ktr sync` 刷新 `.ktr/registry-types.d.ts`。
+2. 检查 `tsconfig.json` 的 `include` 包含 `.ktr/**/*.d.ts`。
+3. 重启 TypeScript Server（VSCode: `Ctrl+Shift+P` → `TypeScript: Restart TS Server`）。
+
+### 模板未找到
+
+**症状**：渲染时返回 `Template not found: hello/card`。
+
+**解决**：
+
+1. 确认模板文件存在：`ktr/template/hello/card/index.tsx`。
+2. 确认导出方式：必须是 `export default defineTemplate({...})`。
+3. 运行 `pnpm ktr sync` 刷新注册表。
+4. 检查路由拼写：板块和模板名用 `/` 分隔，如 `'hello/card'`。
+
+### CSS 未生效
+
+**症状**：SSR HTML 没有样式，或样式不完整。
+
+**解决**：
+
+1. 检查 `ktr/template/style.css` 存在且包含 `@import 'tailwindcss'`。
+2. 开发态确认 `.ktr/style.css` 已生成（`ktr dev` 自动生成）。
+3. 集成打包器模式确认产物目录包含 `style.css`（如 `lib/style.css`）；standalone 模式不生成独立 CSS 文件，CSS 已内嵌在 `dist/ktr/index.mjs`。
+4. 额外样式检查 `extraStylePaths` 路径正确且文件存在。
+
+### 资源 404
+
+**症状**：模板中引用的图片、字体等资源加载失败。
+
+**解决**：
+
+1. 资源放到 `ktr/public/` 目录。
+2. 模板中用绝对路径引用：`/assets/avatar.png`（不是 `./assets/`）。
+3. 确认 `dir.copyAssets` 为 `true`（默认值）。
+4. 生产态确认产物目录下 `assets/` 存在（如 `lib/assets/`）。

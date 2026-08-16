@@ -1,0 +1,18 @@
+{
+  "title": "Karin Template React",
+  "subtitle": "React + Tailwind CSS + TypeScript",
+  "items": [
+    {
+      "label": "渲染方式",
+      "value": "SSR HTML"
+    },
+    {
+      "label": "预览",
+      "value": "Iframe 沙盒"
+    },
+    {
+      "label": "类型",
+      "value": "注册表驱动"
+    }
+  ]
+}

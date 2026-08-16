@@ -1,0 +1,106 @@
+---
+title: 编写模板
+description: defineTemplate 的写法、运行时上下文 ctx 与模板组件的外观规则
+---
+
+模板就是一个 React 组件：给它数据，它返回界面，框架负责 SSR 渲染成 HTML 再截图。文件放哪、怎么注册见 [目录约定](./conventions)，本页只讲组件本身怎么写。
+
+## 一个完整模板
+
+```tsx title="ktr/template/hello/list/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+/** 成员榜单模板的数据结构。 */
+interface HelloListData {
+  title: string
+  users: Array<{ name: string; score: number }>
+}
+
+const HelloList = ({ data }: TemplateProps<HelloListData>) => (
+  <div className="w-160 bg-background p-7 text-foreground">
+    <h1 className="mb-5 text-2xl font-bold">{data.title}</h1>
+    {data.users.map((user) => (
+      <div key={user.name} className="flex justify-between py-1">
+        <span>{user.name}</span>
+        <strong>{user.score}</strong>
+      </div>
+    ))}
+  </div>
+)
+
+export default defineTemplate({
+  name: '成员榜单',
+  description: '多行重复的列表截图',
+  component: HelloList
+})
+```
+
+`defineTemplate` 必须**默认导出**，字段：
+
+| 字段          | 必填 | 说明                                                       |
+| ------------- | ---- | ---------------------------------------------------------- |
+| `name`        | 否   | 面板侧边栏展示名称。                                       |
+| `description` | 否   | 面板展示的模板描述。                                       |
+| `component`   | 是   | 渲染组件，异步组件也可以。                                 |
+| `validate`    | 否   | 运行时数据校验，返回 `false` 时 SSR 报错而不是渲染出坏图。 |
+
+泛型不用显式写：组件 props 标注 `TemplateProps<HelloListData>` 后，`defineTemplate` 自动推断数据类型。
+
+数据来源不可靠（用户输入、动态路由）时加 `validate` 兜底：
+
+```tsx twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+/** 成员榜单模板的数据结构。 */
+interface HelloListData {
+  title: string
+  users: Array<{ name: string; score: number }>
+}
+declare const HelloList: React.FC<TemplateProps<HelloListData>>
+// ---cut---
+export default defineTemplate({
+  component: HelloList,
+  validate: (data): data is HelloListData => typeof data === 'object' && data !== null && Array.isArray((data as HelloListData).users)
+})
+```
+
+模板变复杂时，把子组件和工具函数收进同目录的 `components/`，`index.tsx` 只做总装——`components/` 不会被扫成路由，可以自由分层。
+
+## 运行时上下文 ctx
+
+组件第二个参数 `ctx`（类型 `RenderContext`）：
+
+- `ctx.theme`（可选）：调用方显式提供的主题变量，**框架不发明默认主题色**，没传就是 `undefined`，消费时用可选链。深色判断：`ctx.theme?.mode === 'dark'`。
+- `ctx.scale`：渲染比例，截图模板通常为 `1`，不用理会。
+
+```tsx twoslash
+import type { TemplateProps } from '@karinjs/template-react'
+
+/** 成员榜单模板的数据结构。 */
+interface HelloListData {
+  title: string
+  users: Array<{ name: string; score: number }>
+}
+// ---cut---
+const HelloList = ({ data, ctx }: TemplateProps<HelloListData>) => {
+  const isDark = ctx.theme?.mode === 'dark'
+  // 深色下换图、去投影等条件逻辑写在这里
+}
+```
+
+## 外观规则
+
+<Callout type="error">
+  **不要给根元素写 `id="container"`**——截图边界由框架在组件外统一提供。想要圆角截图，给根元素加 `rounded-*` 类，内容需要随圆角裁剪时配
+  `overflow-hidden`；圆角、阴影、背景完全由你的类名决定，框架不强加也不剥离。
+</Callout>
+
+<Callout type="warn">
+  **避免视口单位**（`100vh`、`min-h-screen`、`vw`）：截图边界由内容驱动，视口尺寸由宿主截图器决定（Karin 默认
+  800×600），视口单位会导致面板预览与真实截图不一致。需要最小高度时写固定像素（如 `min-h-[600px]`）。
+</Callout>
+
+<Cards>
+  <Card title="mock 数据" href="./data" description="给模板准备预览数据" />
+  <Card title="样式与主题" href="./styling" description="颜色 token 与换肤" />
+</Cards>

@@ -1,0 +1,4 @@
+{
+  "title": "核心概念",
+  "pages": ["concepts-overview", "routing", "registry", "data-flow", "theming", "dev-panel-architecture"]
+}

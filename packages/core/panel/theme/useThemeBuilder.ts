@@ -1,0 +1,224 @@
+import { useCallback, useMemo, useState } from 'react'
+
+import { generateExportCss, generateSandboxCss } from './css'
+import { detectFontFamily, validateFontUrl, type CustomFont, type FontUrlError } from './fontCdn'
+import {
+  defaultKnobs,
+  fontMonoOptions,
+  fontSansOptions,
+  formRadiusOptions,
+  isDefaultKnobs,
+  radiusOptions,
+  sanitizeKnobs,
+  type LockableKnob,
+  type ThemeKnobs
+} from './knobs'
+import { baseMax } from './palette'
+import { findMatchingPreset, type ThemePreset } from './presets'
+
+/** 旋钮的持久化键。 */
+const knobsStorageKey = 'ktr-template-theme'
+
+/** 自定义字体的持久化键。 */
+const fontsStorageKey = 'ktr-template-fonts'
+
+/**
+ * 随机配色的取值区间。
+ *
+ * 明度和彩度都收在中段：全区间随机会经常抽到接近纯黑纯白、
+ * 或彩度爆表的颜色，用户点几次就不想点了。
+ */
+const randomRanges = {
+  hue: [0, 360],
+  chroma: [0.1, 0.26],
+  lightness: [0.5, 0.85],
+  base: [0, baseMax]
+} as const
+
+/** 区间内取随机数。 */
+const randomInRange = ([min, max]: readonly [number, number]): number => min + Math.random() * (max - min)
+
+/** 数组里取随机项。 */
+const randomItem = <T>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)]!
+
+/** 读取存储的旋钮，损坏时回落到默认值。 */
+const readKnobs = (): ThemeKnobs => {
+  try {
+    const stored = window.localStorage.getItem(knobsStorageKey)
+    return stored ? sanitizeKnobs(JSON.parse(stored)) : defaultKnobs
+  } catch {
+    return defaultKnobs
+  }
+}
+
+/** 读取存储的自定义字体，顺手过滤掉已不合规的 URL。 */
+const readCustomFonts = (): CustomFont[] => {
+  try {
+    const stored = window.localStorage.getItem(fontsStorageKey)
+    if (!stored) return []
+
+    const parsed: unknown = JSON.parse(stored)
+    if (!Array.isArray(parsed)) return []
+
+    return parsed.filter(
+      (item): item is CustomFont =>
+        typeof item === 'object' &&
+        !!item &&
+        typeof (item as CustomFont).url === 'string' &&
+        typeof (item as CustomFont).family === 'string' &&
+        validateFontUrl((item as CustomFont).url) === null
+    )
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 模板主题构建器的状态与派生数据。
+ *
+ * 旋钮是唯一数据源，CSS 全部由它派生：
+ * `sandboxCss` 注入画布（默认主题时为空串，表示不干预），`getExportCss` 供代码弹窗按需取快照。
+ */
+export const useThemeBuilder = () => {
+  const [knobs, setKnobsState] = useState<ThemeKnobs>(readKnobs)
+  const [lockedKnobs, setLockedKnobs] = useState<LockableKnob[]>([])
+  const [customFonts, setCustomFonts] = useState<CustomFont[]>(readCustomFonts)
+
+  const persistKnobs = useCallback((next: ThemeKnobs) => {
+    try {
+      window.localStorage.setItem(knobsStorageKey, JSON.stringify(next))
+    } catch {
+      // 存不下就算了，当前会话依旧可用。
+    }
+  }, [])
+
+  const persistFonts = useCallback((next: CustomFont[]) => {
+    try {
+      window.localStorage.setItem(fontsStorageKey, JSON.stringify(next))
+    } catch {
+      // 同上，静默降级。
+    }
+  }, [])
+
+  /** 局部更新旋钮。 */
+  const setKnobs = useCallback(
+    (patch: Partial<ThemeKnobs>) => {
+      setKnobsState((current) => {
+        const next = { ...current, ...patch }
+        persistKnobs(next)
+        return next
+      })
+    },
+    [persistKnobs]
+  )
+
+  /** 切换某个旋钮的锁定状态。 */
+  const toggleLock = useCallback((knob: LockableKnob) => {
+    setLockedKnobs((current) => (current.includes(knob) ? current.filter((item) => item !== knob) : [...current, knob]))
+  }, [])
+
+  /**
+   * 导入 CDN 字体。
+   *
+   * @returns 成功返回 null，失败返回错误码交给调用方翻译。
+   */
+  const importFont = useCallback(
+    (url: string): FontUrlError | null => {
+      const trimmed = url.trim()
+
+      const invalid = validateFontUrl(trimmed)
+      if (invalid) return invalid
+
+      const family = detectFontFamily(trimmed)
+      if (!family) return 'cannot-detect-family'
+
+      if (customFonts.some((font) => font.url === trimmed)) return 'already-imported'
+
+      const next = [...customFonts, { family, url: trimmed }]
+      setCustomFonts(next)
+      persistFonts(next)
+      return null
+    },
+    [customFonts, persistFonts]
+  )
+
+  /** 移除已导入的字体。 */
+  const removeFont = useCallback(
+    (url: string) => {
+      const next = customFonts.filter((font) => font.url !== url)
+      setCustomFonts(next)
+      persistFonts(next)
+    },
+    [customFonts, persistFonts]
+  )
+
+  /** 随机配色，跳过已锁定的旋钮（含字体，与官方主题构建器一致）。 */
+  const randomize = useCallback(() => {
+    setKnobsState((current) => {
+      const isLocked = (knob: LockableKnob) => lockedKnobs.includes(knob)
+
+      const next: ThemeKnobs = {
+        hue: isLocked('accent') ? current.hue : randomInRange(randomRanges.hue),
+        chroma: isLocked('accent') ? current.chroma : randomInRange(randomRanges.chroma),
+        lightness: isLocked('accent') ? current.lightness : randomInRange(randomRanges.lightness),
+        base: isLocked('base') ? current.base : randomInRange(randomRanges.base),
+        radius: isLocked('radius') ? current.radius : randomItem(radiusOptions).value,
+        formRadius: isLocked('formRadius') ? current.formRadius : randomItem(formRadiusOptions).value,
+        // 官方 useRandomizeVariables 同样把 fontFamily 纳入随机并尊重其锁；
+        // 若这里固定不动，面板上那两个字体锁就成了点了没反应的死控件。
+        fontSans: isLocked('fontSans') ? current.fontSans : randomItem(fontSansOptions).value,
+        fontMono: isLocked('fontMono') ? current.fontMono : randomItem(fontMonoOptions).value,
+        // 鲜艳调色板是叠加开关，不属于「配色」本身，随机时保持不动。
+        vibrant: current.vibrant
+      }
+
+      persistKnobs(next)
+      return next
+    })
+  }, [lockedKnobs, persistKnobs])
+
+  /** 应用预设：一次性 patch 配色与圆角，不动字体和鲜艳开关。 */
+  const applyPreset = useCallback(
+    (preset: ThemePreset) => {
+      setKnobs({
+        hue: preset.hue,
+        chroma: preset.chroma,
+        lightness: preset.lightness,
+        base: preset.base,
+        radius: preset.radius,
+        formRadius: preset.formRadius
+      })
+    },
+    [setKnobs]
+  )
+
+  /** 恢复默认，同时清空锁定状态。 */
+  const reset = useCallback(() => {
+    setKnobsState(defaultKnobs)
+    setLockedKnobs([])
+    persistKnobs(defaultKnobs)
+  }, [persistKnobs])
+
+  const isDefault = isDefaultKnobs(knobs)
+
+  return {
+    knobs,
+    // 默认主题不注入任何 CSS：这是「不设置就用组件库默认」语义的落点。
+    sandboxCss: useMemo(() => (isDefault ? '' : generateSandboxCss(knobs)), [isDefault, knobs]),
+    // 导出 CSS 按需生成（代码弹窗打开时才取快照），不做常驻 useMemo：
+    // 拖滑块时每帧重算一大段字符串纯属浪费。
+    getExportCss: useCallback(() => generateExportCss(knobs, customFonts), [knobs, customFonts]),
+    // 当前旋钮命中的预设；undefined 即「自定义」。
+    matchingPreset: findMatchingPreset(knobs),
+    isDefault,
+    lockedKnobs,
+    customFonts,
+    importFont,
+    removeFont,
+    setKnobs,
+    toggleLock,
+    randomize,
+    applyPreset,
+    reset
+  }
+}

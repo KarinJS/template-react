@@ -1,0 +1,922 @@
+---
+title: 调试技巧
+description: 开发面板调试工具、SSR 渲染调试、类型推导调试、网络请求调试与常见调试场景
+---
+
+掌握调试技巧可以快速定位问题、提升开发效率。本页讲解开发面板、SSR、类型推导和网络请求的调试方法。
+
+## 开发面板调试
+
+### 检查模式
+
+点击元素定位到源码：
+
+```bash
+# 启动开发面板
+pnpm template
+
+# 访问 http://localhost:5180/__ktr/panel/
+# 点击工具栏「定位」按钮，或按住 Shift+Alt 点击元素
+```
+
+检查模式会在控制台输出：
+
+```
+[ktr:inspect] 点击位置: user/card/index.tsx:23:5
+[ktr:inspect] 组件: UserCard
+```
+
+### React DevTools
+
+在沙盒 iframe 中使用 React DevTools：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    define: {
+      __REACT_DEVTOOLS_GLOBAL_HOOK__: '({ isDisabled: false })'
+    }
+  }
+})
+```
+
+打开浏览器控制台 → Components 标签即可查看组件树。
+
+### 沙盒通信日志
+
+查看面板 ↔ 沙盒的 postMessage 通信：
+
+```ts title="packages/core/src/dev/sandbox.ts"
+// 开启调试日志
+window.addEventListener('message', (event) => {
+  if (event.data.type?.startsWith('ktr:')) {
+    console.log('[沙盒 ← 面板]', event.data)
+  }
+})
+
+window.parent.postMessage = new Proxy(window.parent.postMessage, {
+  apply(target, thisArg, args) {
+    console.log('[沙盒 → 面板]', args[0])
+    return Reflect.apply(target, thisArg, args)
+  }
+})
+```
+
+### 数据流追踪
+
+追踪数据从 JSON → 面板 → 沙盒 → 组件的流动：
+
+```tsx title="ktr/template/user/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface UserCardData {
+  name: string
+}
+
+const UserCard = ({ data, ctx }: TemplateProps<UserCardData>) => {
+  // 1. 打印接收到的数据
+  console.log('[组件] 接收数据:', data)
+  console.log('[组件] 运行时上下文:', ctx)
+
+  return <div>{data.name}</div>
+}
+
+export default defineTemplate({
+  component: UserCard,
+  validate: (data): data is UserCardData => {
+    // 2. 打印校验过程
+    console.log('[validate] 校验数据:', data)
+    return typeof data === 'object' && data !== null && 'name' in data && typeof (data as UserCardData).name === 'string'
+  }
+})
+```
+
+### 热更新调试
+
+监听 HMR 事件：
+
+```tsx title="ktr/template/user/card/index.tsx"
+if (import.meta.hot) {
+  import.meta.hot.on('vite:beforeUpdate', (payload) => {
+    console.log('[HMR] 即将更新:', payload)
+  })
+
+  import.meta.hot.on('vite:afterUpdate', (payload) => {
+    console.log('[HMR] 更新完成:', payload)
+  })
+
+  import.meta.hot.accept((newModule) => {
+    console.log('[HMR] 模块已接受:', newModule)
+  })
+}
+```
+
+## SSR 渲染调试
+
+### 渲染日志
+
+在插件中记录渲染过程：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const debugPlugin: RenderPlugin = {
+  name: 'debug',
+  beforeRender: (ctx) => {
+    console.log('[SSR] 开始渲染:', ctx.path)
+    console.log('[SSR] 数据:', JSON.stringify(ctx.data, null, 2))
+    console.log('[SSR] 主题:', ctx.ctx.theme)
+  },
+  afterRender: (ctx) => {
+    console.log('[SSR] HTML 大小:', ctx.html.length)
+    console.log('[SSR] 包含的类名:', extractClassNames(ctx.html))
+  }
+}
+
+function extractClassNames(html: string): string[] {
+  const matches = html.matchAll(/class="([^"]*)"/g)
+  const classes = new Set<string>()
+  for (const match of matches) {
+    match[1].split(/\s+/).forEach((cls) => cls && classes.add(cls))
+  }
+  return Array.from(classes)
+}
+```
+
+### 错误捕获
+
+捕获 SSR 渲染错误：
+
+```ts twoslash
+import { createRenderer } from '@karinjs/template-react'
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const errorPlugin: RenderPlugin = {
+  name: 'error-catcher',
+  beforeRender: async (ctx) => {
+    try {
+      // 数据校验
+      if (!ctx.data) throw new Error('数据为空')
+    } catch (error) {
+      console.error(`[SSR 错误] ${ctx.path}:`, error)
+      // 记录到文件
+      await logError(ctx.path, error)
+      throw error
+    }
+  }
+}
+
+async function logError(path: string, error: unknown) {
+  const fs = await import('node:fs/promises')
+  const timestamp = new Date().toISOString()
+  const log = `[${timestamp}] ${path}: ${(error as Error).message}\n`
+  await fs.appendFile('ssr-errors.log', log)
+}
+```
+
+### HTML 输出调试
+
+保存中间 HTML 用于检查：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const saveIntermediateHTML: RenderPlugin = {
+  name: 'save-intermediate',
+  afterRender: async (ctx) => {
+    const debugDir = path.join(ctx.outputDir, 'debug')
+    await fs.promises.mkdir(debugDir, { recursive: true })
+
+    const filename = `${ctx.path.replace('/', '_')}_${Date.now()}.html`
+    await fs.promises.writeFile(path.join(debugDir, filename), ctx.html)
+
+    console.log('[调试] 保存 HTML:', filename)
+  }
+}
+```
+
+### React 错误边界
+
+在 SSR 中捕获组件错误：
+
+```tsx title="ktr/template/components/ErrorBoundary.tsx" twoslash
+import React from 'react'
+
+interface Props {
+  children: React.ReactNode
+}
+
+interface State {
+  hasError: boolean
+  error?: Error
+}
+
+export class ErrorBoundary extends React.Component<Props, State> {
+  constructor(props: Props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[ErrorBoundary] 捕获错误:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 bg-error-soft text-error">
+          <h2 className="text-lg font-bold mb-2">渲染错误</h2>
+          <pre className="text-sm">{this.state.error?.message}</pre>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+```
+
+使用错误边界：
+
+```tsx title="ktr/template/user/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+import React from 'react'
+
+interface Props {
+  children: React.ReactNode
+}
+
+interface State {
+  hasError: boolean
+  error?: Error
+}
+
+class ErrorBoundary extends React.Component<Props, State> {
+  constructor(props: Props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div>Error</div>
+    }
+    return this.props.children
+  }
+}
+
+interface Data {
+  name: string
+}
+
+const UserCard = ({ data }: TemplateProps<Data>) => (
+  <ErrorBoundary>
+    <div>{data.name}</div>
+  </ErrorBoundary>
+)
+
+export default defineTemplate({
+  component: UserCard
+})
+```
+
+## 类型推导调试
+
+### 检查推导链路
+
+使用 TypeScript 编译器查看类型推导：
+
+```bash
+# 1. 生成类型声明文件
+pnpm tsc --declaration --emitDeclarationOnly
+
+# 2. 查看 .d.ts 文件
+cat .ktr/registry-types.d.ts
+```
+
+### 类型断言调试
+
+强制显示推导类型：
+
+```tsx twoslash
+import { defineTemplate, type TemplateProps, type DataOf } from '@karinjs/template-react'
+
+interface UserCardData {
+  name: string
+  avatar: string
+}
+
+const UserCard = ({ data }: TemplateProps<UserCardData>) => {
+  // 类型断言：data 应为 UserCardData
+  const _check: UserCardData = data
+  //    ^?
+
+  return <div>{data.name}</div>
+}
+
+const def = defineTemplate({
+  component: UserCard
+})
+
+// 检查 DataOf 推导
+type ExtractedData = DataOf<typeof def>
+//   ^?
+```
+
+### @ts-expect-error 测试
+
+验证类型错误：
+
+```tsx twoslash
+// @errors: 2353
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface Data {
+  name: string
+}
+
+const Component = ({ data }: TemplateProps<Data>) => {
+  // @ts-expect-error age 不在类型中
+  console.log(data.age)
+
+  return <div>{data.name}</div>
+}
+
+export default defineTemplate({
+  component: Component
+})
+```
+
+### 模块增强检查
+
+验证 ProjectRegistry 是否生效：
+
+```ts title="test-registry.ts" twoslash
+import type { LoadedRegistry } from '@karinjs/template-react'
+
+// 检查注册表类型
+type Registry = LoadedRegistry
+//   ^?
+
+// 检查是否有精确路由
+type Paths = keyof Registry
+//   ^?
+
+// 检查特定路由的数据类型
+type UserCardData = Registry['user/card'] extends { __data?: infer D } ? D : never
+//   ^?
+```
+
+### tsserver 日志
+
+启用 TypeScript 服务器日志：
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "typescript-plugin-css-modules"
+      }
+    ]
+  },
+  "ts-node": {
+    "logError": true
+  }
+}
+```
+
+查看日志：
+
+```bash
+# VS Code 命令面板
+# TypeScript: Open TS Server log
+```
+
+## 网络请求调试
+
+### Mock API 日志
+
+开启 mock API 详细日志：
+
+```ts title="packages/core/src/dev/mock-api.ts"
+export function mockApiMiddleware(config: ResolvedKtrConfig) {
+  return async (req, res, next) => {
+    const start = Date.now()
+    const url = new URL(req.url!, 'http://localhost')
+
+    console.log(`[Mock API] ${req.method} ${url.pathname}`)
+
+    // ... 处理请求
+
+    const duration = Date.now() - start
+    console.log(`[Mock API] ${req.method} ${url.pathname} - ${duration}ms`)
+  }
+}
+```
+
+### 代理调试
+
+记录代理请求：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    server: {
+      proxy: {
+        '/api': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+          configure: (proxy, options) => {
+            proxy.on('proxyReq', (proxyReq, req, res) => {
+              console.log('[代理] 请求:', req.method, req.url)
+            })
+            proxy.on('proxyRes', (proxyRes, req, res) => {
+              console.log('[代理] 响应:', proxyRes.statusCode, req.url)
+            })
+            proxy.on('error', (err, req, res) => {
+              console.error('[代理] 错误:', err.message)
+            })
+          }
+        }
+      }
+    }
+  }
+})
+```
+
+### SSE 调试
+
+监听 Server-Sent Events：
+
+```ts title="test-sse.ts"
+const eventSource = new EventSource('http://localhost:5180/__ktr/api/stream')
+
+eventSource.onmessage = (event) => {
+  console.log('[SSE] 收到消息:', JSON.parse(event.data))
+}
+
+eventSource.onerror = (error) => {
+  console.error('[SSE] 连接错误:', error)
+}
+```
+
+### 文件监听调试
+
+追踪文件变更：
+
+```ts title="packages/core/src/dev/data-watch.ts"
+import chokidar from 'chokidar'
+
+export function startDataWatch(config: ResolvedKtrConfig) {
+  const watcher = chokidar.watch('**/*.json', {
+    cwd: config.mockDataDir,
+    ignoreInitial: true
+  })
+
+  watcher.on('all', (event, path) => {
+    console.log('[文件监听] 事件:', event, '路径:', path)
+  })
+}
+```
+
+## 常见调试场景
+
+### 场景 1：模板未注册
+
+**问题**：开发面板看不到新建的模板。
+
+**调试步骤**：
+
+```bash
+# 1. 检查文件位置
+ls -la ktr/template/user/card/
+# 应包含 index.tsx
+
+# 2. 手动刷新注册表
+pnpm ktr sync
+
+# 3. 查看生成的注册表
+cat .ktr/template-registry.ts
+# 检查是否包含 'user/card'
+
+# 4. 检查是否被忽略
+# 文件名不是 index.tsx？
+# 目录名以 _ 开头？
+# 在 components/ 下？
+```
+
+**解决方案**：
+
+```tsx title="ktr/template/user/card/index.tsx" twoslash
+import { defineTemplate } from '@karinjs/template-react'
+
+// ✅ 正确：导出 defineTemplate
+export default defineTemplate({
+  component: () => <div>User Card</div>
+})
+
+// ❌ 错误：直接导出组件
+// export default () => <div>User Card</div>
+```
+
+### 场景 2：数据类型不匹配
+
+**问题**：运行时数据与类型定义不一致。
+
+**调试步骤**：
+
+```tsx title="ktr/template/user/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface UserCardData {
+  name: string
+  age: number
+}
+
+const UserCard = ({ data }: TemplateProps<UserCardData>) => {
+  // 1. 运行时检查
+  console.log('数据类型:', typeof data)
+  console.log('数据内容:', data)
+  console.log('是否有 age:', 'age' in data)
+
+  return <div>{data.name}</div>
+}
+
+export default defineTemplate({
+  component: UserCard,
+  // 2. 添加 validate
+  validate: (data): data is UserCardData => {
+    if (typeof data !== 'object' || data === null) {
+      console.error('[validate] 数据不是对象:', data)
+      return false
+    }
+    if (!('name' in data) || typeof (data as any).name !== 'string') {
+      console.error('[validate] 缺少 name 字段或类型错误')
+      return false
+    }
+    if (!('age' in data) || typeof (data as any).age !== 'number') {
+      console.error('[validate] 缺少 age 字段或类型错误')
+      return false
+    }
+    return true
+  }
+})
+```
+
+### 场景 3：CSS 未生效
+
+**问题**：Tailwind 类名不起作用。
+
+**调试步骤**：
+
+```bash
+# 1. 检查 CSS 入口
+cat ktr/template/style.css
+# 应包含 @import 'tailwindcss'
+
+# 2. 检查构建产物（产物目录随打包器 outDir，这里以 lib/ 为例）
+cat lib/style.css
+# 检查是否包含对应的 CSS 规则
+
+# 3. 检查 HTML
+cat temp/html/user_card.html
+# 检查 <style> 标签内容
+```
+
+**解决方案**：
+
+```css title="ktr/template/style.css"
+/* ✅ 正确 */
+@import 'tailwindcss';
+@source '../ktr/template';
+
+/* ❌ 错误：缺少 @source */
+@import 'tailwindcss';
+```
+
+### 场景 4：图片加载失败
+
+**问题**：开发环境图片正常，SSR 渲染后图片 404。
+
+**调试步骤**：
+
+```tsx title="ktr/template/user/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface Data {
+  avatar: string
+}
+
+const Component = ({ data }: TemplateProps<Data>) => {
+  // 1. 打印图片路径
+  console.log('图片路径:', data.avatar)
+
+  // 2. 检查路径格式
+  // ✅ 正确：/assets/avatar.png
+  // ❌ 错误：./assets/avatar.png
+  // ❌ 错误：assets/avatar.png
+
+  return <img src={data.avatar} alt="头像" />
+}
+
+export default defineTemplate({ component: Component })
+```
+
+**解决方案**：
+
+```tsx
+// ✅ 正确：使用 / 开头的路径（等于 <dir.assets>/ 下的相对路径）
+<img src="/assets/avatar.png" alt="" />
+
+// ❌ 错误：使用相对路径
+<img src="./avatar.png" alt="" />
+```
+
+SSR 产出 HTML 时框架会自动改写这些引用：不超过 `html.assetsInlineLimit`（默认 4096 字节）的内联为 base64，超过的转为 `file://` 绝对路径，开发和生产都不需要手写路径转换插件。如果图片仍然 404，按顺序检查：
+
+1. 引用路径是否以 `/` 开头（`./assets/x.png`、`assets/x.png` 都不会被处理）；
+2. 文件是否真实存在于 `<dir.assets>/` 下的对应位置（如 `ktr/public/assets/avatar.png`）；
+3. 生产态确认产物目录下 `assets/` 存在（如 `lib/assets/`，由构建时的 `copyAssets` 复制）。
+
+### 场景 5：端口被占用
+
+**问题**：`ktr dev` 启动失败，提示端口被占用。
+
+**调试步骤**：
+
+```bash
+# 1. 查看端口占用
+# Windows
+netstat -ano | findstr :5180
+
+# macOS/Linux
+lsof -i :5180
+
+# 2. 查看进程详情
+# Windows
+tasklist /FI "PID eq <PID>"
+
+# macOS/Linux
+ps -p <PID>
+
+# 3. 杀死进程
+# Windows
+taskkill /F /PID <PID>
+
+# macOS/Linux
+kill -9 <PID>
+```
+
+**解决方案**：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dev: {
+    port: 5181 // 换个端口
+  }
+})
+```
+
+### 场景 6：HMR 不工作
+
+**问题**：修改代码后画布不更新。
+
+**调试步骤**：
+
+```bash
+# 1. 检查 Vite 日志
+# 应看到 [vite] page reload 或 [vite] hot updated
+
+# 2. 检查浏览器控制台
+# 应看到 [vite] connecting...
+# 不应看到 WebSocket connection failed
+
+# 3. 检查文件是否被忽略
+cat karin.template.ts
+# 检查 vite.server.watch.ignored
+```
+
+**解决方案**：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    server: {
+      watch: {
+        // 确保没有忽略模板目录
+        ignored: ['!**/ktr/template/**']
+      }
+    }
+  }
+})
+```
+
+### 场景 7：类型推导失效
+
+**问题**：`render('user/card', data)` 没有类型提示。
+
+**调试步骤**：
+
+```bash
+# 1. 检查注册表类型
+cat .ktr/registry-types.d.ts
+# 应包含 ProjectRegistry 的增强
+
+# 2. 重启 TypeScript 服务器
+# VS Code: 命令面板 → TypeScript: Restart TS Server
+
+# 3. 手动刷新
+pnpm ktr sync
+
+# 4. 检查 tsconfig.json
+cat tsconfig.json
+# 应包含 "include": [".ktr/**/*"]
+```
+
+**解决方案**：
+
+```json title="tsconfig.json"
+{
+  "include": [
+    "src/**/*",
+    ".ktr/**/*" // 包含生成的类型文件
+  ]
+}
+```
+
+### 场景 8：插件不执行
+
+**问题**：自定义插件的钩子没有被调用。
+
+**调试步骤**：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const myPlugin: RenderPlugin = {
+  name: 'my-plugin',
+  beforeRender: (ctx) => {
+    // 1. 添加日志
+    console.log('[插件] beforeRender 被调用')
+    console.log('[插件] 路径:', ctx.path)
+  },
+  afterRender: (ctx) => {
+    // 2. 检查是否返回
+    console.log('[插件] afterRender 被调用')
+    console.log('[插件] HTML 长度:', ctx.html.length)
+
+    // ⚠️ 必须返回 HTML 或 undefined
+    return ctx.html
+  }
+}
+```
+
+**常见错误**：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+// ❌ 错误：没有注册插件
+export default {
+  vite: {
+    plugins: [myPlugin] // 这是 Vite 插件，不是渲染插件！
+  }
+}
+
+// ✅ 正确：在运行时注册
+import { createRenderer } from '@karinjs/template-react'
+declare const templates: any, cssPath: string, outputDir: string, myPlugin: RenderPlugin
+// ---cut---
+const render = createRenderer(templates, {
+  cssPath,
+  outputDir,
+  plugins: [myPlugin] // 渲染插件在这里注册
+})
+```
+
+## 调试工具推荐
+
+### VS Code 扩展
+
+```json title=".vscode/extensions.json"
+{
+  "recommendations": ["dbaeumer.vscode-eslint", "bradlc.vscode-tailwindcss", "esbenp.prettier-vscode", "msjsdiag.vscode-react-native"]
+}
+```
+
+### 浏览器扩展
+
+- **React Developer Tools**：查看组件树
+- **Redux DevTools**：状态管理调试
+- **Lighthouse**：性能分析
+
+### 命令行工具
+
+```bash
+# 端口占用检查
+npx kill-port 5180
+
+# 依赖分析
+npx depcheck
+
+# 类型检查
+pnpm tsc --noEmit
+
+# ESLint
+pnpm eslint . --ext .ts,.tsx
+```
+
+### 日志库
+
+```ts title="src/utils/logger.ts"
+export const logger = {
+  debug: (...args: any[]) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[DEBUG]', ...args)
+    }
+  },
+  info: (...args: any[]) => console.log('[INFO]', ...args),
+  warn: (...args: any[]) => console.warn('[WARN]', ...args),
+  error: (...args: any[]) => console.error('[ERROR]', ...args)
+}
+```
+
+使用：
+
+```tsx twoslash
+// @filename: ../utils/logger.ts
+export const logger = {
+  debug: (...args: any[]) => console.log('[DEBUG]', ...args),
+  info: (...args: any[]) => console.log('[INFO]', ...args),
+  warn: (...args: any[]) => console.warn('[WARN]', ...args),
+  error: (...args: any[]) => console.error('[ERROR]', ...args)
+}
+// @filename: index.tsx
+// ---cut---
+import { logger } from '../utils/logger'
+
+const Component = () => {
+  logger.debug('组件渲染')
+  return <div>Hello</div>
+}
+```
+
+## 调试配置
+
+### 启用详细日志
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    logLevel: 'info', // 'error' | 'warn' | 'info' | 'silent'
+    clearScreen: false // 不清屏，保留历史日志
+  }
+})
+```
+
+### Source Map
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    build: {
+      sourcemap: true // 生成 source map 用于调试
+    }
+  }
+})
+```
+
+### 错误堆栈
+
+```ts title="src/utils/render.ts"
+Error.stackTraceLimit = 50 // 增加堆栈深度
+```
+
+<Cards>
+  <Card title="开发面板" href="/docs/guide/dev-panel" description="面板使用技巧" />
+  <Card title="性能优化" href="./performance" description="性能分析工具" />
+  <Card title="故障排除" href="/docs/troubleshooting/build-issues" description="常见问题解决" />
+</Cards>

@@ -1,0 +1,796 @@
+---
+title: 多模板项目
+description: Monorepo 场景配置、pnpm workspace 最佳实践、共享组件和样式、类型共享与多包构建策略
+---
+
+在 Monorepo 中管理多个模板包，复用组件、样式和类型，同时保持各包独立构建。
+
+## Monorepo 场景
+
+### 场景 1：多机器人共享模板
+
+```
+workspace/
+├── packages/
+│   ├── shared/               # 共享包
+│   │   ├── templates/        # 共享模板
+│   │   ├── components/       # 通用组件
+│   │   ├── styles/           # 共享样式
+│   │   └── types/            # 类型定义
+│   ├── bot-a/                # 机器人 A
+│   │   └── karin.template.ts
+│   └── bot-b/                # 机器人 B
+│       └── karin.template.ts
+├── pnpm-workspace.yaml
+└── package.json
+```
+
+### 场景 2：按功能模块拆分
+
+```
+workspace/
+├── packages/
+│   ├── core/                 # 核心模板
+│   ├── games/                # 游戏相关
+│   ├── social/               # 社交功能
+│   └── admin/                # 管理后台
+└── pnpm-workspace.yaml
+```
+
+### 场景 3：多租户 SaaS
+
+```
+workspace/
+├── packages/
+│   ├── base/                 # 基础模板
+│   ├── tenant-a/             # 租户 A 定制
+│   └── tenant-b/             # 租户 B 定制
+└── pnpm-workspace.yaml
+```
+
+## pnpm Workspace 配置
+
+### 初始化 Workspace
+
+```yaml title="pnpm-workspace.yaml"
+packages:
+  - 'packages/*'
+  - 'apps/*'
+```
+
+### 根 package.json
+
+```json title="package.json"
+{
+  "name": "karin-templates-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter \"./packages/*\" dev",
+    "build": "pnpm --filter \"./packages/*\" build",
+    "template:bot-a": "pnpm --filter bot-a template",
+    "template:bot-b": "pnpm --filter bot-b template"
+  },
+  "devDependencies": {
+    "@karinjs/template-react": "workspace:*",
+    "typescript": "^5.0.0"
+  }
+}
+```
+
+## 共享模板配置
+
+### 共享包结构
+
+```
+packages/shared/
+├── package.json
+├── templates/
+│   ├── common/
+│   │   └── card/
+│   │       └── index.tsx
+│   └── style.css
+├── components/
+│   ├── Avatar.tsx
+│   └── Badge.tsx
+├── styles/
+│   ├── tokens.css
+│   └── utilities.css
+└── types/
+    └── index.ts
+```
+
+### 共享包 package.json
+
+```json title="packages/shared/package.json"
+{
+  "name": "@workspace/shared",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./components": "./components/index.ts",
+    "./types": "./types/index.ts",
+    "./styles/*": "./styles/*"
+  },
+  "dependencies": {
+    "@karinjs/template-react": "workspace:*",
+    "@heroui/react": "^3.0.0",
+    "react": "^18.0.0"
+  }
+}
+```
+
+### 消费包配置
+
+```ts title="packages/bot-a/karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    template: '../../shared/templates', // 引用共享模板
+    assets: '../../shared/assets'
+  },
+  dev: {
+    port: 5181 // 避免端口冲突
+  },
+  extraStylePaths: ['../../shared/styles/tokens.css', '../../shared/styles/utilities.css']
+})
+```
+
+### 类型引用
+
+```ts title="packages/bot-a/src/utils/render.ts" twoslash
+// @filename: shared-types.d.ts
+declare module '@workspace/shared/types' {
+  export interface CommonCardData {
+    title: string
+    description?: string
+  }
+}
+// @filename: render.ts
+// ---cut---
+import { createTemplateRenderer } from '@karinjs/template-react'
+import type { CommonCardData } from '@workspace/shared/types'
+
+const render = createTemplateRenderer(import.meta.url)
+
+// 类型安全调用
+async function renderCard(data: CommonCardData) {
+  await render('common/card', data)
+}
+```
+
+## 共享组件
+
+### 定义共享组件
+
+```tsx title="packages/shared/components/Avatar.tsx" twoslash
+import React from 'react'
+
+export interface AvatarProps {
+  src: string
+  alt: string
+  size?: number
+}
+
+export const Avatar: React.FC<AvatarProps> = ({ src, alt, size = 48 }) => (
+  <img src={src} alt={alt} className="rounded-full object-cover" style={{ width: size, height: size }} />
+)
+```
+
+```ts title="packages/shared/components/index.ts"
+export { Avatar } from './Avatar'
+export { Badge } from './Badge'
+export { Card } from './Card'
+```
+
+### 在模板中使用
+
+```tsx title="packages/shared/templates/user/profile/index.tsx" twoslash
+// @filename: shared-components.d.ts
+declare module '@workspace/shared/components' {
+  import type { FC, ReactNode } from 'react'
+  export const Avatar: FC<{ src: string; alt: string; size?: number }>
+  export const Badge: FC<{ children?: ReactNode }>
+}
+// @filename: index.tsx
+// ---cut---
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+import { Avatar, Badge } from '@workspace/shared/components'
+
+interface ProfileData {
+  name: string
+  avatar: string
+  level: number
+}
+
+const Profile = ({ data }: TemplateProps<ProfileData>) => (
+  <div className="flex items-center gap-4 p-6 bg-surface rounded-xl">
+    <Avatar src={data.avatar} alt={data.name} size={64} />
+    <div>
+      <h2 className="text-xl font-bold">{data.name}</h2>
+      <Badge>Lv.{data.level}</Badge>
+    </div>
+  </div>
+)
+
+export default defineTemplate({
+  name: '用户资料',
+  component: Profile
+})
+```
+
+### 组件库包
+
+```
+packages/components/
+├── package.json
+├── src/
+│   ├── Avatar/
+│   │   ├── index.tsx
+│   │   └── Avatar.stories.tsx
+│   ├── Badge/
+│   │   ├── index.tsx
+│   │   └── Badge.stories.tsx
+│   └── index.ts
+└── tsconfig.json
+```
+
+```json title="packages/components/package.json"
+{
+  "name": "@workspace/components",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*/index.tsx"
+  },
+  "scripts": {
+    "storybook": "storybook dev -p 6006"
+  },
+  "devDependencies": {
+    "@storybook/react": "^7.0.0",
+    "@storybook/react-vite": "^7.0.0"
+  }
+}
+```
+
+## 共享样式
+
+### 样式包结构
+
+```
+packages/styles/
+├── package.json
+├── tokens.css       # 设计 token
+├── base.css         # 基础样式
+├── utilities.css    # 工具类
+└── animations.css   # 动画
+```
+
+### 设计 token
+
+```css title="packages/styles/tokens.css"
+@layer tokens {
+  :root {
+    /* 颜色 */
+    --color-brand: oklch(0.6 0.2 260);
+    --color-success: oklch(0.7 0.15 145);
+    --color-warning: oklch(0.75 0.15 85);
+    --color-error: oklch(0.6 0.2 25);
+
+    /* 间距 */
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+
+    /* 圆角 */
+    --radius-sm: 0.25rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 1rem;
+
+    /* 阴影 */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  }
+}
+```
+
+### 工具类
+
+```css title="packages/styles/utilities.css"
+@layer utilities {
+  .text-brand {
+    color: var(--color-brand);
+  }
+  .bg-brand {
+    background-color: var(--color-brand);
+  }
+
+  .gap-xs {
+    gap: var(--spacing-xs);
+  }
+  .gap-sm {
+    gap: var(--spacing-sm);
+  }
+  .gap-md {
+    gap: var(--spacing-md);
+  }
+
+  .rounded-custom {
+    border-radius: var(--radius-md);
+  }
+  .shadow-custom {
+    box-shadow: var(--shadow-md);
+  }
+}
+```
+
+### 在模板中引用
+
+```css title="packages/bot-a/ktr/template/style.css"
+@import 'tailwindcss';
+@import '@workspace/styles/tokens.css';
+@import '@workspace/styles/utilities.css';
+@import '@workspace/styles/animations.css';
+
+@source '../../../shared/templates';
+```
+
+## 类型共享
+
+### 类型包结构
+
+```
+packages/types/
+├── package.json
+├── src/
+│   ├── template.ts      # 模板数据类型
+│   ├── api.ts           # API 类型
+│   └── index.ts
+└── tsconfig.json
+```
+
+### 定义类型
+
+```ts title="packages/types/src/template.ts" twoslash
+/** 用户资料数据 */
+export interface UserProfile {
+  id: string
+  name: string
+  avatar: string
+  level: number
+  exp: number
+}
+
+/** 排行榜数据 */
+export interface Leaderboard {
+  title: string
+  users: Array<{
+    rank: number
+    user: UserProfile
+    score: number
+  }>
+}
+
+/** 卡片基础数据 */
+export interface CardData {
+  title: string
+  description?: string
+  image?: string
+}
+```
+
+### 类型增强
+
+```ts title="packages/types/src/registry.d.ts"
+import type { UserProfile, Leaderboard } from './template'
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'user/profile': import('@karinjs/template-react').TemplateDef<UserProfile>
+    'user/leaderboard': import('@karinjs/template-react').TemplateDef<Leaderboard>
+  }
+}
+```
+
+### 在模板中使用
+
+```tsx title="packages/shared/templates/user/profile/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+type UserProfile = {
+  name: string
+  level: number
+}
+
+const Profile = ({ data }: TemplateProps<UserProfile>) => (
+  <div>
+    <h1>{data.name}</h1>
+    <p>Level {data.level}</p>
+  </div>
+)
+
+export default defineTemplate({
+  component: Profile
+})
+```
+
+## 多包构建策略
+
+### 并行构建
+
+```json title="package.json"
+{
+  "scripts": {
+    "build": "pnpm --parallel --filter \"./packages/*\" build"
+  }
+}
+```
+
+### 依赖顺序构建
+
+```json title="package.json"
+{
+  "scripts": {
+    "build": "pnpm --filter \"@workspace/types\" build && pnpm --filter \"@workspace/components\" build && pnpm --filter \"./packages/bot-*\" build"
+  }
+}
+```
+
+### Turborepo 集成
+
+```json title="turbo.json"
+{
+  "$schema": "https://turbo.build/schema.json",
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "lib/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "template": {
+      "cache": false
+    }
+  }
+}
+```
+
+```json title="package.json"
+{
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "template": "turbo run template --filter bot-a"
+  }
+}
+```
+
+### 独立构建配置
+
+每个包使用独立的构建插件：
+
+```ts title="packages/bot-a/vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  plugins: [ktrBuildPlugin()],
+  build: {
+    outDir: 'lib',
+    lib: {
+      entry: 'src/index.ts',
+      formats: ['es']
+    }
+  }
+})
+```
+
+## 开发工作流
+
+### 同时启动多个面板
+
+```json title="package.json"
+{
+  "scripts": {
+    "dev:all": "concurrently \"pnpm --filter bot-a template\" \"pnpm --filter bot-b template\"",
+    "dev:bot-a": "pnpm --filter bot-a template",
+    "dev:bot-b": "pnpm --filter bot-b template"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0"
+  }
+}
+```
+
+### 监听共享包变更
+
+```ts title="packages/bot-a/karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    server: {
+      watch: {
+        // 监听共享包变更
+        ignored: ['!**/node_modules/@workspace/**']
+      }
+    }
+  }
+})
+```
+
+### 热重载共享组件
+
+使用 pnpm link 或 workspace 协议自动热重载：
+
+```json title="packages/bot-a/package.json"
+{
+  "dependencies": {
+    "@workspace/shared": "workspace:*",
+    "@workspace/components": "workspace:*",
+    "@workspace/types": "workspace:*"
+  }
+}
+```
+
+## 版本管理
+
+### Changesets
+
+```bash
+pnpm add -D @changesets/cli
+pnpm changeset init
+```
+
+```yaml title=".changeset/config.json"
+{
+  'changelog': '@changesets/cli/changelog',
+  'commit': false,
+  'linked': [['@workspace/shared', '@workspace/components', '@workspace/types']],
+  'access': 'public',
+  'baseBranch': 'main'
+}
+```
+
+发布流程：
+
+```bash
+# 1. 记录变更
+pnpm changeset
+
+# 2. 提升版本
+pnpm changeset version
+
+# 3. 发布
+pnpm changeset publish
+```
+
+### 固定版本
+
+所有包使用相同版本：
+
+```json title="package.json"
+{
+  "version": "1.0.0",
+  "workspaces": {
+    "packages": ["packages/*"]
+  }
+}
+```
+
+```bash
+pnpm version patch --workspace
+```
+
+## 实际案例
+
+### 案例 1：多机器人共享基础模板
+
+```
+workspace/
+├── packages/
+│   ├── base/                     # 基础模板包
+│   │   ├── templates/
+│   │   │   ├── user/
+│   │   │   └── common/
+│   │   └── package.json
+│   ├── bot-genshin/              # 原神机器人
+│   │   ├── ktr/template/
+│   │   │   └── genshin/          # 原神特有模板
+│   │   └── karin.template.ts
+│   └── bot-honkai/               # 崩坏机器人
+│       ├── ktr/template/
+│       │   └── honkai/           # 崩坏特有模板
+│       └── karin.template.ts
+```
+
+```ts title="packages/bot-genshin/karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    template: 'ktr/template' // 仅扫描本地模板
+  },
+  dev: { port: 5181 },
+  extraStylePaths: [
+    '../../base/templates/style.css' // 引入基础样式
+  ]
+})
+```
+
+在渲染器中同时加载两个注册表：
+
+```ts title="packages/bot-genshin/src/utils/render.ts" twoslash
+import { createRenderer, loadTemplateRegistry } from '@karinjs/template-react'
+
+async function createCombinedRenderer() {
+  // 加载基础模板（返回路由映射本身）
+  const baseRegistry = await loadTemplateRegistry({ root: '../../base' })
+
+  // 加载本地模板
+  const localRegistry = await loadTemplateRegistry({ root: '.' })
+
+  // 合并注册表
+  const templates = { ...baseRegistry, ...localRegistry }
+
+  return createRenderer(templates, {
+    cssPath: 'lib/style.css', // 打包产物里的 CSS（产物目录随各自打包配置）
+    outputDir: 'temp/html'
+  })
+}
+
+export const render = await createCombinedRenderer()
+```
+
+### 案例 2：组件库 + 多主题
+
+```
+workspace/
+├── packages/
+│   ├── ui/                       # 组件库
+│   │   ├── src/
+│   │   │   ├── Avatar/
+│   │   │   ├── Card/
+│   │   │   └── index.ts
+│   │   └── package.json
+│   ├── themes/                   # 主题包
+│   │   ├── default.css
+│   │   ├── dark.css
+│   │   └── package.json
+│   ├── templates-light/          # 浅色主题模板
+│   │   └── karin.template.ts
+│   └── templates-dark/           # 深色主题模板
+│       └── karin.template.ts
+```
+
+```css title="packages/templates-light/ktr/template/style.css"
+@import 'tailwindcss';
+@import '@workspace/themes/default.css';
+@source '../../ui/src';
+```
+
+### 案例 3：功能模块化
+
+```
+workspace/
+├── packages/
+│   ├── core/                     # 核心功能
+│   │   └── templates/
+│   │       ├── help/
+│   │       └── status/
+│   ├── games/                    # 游戏模块
+│   │   └── templates/
+│   │       ├── gacha/
+│   │       └── inventory/
+│   ├── social/                   # 社交模块
+│   │   └── templates/
+│   │       ├── profile/
+│   │       └── leaderboard/
+│   └── main/                     # 主应用
+│       └── karin.template.ts
+```
+
+```ts title="packages/main/karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    template: 'ktr/template'
+  },
+  extraStylePaths: ['../core/templates/style.css', '../games/templates/style.css', '../social/templates/style.css']
+})
+```
+
+## 最佳实践
+
+### 1. 目录组织
+
+```
+推荐：按功能分包
+✅ packages/ui, packages/themes, packages/templates
+
+避免：过度拆分
+❌ packages/avatar, packages/badge, packages/card
+```
+
+### 2. 依赖管理
+
+使用 workspace 协议避免版本冲突：
+
+```json
+{
+  "dependencies": {
+    "@workspace/shared": "workspace:*" // 始终使用最新
+  }
+}
+```
+
+### 3. 构建缓存
+
+利用 Turborepo 或 Nx 缓存构建结果：
+
+```json title="turbo.json"
+{
+  "pipeline": {
+    "build": {
+      "outputs": ["dist/**", "lib/**"],
+      "dependsOn": ["^build"]
+    }
+  }
+}
+```
+
+### 4. 类型检查
+
+根目录统一类型检查：
+
+```json title="tsconfig.json"
+{
+  "references": [{ "path": "./packages/shared" }, { "path": "./packages/bot-a" }, { "path": "./packages/bot-b" }]
+}
+```
+
+```bash
+pnpm tsc --build
+```
+
+### 5. 测试覆盖
+
+共享包必须有测试：
+
+```json title="packages/shared/package.json"
+{
+  "scripts": {
+    "test": "vitest",
+    "test:ci": "vitest run --coverage"
+  }
+}
+```
+
+### 6. 文档
+
+共享包提供 README：
+
+```md title="packages/shared/README.md"
+# @workspace/shared
+
+共享模板和组件库。
+
+## 使用
+
+\`\`\`ts
+import { Avatar } from '@workspace/shared/components'
+\`\`\`
+```
+
+<Cards>
+  <Card title="自定义配置" href="./custom-config" description="配置 Monorepo 目录" />
+  <Card title="性能优化" href="./performance" description="多包构建优化" />
+</Cards>

@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": ["vitest.config.ts", "packages/core/src", "packages/core/tests"],
+  "compilerOptions": {
+    "paths": {
+      // 与 packages/core/tsconfig.json 中的映射一致（此处路径相对根目录），
+      // 供根级 vitest typecheck 解析 core 的自我引用。
+      "@karinjs/template-react/registry-types": ["./packages/core/src/registry-types.ts"]
+    }
+  }
+}

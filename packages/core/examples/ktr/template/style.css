@@ -1,0 +1,7 @@
+@import 'tailwindcss';
+@import '@karinjs/template-react/styles';
+@source './**/*.{ts,tsx}';
+
+body {
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}

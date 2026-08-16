@@ -1,0 +1,22 @@
+/*
+ * ktr 的样式基座，下游 template/style.css 通过
+ * `@import '@karinjs/template-react/styles'` 引入。
+ *
+ * 这里只做一件事：把 HeroUI v3 全套样式接进来——基础重置、组件样式、
+ * 默认主题变量，以及把语义色桥接到 Tailwind token 的那段 `@theme inline`。
+ *
+ * 注意不要在这里（或任何地方）再写普通的 `@theme { --color-*: var(--*) }`
+ * 映射块：HeroUI 的 themes/shared/theme.css 已用 `@theme inline` 完成桥接，
+ * 普通 `@theme` 会把它盖掉，导致 token 编译成 var(--color-*) 并固化到 :root，
+ * 元素级主题注入（面板下发给沙盒的那套变量）就会失效。
+ */
+@import '@heroui/styles/css';
+
+/*
+ * dark: 变体改为类选择器驱动。Tailwind 默认编译成 prefers-color-scheme 媒体查询，
+ * 而 ktr 的明暗是由框架写 dark 类 / data-theme 控制的（SSR 外壳写 body、沙盒写 html+body、
+ * 模板根元素自己也会写）：Karin 的截图浏览器是浅色偏好，媒体查询在生产 HTML 里永不命中，
+ * 同一份模板在开发面板（沙盒会同步 color-scheme）和生产截图里表现不一致。
+ * 类选择器变体在两条路径下行为完全一致。
+ */
+@custom-variant dark (&:where(.dark, .dark *, [data-theme='dark'], [data-theme='dark'] *));

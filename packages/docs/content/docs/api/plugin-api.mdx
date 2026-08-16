@@ -1,0 +1,495 @@
+---
+title: 插件 API
+description: RenderPlugin 接口、beforeRender / afterRender 钩子、PluginContext 与自定义插件示例
+---
+
+渲染插件是 SSR 阶段的可插拔扩展，允许在渲染前后插入自定义逻辑，如日志记录、HTML 加工、资源注入等。
+
+## RenderPlugin
+
+```ts twoslash
+import type { PluginContext } from '@karinjs/template-react'
+// ---cut---
+interface RenderPlugin {
+  /** 插件名称，用于日志和错误提示。 */
+  name: string
+  /** 执行顺序：pre（前置）→ normal（普通）→ post（后置），默认 normal。 */
+  enforce?: 'pre' | 'normal' | 'post'
+  /** 过滤器：返回 false 时跳过当前模板，不执行钩子。 */
+  apply?: (path: string) => boolean
+  /** 渲染前钩子：在 React SSR 之前执行。 */
+  beforeRender?: (ctx: PluginContext) => void | Promise<void>
+  /** 渲染后钩子：在 HTML 生成后执行，可以加工 HTML。 */
+  afterRender?: (ctx: PluginContext & { html: string }) => string | void | Promise<string | void>
+}
+```
+
+### enforce 字段
+
+控制插件执行顺序：
+
+- `'pre'`：最先执行，通常用于前置检查、环境准备。
+- `'normal'`：默认顺序，大多数插件用这个。
+- `'post'`：最后执行，通常用于清理、日志输出。
+
+同级插件按注册顺序执行。
+
+### apply 字段
+
+过滤器函数，接收模板路由（如 `'hello/card'`），返回 `boolean`：
+
+- `true` 或不提供：执行钩子。
+- `false`：跳过该模板，不执行 `beforeRender` 和 `afterRender`。
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const userOnlyPlugin: RenderPlugin = {
+  name: 'user-only',
+  apply: (path) => path.startsWith('user/'), // 只对 user/ 开头的路由生效
+  beforeRender: (ctx) => {
+    console.log(`[user-only] 渲染 ${ctx.path}`)
+  }
+}
+```
+
+### beforeRender 钩子
+
+在 React SSR 之前执行，可以：
+
+- 检查数据有效性（除了 `validate` 之外的业务逻辑校验）
+- 修改输出目录或上下文
+- 记录日志、发送监控
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const logPlugin: RenderPlugin = {
+  name: 'log-plugin',
+  beforeRender: async (ctx) => {
+    console.log(`[渲染前] 路由: ${ctx.path}`)
+    console.log(`[渲染前] 数据:`, ctx.data)
+    console.log(`[渲染前] 上下文:`, ctx.ctx)
+  }
+}
+```
+
+**不要修改 `ctx.data`**：引用类型修改会影响后续插件和渲染逻辑，容易产生副作用。若需加工数据，应在调用渲染函数之前处理。
+
+### afterRender 钩子
+
+在 HTML 生成后执行，可以：
+
+- 加工 HTML（注入 meta 标签、替换占位符、压缩等）
+- 记录渲染结果
+- 上传 HTML 到远程存储
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const injectMetaPlugin: RenderPlugin = {
+  name: 'inject-meta',
+  afterRender: async (ctx) => {
+    // 注入自定义 meta 标签
+    return ctx.html.replace('</head>', '<meta name="generator" content="ktr" />\n<meta name="version" content="1.0.0" />\n</head>')
+  }
+}
+```
+
+**返回值规则**：
+
+- 返回 `string`：替换原 HTML。
+- 返回 `void` 或 `undefined`：保持原 HTML 不变。
+- 返回 Promise：支持异步操作。
+
+## PluginContext
+
+```ts twoslash
+import type { RenderContext, RenderContextInput } from '@karinjs/template-react'
+// ---cut---
+interface PluginContext {
+  /** 模板路由（如 'hello/card'）。 */
+  path: string
+  /** 当前渲染的数据。 */
+  data: unknown
+  /** 运行时上下文（scale、theme）。 */
+  ctx: RenderContext
+  /** HTML 输出目录。 */
+  outputDir: string
+}
+```
+
+`beforeRender` 和 `afterRender` 钩子接收的上下文对象，`afterRender` 额外有 `html: string` 字段。
+
+### 字段说明
+
+<AutoTypeTable path="../core/src/types/index.ts" name="PluginContext" />
+
+`afterRender` 的上下文额外带有 `html: string` 字段（生成的 HTML 字符串，可修改后返回）。
+
+### 使用示例
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const saveMetadataPlugin: RenderPlugin = {
+  name: 'save-metadata',
+  afterRender: async (ctx) => {
+    const metaPath = path.join(ctx.outputDir, `${ctx.path.replace('/', '_')}_meta.json`)
+    await fs.promises.writeFile(metaPath, JSON.stringify({ path: ctx.path, theme: ctx.ctx.theme, timestamp: Date.now() }, null, 2))
+  }
+}
+```
+
+## 注册插件
+
+通过 `createRenderer` 的 `plugins` 选项注册：
+
+```ts twoslash
+import { createRenderer } from '@karinjs/template-react'
+import type { RenderPlugin } from '@karinjs/template-react'
+
+declare const templates: any
+declare const cssPath: string
+declare const outputDir: string
+
+const logPlugin: RenderPlugin = {
+  name: 'log-plugin',
+  beforeRender: (ctx) => console.log(`[渲染] ${ctx.path}`)
+}
+
+const injectMetaPlugin: RenderPlugin = {
+  name: 'inject-meta',
+  afterRender: (ctx) => ctx.html.replace('</head>', '<meta name="ktr" />\n</head>')
+}
+// ---cut---
+const render = createRenderer(templates, {
+  cssPath,
+  outputDir,
+  plugins: [logPlugin, injectMetaPlugin]
+})
+```
+
+`createTemplateRenderer` 也可以通过 `renderer.plugins` 传入：
+
+```ts twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const logPlugin: RenderPlugin = {
+  name: 'log-plugin',
+  beforeRender: (ctx) => console.log(`[渲染] ${ctx.path}`)
+}
+// ---cut---
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: {
+    plugins: [logPlugin]
+  }
+})
+```
+
+## 自定义插件示例
+
+以下是几个常见的自定义插件写法，可以直接复制到插件里使用。
+
+### 捕获数据插件
+
+框架渲染器已内置数据捕获（`captureDir` 选项），这里演示如何用插件实现等效能力：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+import path from 'node:path'
+
+function createCapturePlugin(captureDir: string): RenderPlugin {
+  return {
+    name: 'capture-data',
+    enforce: 'post', // 最后执行，确保渲染成功
+    afterRender: async (ctx) => {
+      const [section, template] = ctx.path.split('/')
+      const dataDir = path.join(captureDir, section, template, 'data')
+      await fs.promises.mkdir(dataDir, { recursive: true })
+      const capturedPath = path.join(dataDir, 'captured.json')
+      await fs.promises.writeFile(capturedPath, JSON.stringify(ctx.data, null, 2))
+      console.log(`[capture] 已捕获数据到 ${capturedPath}`)
+    }
+  }
+}
+```
+
+### HTML 压缩插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+function createMinifyPlugin(): RenderPlugin {
+  return {
+    name: 'minify-html',
+    enforce: 'post',
+    afterRender: (ctx) => {
+      // 简单压缩：移除多余空白符和换行
+      return ctx.html
+        .replace(/\s+/g, ' ') // 多个空白符合并为一个
+        .replace(/>\s+</g, '><') // 标签间空白移除
+        .trim()
+    }
+  }
+}
+```
+
+<Callout type="warn">
+  生产环境推荐使用专业的 HTML 压缩库（如 `html-minifier-terser`），上面的简单正则可能破坏 `<pre>` / `<code>` 等标签内容。
+</Callout>
+
+### 性能监控插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+function createPerfPlugin(): RenderPlugin {
+  const timers = new Map<string, number>()
+
+  return {
+    name: 'perf-monitor',
+    beforeRender: (ctx) => {
+      timers.set(ctx.path, Date.now())
+    },
+    afterRender: (ctx) => {
+      const start = timers.get(ctx.path)
+      if (start) {
+        const duration = Date.now() - start
+        console.log(`[性能] ${ctx.path} 渲染耗时: ${duration}ms`)
+        timers.delete(ctx.path)
+      }
+    }
+  }
+}
+```
+
+### 条件渲染插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+function createConditionalPlugin(): RenderPlugin {
+  return {
+    name: 'conditional-render',
+    apply: (path) => {
+      // 仅在开发环境渲染 dev/ 开头的模板
+      if (path.startsWith('dev/')) {
+        return process.env.NODE_ENV === 'development'
+      }
+      return true
+    },
+    beforeRender: (ctx) => {
+      console.log(`[条件渲染] 允许渲染 ${ctx.path}`)
+    }
+  }
+}
+```
+
+## 异常处理
+
+插件内抛出的异常会**中断渲染流程**，返回 `{ success: false, error: 'Plugin error: ...' }`：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const unsafePlugin: RenderPlugin = {
+  name: 'unsafe-plugin',
+  beforeRender: (ctx) => {
+    if (!ctx.data) {
+      throw new Error('数据为空') // 渲染失败，error 为 'Plugin error: 数据为空'
+    }
+  }
+}
+```
+
+若插件异常不应中断渲染，需在插件内 `try-catch`：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const safePlugin: RenderPlugin = {
+  name: 'safe-plugin',
+  beforeRender: async (ctx) => {
+    try {
+      // 可能失败的操作
+      await fetch('https://api.example.com/log', {
+        method: 'POST',
+        body: JSON.stringify({ path: ctx.path })
+      })
+    } catch (err) {
+      console.error('[safe-plugin] 上报失败，但不影响渲染:', err)
+    }
+  }
+}
+```
+
+## 插件最佳实践
+
+### 1. 命名清晰
+
+插件 `name` 用于日志和错误提示，应清晰表达功能：
+
+```ts
+// ✅ 好的命名
+{
+  name: 'inject-analytics'
+}
+{
+  name: 'compress-html'
+}
+{
+  name: 'upload-to-oss'
+}
+
+// ❌ 不好的命名
+{
+  name: 'plugin1'
+}
+{
+  name: 'my-plugin'
+}
+```
+
+### 2. 避免副作用
+
+不要修改 `ctx.data` 或 `ctx.ctx`：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+// ❌ 错误：修改上下文
+const badPlugin: RenderPlugin = {
+  name: 'bad-plugin',
+  beforeRender: (ctx) => {
+    ;(ctx.data as any).extra = 'injected' // 影响后续插件和渲染
+  }
+}
+
+// ✅ 正确：只读取，不修改
+const goodPlugin: RenderPlugin = {
+  name: 'good-plugin',
+  beforeRender: (ctx) => {
+    const hasTitle = 'title' in (ctx.data as any)
+    console.log(`数据包含 title: ${hasTitle}`)
+  }
+}
+```
+
+### 3. 合理使用 enforce
+
+- **前置检查、环境准备** → `enforce: 'pre'`
+- **核心逻辑** → `enforce: 'normal'`（默认）
+- **清理、日志、上传** → `enforce: 'post'`
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const checkEnvPlugin: RenderPlugin = {
+  name: 'check-env',
+  enforce: 'pre', // 最先执行
+  beforeRender: (ctx) => {
+    if (!process.env.API_KEY) {
+      throw new Error('缺少 API_KEY 环境变量')
+    }
+  }
+}
+
+const uploadPlugin: RenderPlugin = {
+  name: 'upload-html',
+  enforce: 'post', // 最后执行
+  afterRender: async (ctx) => {
+    // 上传 HTML 到 OSS
+  }
+}
+```
+
+### 4. 过滤不需要的路由
+
+用 `apply` 减少不必要的执行：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const expensivePlugin: RenderPlugin = {
+  name: 'expensive-operation',
+  apply: (path) => path.startsWith('report/'), // 只对 report/ 生效
+  beforeRender: async (ctx) => {
+    // 耗时操作
+  }
+}
+```
+
+### 5. 异步操作用 async
+
+钩子支持 `Promise`，耗时操作应用 `async`：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const asyncPlugin: RenderPlugin = {
+  name: 'async-plugin',
+  afterRender: async (ctx) => {
+    // 等待异步操作完成
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    return ctx.html.replace('</body>', '<script>console.log("loaded")</script></body>')
+  }
+}
+```
+
+### 6. 保持插件轻量
+
+插件在每次渲染时都会执行，避免：
+
+- 重复读取文件（在插件初始化时缓存）
+- 同步阻塞操作（用 `async` + 异步 API）
+- 复杂正则替换（HTML 加工尽量简单）
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+
+// ❌ 错误：每次渲染都读文件
+const slowPlugin: RenderPlugin = {
+  name: 'slow-plugin',
+  afterRender: (ctx) => {
+    const template = fs.readFileSync('/path/to/template.html', 'utf-8') // 慢
+    return ctx.html.replace('{{content}}', template)
+  }
+}
+
+// ✅ 正确：插件初始化时缓存
+function createFastPlugin(): RenderPlugin {
+  const template = fs.readFileSync('/path/to/template.html', 'utf-8') // 只读一次
+
+  return {
+    name: 'fast-plugin',
+    afterRender: (ctx) => ctx.html.replace('{{content}}', template)
+  }
+}
+```
+
+## 调试插件
+
+开发插件时可以打印 `PluginContext` 查看字段内容：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const debugPlugin: RenderPlugin = {
+  name: 'debug-plugin',
+  beforeRender: (ctx) => {
+    console.log('[DEBUG] PluginContext:', JSON.stringify(ctx, null, 2))
+  },
+  afterRender: (ctx) => {
+    console.log('[DEBUG] HTML length:', ctx.html.length)
+    console.log('[DEBUG] HTML preview:', ctx.html.slice(0, 200))
+  }
+}
+```
+
+渲染时添加该插件，查看日志输出即可了解插件接收到的完整上下文。

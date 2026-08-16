@@ -1,0 +1,706 @@
+---
+title: 插件开发
+description: RenderPlugin 接口详解、beforeRender / afterRender 钩子使用、插件执行顺序与实用插件示例
+---
+
+渲染插件是 SSR 阶段的可插拔扩展，允许在渲染前后插入自定义逻辑——数据捕获、HTML 加工、性能监控、资源注入等。
+
+## RenderPlugin 接口
+
+```ts twoslash
+import type { PluginContext, RenderContext } from '@karinjs/template-react'
+// ---cut---
+interface RenderPlugin {
+  /** 插件名称，用于日志和错误提示 */
+  name: string
+  /** 执行顺序：pre（前置）→ normal（普通）→ post（后置），默认 normal */
+  enforce?: 'pre' | 'normal' | 'post'
+  /** 过滤器：返回 false 时跳过当前模板，不执行钩子 */
+  apply?: (path: string) => boolean
+  /** 渲染前钩子：在 React SSR 之前执行 */
+  beforeRender?: (ctx: PluginContext) => void | Promise<void>
+  /** 渲染后钩子：在 HTML 生成后执行，可以加工 HTML */
+  afterRender?: (ctx: PluginContext & { html: string }) => string | void | Promise<string | void>
+}
+```
+
+## 插件执行顺序
+
+### enforce 字段
+
+控制插件执行顺序，同级插件按注册顺序执行：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const prePlugin: RenderPlugin = {
+  name: 'pre-plugin',
+  enforce: 'pre', // 最先执行
+  beforeRender: () => console.log('1. pre beforeRender')
+}
+
+const normalPlugin: RenderPlugin = {
+  name: 'normal-plugin',
+  // enforce: 'normal' 是默认值，可省略
+  beforeRender: () => console.log('2. normal beforeRender')
+}
+
+const postPlugin: RenderPlugin = {
+  name: 'post-plugin',
+  enforce: 'post', // 最后执行
+  beforeRender: () => console.log('3. post beforeRender')
+}
+```
+
+**执行顺序规则**：
+
+1. **beforeRender**：`pre` → `normal` → `post`
+2. **SSR 渲染**：生成 HTML
+3. **afterRender**：`pre` → `normal` → `post`
+
+### 内部排序机制
+
+```ts
+// packages/core/src/runtime/plugins.ts
+const order = {
+  pre: -1,
+  normal: 0,
+  post: 1
+}
+
+// 插件按 enforce 排序
+plugins.sort((a, b) => order[a.enforce ?? 'normal'] - order[b.enforce ?? 'normal'])
+```
+
+## apply 过滤器
+
+按路由过滤插件执行：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const userOnlyPlugin: RenderPlugin = {
+  name: 'user-only',
+  apply: (path) => path.startsWith('user/'), // 只对 user/* 生效
+  beforeRender: (ctx) => {
+    console.log(`[user-only] 渲染 ${ctx.path}`)
+  }
+}
+
+const excludeDraftPlugin: RenderPlugin = {
+  name: 'exclude-draft',
+  apply: (path) => !path.includes('draft'), // 排除 draft 模板
+  afterRender: (ctx) => {
+    return ctx.html.replace('</body>', '<div class="watermark">正式版</div></body>')
+  }
+}
+```
+
+**高级过滤**：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const conditionalPlugin: RenderPlugin = {
+  name: 'conditional',
+  apply: (path) => {
+    // 正则匹配
+    if (/^(user|admin)\//.test(path)) return true
+
+    // 环境变量控制
+    if (process.env.NODE_ENV === 'development' && path.includes('test')) return true
+
+    // 白名单
+    const whitelist = ['hello/card', 'user/profile']
+    return whitelist.includes(path)
+  },
+  beforeRender: () => {
+    /* ... */
+  }
+}
+```
+
+## beforeRender 钩子
+
+在 React SSR 之前执行，可以检查数据、记录日志、修改上下文。
+
+### PluginContext
+
+```ts twoslash
+import type { RenderContext } from '@karinjs/template-react'
+// ---cut---
+interface PluginContext {
+  /** 模板路由（如 'hello/card'） */
+  path: string
+  /** 当前渲染的数据 */
+  data: unknown
+  /** 运行时上下文（scale、theme） */
+  ctx: RenderContext
+  /** HTML 输出目录 */
+  outputDir: string
+}
+```
+
+### 基础示例
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const logPlugin: RenderPlugin = {
+  name: 'log-plugin',
+  beforeRender: async (ctx) => {
+    console.log(`[渲染前] 路由: ${ctx.path}`)
+    console.log(`[渲染前] 数据:`, ctx.data)
+    console.log(`[渲染前] 主题:`, ctx.ctx.theme)
+  }
+}
+```
+
+### 数据校验插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const validatePlugin: RenderPlugin = {
+  name: 'validate-data',
+  beforeRender: (ctx) => {
+    if (!ctx.data || typeof ctx.data !== 'object') {
+      throw new Error(`[${ctx.path}] 数据无效：必须是对象`)
+    }
+
+    // 检查必填字段
+    const data = ctx.data as Record<string, unknown>
+    if (!data.title) {
+      console.warn(`[${ctx.path}] 缺少 title 字段`)
+    }
+  }
+}
+```
+
+### 性能监控插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const perfMap = new Map<string, number>()
+
+const perfPlugin: RenderPlugin = {
+  name: 'perf-monitor',
+  beforeRender: (ctx) => {
+    perfMap.set(ctx.path, Date.now())
+  },
+  afterRender: (ctx) => {
+    const start = perfMap.get(ctx.path)
+    if (start) {
+      const duration = Date.now() - start
+      console.log(`[性能] ${ctx.path} 渲染耗时: ${duration}ms`)
+      perfMap.delete(ctx.path)
+    }
+  }
+}
+```
+
+## afterRender 钩子
+
+在 HTML 生成后执行，可以加工 HTML、注入资源、上传文件。
+
+### 返回值规则
+
+- 返回 `string`：替换原 HTML
+- 返回 `void` 或 `undefined`：保持原 HTML 不变
+- 返回 `Promise`：支持异步操作
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const transformPlugin: RenderPlugin = {
+  name: 'transform',
+  afterRender: async (ctx) => {
+    // 读取原 HTML
+    const { html } = ctx
+
+    // 加工
+    let transformed = html.replace('{{VERSION}}', '1.0.0')
+
+    // 返回新 HTML
+    return transformed
+  }
+}
+```
+
+### HTML 压缩插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import { minify } from 'html-minifier-terser'
+
+const minifyPlugin: RenderPlugin = {
+  name: 'html-minify',
+  enforce: 'post', // 最后执行
+  afterRender: async (ctx) => {
+    return await minify(ctx.html, {
+      collapseWhitespace: true,
+      removeComments: true,
+      minifyCSS: true,
+      minifyJS: true
+    })
+  }
+}
+```
+
+### 注入 meta 标签
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const injectMetaPlugin: RenderPlugin = {
+  name: 'inject-meta',
+  afterRender: (ctx) => {
+    const meta = `
+      <meta name="generator" content="ktr">
+      <meta name="template" content="${ctx.path}">
+      <meta name="render-time" content="${new Date().toISOString()}">
+    `.trim()
+
+    return ctx.html.replace('</head>', `${meta}\n</head>`)
+  }
+}
+```
+
+### 水印插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const watermarkPlugin: RenderPlugin = {
+  name: 'watermark',
+  apply: (path) => !path.includes('official'), // 非正式版才加水印
+  afterRender: (ctx) => {
+    const watermark = `
+      <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 72px; color: rgba(0,0,0,0.05); pointer-events: none; user-select: none; z-index: 9999;">
+        DRAFT
+      </div>
+    `
+    return ctx.html.replace('</body>', `${watermark}\n</body>`)
+  }
+}
+```
+
+### 资源内联插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const inlineAssetsPlugin: RenderPlugin = {
+  name: 'inline-assets',
+  afterRender: async (ctx) => {
+    let html = ctx.html
+
+    // 内联小图片（< 10KB）
+    const imgRegex = /<img[^>]+src="\/assets\/([^"]+)"[^>]*>/g
+    html = html.replace(imgRegex, (match, filename) => {
+      const filepath = path.join(ctx.outputDir, '../assets', filename)
+      if (!fs.existsSync(filepath)) return match
+
+      const stat = fs.statSync(filepath)
+      if (stat.size > 10240) return match // 超过 10KB 不内联
+
+      const ext = path.extname(filename).slice(1)
+      const content = fs.readFileSync(filepath, 'base64')
+      return match.replace(`src="/assets/${filename}"`, `src="data:image/${ext};base64,${content}"`)
+    })
+
+    return html
+  }
+}
+```
+
+## 实用插件示例
+
+### 1. 数据捕获插件
+
+捕获真实渲染数据到 `captured.json`：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const capturePlugin: RenderPlugin = {
+  name: 'capture-data',
+  enforce: 'post',
+  beforeRender: async (ctx) => {
+    const templateDir = path.join(ctx.outputDir, '../template', ctx.path)
+    const dataDir = path.join(templateDir, 'data')
+    const capturedFile = path.join(dataDir, 'captured.json')
+
+    // 确保目录存在
+    await fs.promises.mkdir(dataDir, { recursive: true })
+
+    // 写入捕获数据
+    await fs.promises.writeFile(capturedFile, JSON.stringify({ data: ctx.data, ctx: ctx.ctx }, null, 2))
+  }
+}
+```
+
+### 2. 错误上报插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const errorReportPlugin: RenderPlugin = {
+  name: 'error-report',
+  beforeRender: async (ctx) => {
+    try {
+      // 数据校验
+      if (!ctx.data) throw new Error('数据为空')
+    } catch (error) {
+      // 上报到监控平台
+      await fetch('https://monitor.example.com/report', {
+        method: 'POST',
+        body: JSON.stringify({
+          path: ctx.path,
+          error: (error as Error).message,
+          timestamp: Date.now()
+        })
+      })
+      throw error // 重新抛出
+    }
+  }
+}
+```
+
+### 3. 缓存插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+import path from 'node:path'
+import crypto from 'node:crypto'
+
+const cachePlugin: RenderPlugin = {
+  name: 'cache',
+  enforce: 'pre',
+  beforeRender: async (ctx) => {
+    const cacheDir = path.join(ctx.outputDir, '.cache')
+    await fs.promises.mkdir(cacheDir, { recursive: true })
+
+    // 计算数据哈希
+    const hash = crypto.createHash('md5').update(JSON.stringify(ctx.data)).digest('hex')
+
+    const cacheFile = path.join(cacheDir, `${ctx.path.replace('/', '_')}_${hash}.html`)
+
+    // 检查缓存
+    if (fs.existsSync(cacheFile)) {
+      console.log(`[缓存] 命中: ${ctx.path}`)
+      // 跳过渲染（需要框架支持，此处仅示意）
+    }
+  }
+}
+```
+
+### 4. OG 图片生成插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const ogImagePlugin: RenderPlugin = {
+  name: 'og-image',
+  afterRender: (ctx) => {
+    const ogTags = `
+      <meta property="og:title" content="模板: ${ctx.path}">
+      <meta property="og:type" content="website">
+      <meta property="og:image" content="/preview/${ctx.path.replace('/', '_')}.png">
+    `
+    return ctx.html.replace('</head>', `${ogTags}\n</head>`)
+  }
+}
+```
+
+### 5. 多语言插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const i18nPlugin: RenderPlugin = {
+  name: 'i18n',
+  afterRender: (ctx) => {
+    const lang = (ctx.ctx as any).lang || 'zh-CN'
+    return ctx.html.replace('<html', `<html lang="${lang}"`)
+  }
+}
+```
+
+### 6. 响应式图片插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const responsiveImagePlugin: RenderPlugin = {
+  name: 'responsive-image',
+  afterRender: (ctx) => {
+    // 将 <img> 转换为 <picture>
+    return ctx.html.replace(
+      /<img src="([^"]+)" alt="([^"]*)"/g,
+      (match, src, alt) => `
+        <picture>
+          <source srcset="${src}?w=640" media="(max-width: 640px)">
+          <source srcset="${src}?w=1280" media="(max-width: 1280px)">
+          <img src="${src}" alt="${alt}"
+        </picture>
+      `
+    )
+  }
+}
+```
+
+### 7. 安全插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+const securityPlugin: RenderPlugin = {
+  name: 'security',
+  afterRender: (ctx) => {
+    const csp = `
+      <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:">
+    `
+    return ctx.html.replace('</head>', `${csp}\n</head>`)
+  }
+}
+```
+
+### 8. 统计插件
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const statsPlugin: RenderPlugin = {
+  name: 'stats',
+  enforce: 'post',
+  afterRender: async (ctx) => {
+    const statsFile = path.join(ctx.outputDir, 'stats.json')
+
+    let stats: Record<string, any> = {}
+    if (fs.existsSync(statsFile)) {
+      stats = JSON.parse(fs.readFileSync(statsFile, 'utf-8'))
+    }
+
+    stats[ctx.path] = {
+      htmlSize: ctx.html.length,
+      renderTime: Date.now(),
+      theme: ctx.ctx.theme?.mode || 'default'
+    }
+
+    await fs.promises.writeFile(statsFile, JSON.stringify(stats, null, 2))
+  }
+}
+```
+
+## 插件注册
+
+### 配置文件注册
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const myPlugin: RenderPlugin = {
+  name: 'my-plugin',
+  beforeRender: () => {
+    /* ... */
+  }
+}
+
+export default defineConfig({
+  // 通过 vite.plugins 无效，需要通过运行时注册
+})
+```
+
+### 运行时注册
+
+```ts twoslash
+import { createRenderer } from '@karinjs/template-react'
+import type { RenderPlugin } from '@karinjs/template-react'
+import { minify } from 'html-minifier-terser'
+
+const minifyPlugin: RenderPlugin = {
+  name: 'minify',
+  afterRender: async (ctx) => await minify(ctx.html, { collapseWhitespace: true })
+}
+
+declare const templates: any
+declare const cssPath: string
+declare const outputDir: string
+// ---cut---
+const render = createRenderer(templates, {
+  cssPath,
+  outputDir,
+  plugins: [minifyPlugin]
+})
+```
+
+### Karin 插件集成
+
+```ts title="src/utils/render.ts" twoslash
+import { createTemplateRenderer } from '@karinjs/template-react'
+import type { RenderPlugin } from '@karinjs/template-react'
+
+const watermarkPlugin: RenderPlugin = {
+  name: 'watermark',
+  afterRender: (ctx) => ctx.html.replace('</body>', '<div class="watermark">My Bot</div></body>')
+}
+
+const render = createTemplateRenderer(import.meta.url, {
+  renderer: { plugins: [watermarkPlugin] }
+})
+
+export default render
+```
+
+## 插件最佳实践
+
+### 1. 单一职责
+
+每个插件只做一件事：
+
+```ts
+// ✅ 好：职责清晰
+const logPlugin = { name: 'log', beforeRender: log }
+const minifyPlugin = { name: 'minify', afterRender: minify }
+
+// ❌ 差：职责混杂
+const megaPlugin = {
+  beforeRender: (ctx) => {
+    log()
+    validate()
+    track()
+  }
+}
+```
+
+### 2. 错误处理
+
+插件失败不应影响其他插件：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+declare const riskyOperation: () => Promise<void>
+// ---cut---
+const safePlugin: RenderPlugin = {
+  name: 'safe',
+  beforeRender: async (ctx) => {
+    try {
+      // 可能失败的操作
+      await riskyOperation()
+    } catch (error) {
+      console.error(`[${ctx.path}] 插件失败:`, error)
+      // 不重新抛出，避免中断渲染
+    }
+  }
+}
+```
+
+### 3. 性能优先
+
+避免阻塞操作：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+declare const uploadToStorage: (html: string) => Promise<void>
+// ---cut---
+const asyncPlugin: RenderPlugin = {
+  name: 'async',
+  afterRender: async (ctx) => {
+    // ✅ 好：异步上传，不阻塞返回
+    uploadToStorage(ctx.html).catch(console.error)
+    return ctx.html // 立即返回
+  }
+}
+```
+
+### 4. 可配置性
+
+插件应接受配置：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+
+function createWatermarkPlugin(text: string, opacity = 0.05): RenderPlugin {
+  return {
+    name: 'watermark',
+    afterRender: (ctx) => {
+      const watermark = `<div style="opacity: ${opacity}">${text}</div>`
+      return ctx.html.replace('</body>', `${watermark}\n</body>`)
+    }
+  }
+}
+
+// 使用
+const plugin = createWatermarkPlugin('DRAFT', 0.1)
+```
+
+### 5. 条件执行
+
+使用 `apply` 而非内部判断：
+
+```ts twoslash
+import type { RenderPlugin } from '@karinjs/template-react'
+// ---cut---
+// ✅ 好：声明式过滤
+const plugin: RenderPlugin = {
+  name: 'prod-only',
+  apply: () => process.env.NODE_ENV === 'production',
+  afterRender: minify
+}
+
+// ❌ 差：命令式判断
+const badPlugin: RenderPlugin = {
+  name: 'prod-only',
+  afterRender: (ctx) => {
+    if (process.env.NODE_ENV !== 'production') return
+    return minify(ctx)
+  }
+}
+
+declare function minify(ctx: any): any
+```
+
+### 6. 类型安全
+
+为数据定义类型：
+
+```ts twoslash
+import type { RenderPlugin, PluginContext } from '@karinjs/template-react'
+
+interface UserCardData {
+  name: string
+  avatar: string
+}
+
+function isUserCardData(data: unknown): data is UserCardData {
+  return typeof data === 'object' && data !== null && 'name' in data
+}
+
+const typedPlugin: RenderPlugin = {
+  name: 'typed',
+  apply: (path) => path === 'user/card',
+  beforeRender: (ctx) => {
+    if (!isUserCardData(ctx.data)) {
+      throw new Error('数据类型错误')
+    }
+    // 此处 ctx.data 类型已缩窄
+    console.log(ctx.data.name)
+  }
+}
+```
+
+<Cards>
+  <Card title="自定义配置" href="./custom-config" description="配置插件到项目" />
+  <Card title="插件 API" href="/docs/api/plugin-api" description="完整 API 参考" />
+  <Card title="性能优化" href="./performance" description="性能优化技巧" />
+</Cards>

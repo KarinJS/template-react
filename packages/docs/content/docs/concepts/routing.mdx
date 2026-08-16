@@ -1,0 +1,480 @@
+---
+title: 约定式路由
+description: 文件扫描规则、路由生成流程和最佳实践
+---
+
+ktr 采用**约定式路由**设计：文件放到约定位置就自动注册，无需手写路由配置。
+
+## 路由生成规则
+
+### 基本规则
+
+只有符合 `<板块>/<模板>/index.tsx` 模式的文件才会注册为路由：
+
+```text
+ktr/template/
+├── hello/
+│   └── card/
+│       └── index.tsx        ✅ 注册为路由 hello/card
+├── user/
+│   ├── profile/
+│   │   └── index.tsx        ✅ 注册为路由 user/profile
+│   └── card.tsx             ❌ 裸文件不注册
+└── stats/
+    └── dashboard/
+        ├── index.tsx        ✅ 注册为路由 stats/dashboard
+        └── components/
+            └── chart.tsx    ❌ components 目录不扫描
+```
+
+路由字符串格式：`<板块>/<模板>`，对应文件路径：`ktr/template/<板块>/<模板>/index.tsx`
+
+### 扫描规则详解
+
+框架使用 `fast-glob` 扫描模板目录，模式为 `**/index.{tsx,jsx}`，但有以下过滤规则：
+
+| 规则                     | 示例                                  | 说明             |
+| ------------------------ | ------------------------------------- | ---------------- |
+| **必须是 index 文件**    | `card/index.tsx` ✅<br/>`card.tsx` ❌ | 强制两级目录结构 |
+| **忽略 components 目录** | `card/components/badge.tsx` ❌        | 模板内部组件     |
+| **忽略下划线开头目录**   | `_shared/utils/index.tsx` ❌          | 跨模板共享代码   |
+| **支持 jsx 和 tsx**      | `index.jsx` ✅<br/>`index.js` ❌      | 必须是 JSX 文件  |
+
+```typescript twoslash
+// @noErrors
+// 框架内部扫描逻辑（简化）
+import { glob } from 'fast-glob'
+
+async function discoverTemplateRoutes(templateDir: string) {
+  const files = await glob('**/index.{tsx,jsx}', {
+    cwd: templateDir,
+    ignore: [
+      '**/components/**', // 忽略内部组件
+      '**/_*/**' // 忽略下划线目录
+    ]
+  })
+
+  return files.map((file) => {
+    // hello/card/index.tsx → hello/card
+    return file.replace(/\/index\.(tsx|jsx)$/, '')
+  })
+}
+```
+
+## 路由生成流程
+
+### 触发时机
+
+注册表生成在以下场景自动触发：
+
+1. **`ktr sync`** —— 手动刷新注册表
+2. **`ktr dev`** —— 启动开发服务器前
+3. **构建插件** —— Vite/Rolldown 构建前（`buildStart` 钩子）
+
+```typescript twoslash
+// cli/dev 命令（简化示意）
+import { resolveConfig } from '@karinjs/template-react'
+
+declare function ensureConventions(config: unknown): Promise<unknown>
+declare function createDevServer(config: unknown): Promise<unknown>
+// ---cut---
+// ktr dev 启动流程
+const config = await resolveConfig()
+await ensureConventions(config) // ← 刷新注册表
+const server = await createDevServer(config)
+```
+
+### 生成流程
+
+完整流程分为 4 步：
+
+```
+1. 扫描文件系统
+   ↓ discoverTemplateRoutes()
+2. 生成 template-registry.ts
+   ↓ generateTemplateRegistry()
+3. 生成 mock-registry.ts
+   ↓ generateMockRegistry()
+4. 生成 registry-types.d.ts
+   ↓ generateTypeAugmentation()
+```
+
+#### 步骤 1：扫描文件系统
+
+```typescript twoslash
+// @noErrors
+// conventions/registry.ts
+import { glob } from 'fast-glob'
+import * as path from 'node:path'
+
+async function discoverTemplateRoutes(templateDir: string) {
+  const files = await glob('**/index.{tsx,jsx}', {
+    cwd: templateDir,
+    ignore: ['**/components/**', '**/_*/**']
+  })
+
+  // 转换为路由字符串
+  const routes = files.map((file) => {
+    // 移除 /index.tsx 后缀
+    return file.replace(/\/index\.(tsx|jsx)$/, '')
+  })
+
+  return routes.sort() // 按字母排序
+}
+
+// 结果示例：['hello/card', 'user/profile', 'stats/dashboard']
+```
+
+#### 步骤 2：生成 template-registry.ts
+
+```typescript twoslash
+// @noErrors
+// 生成的 .ktr/template-registry.ts
+import template_hello_card from '../ktr/template/hello/card/index.tsx'
+import template_user_profile from '../ktr/template/user/profile/index.tsx'
+import template_stats_dashboard from '../ktr/template/stats/dashboard/index.tsx'
+
+export const templates = {
+  'hello/card': template_hello_card,
+  'user/profile': template_user_profile,
+  'stats/dashboard': template_stats_dashboard
+}
+```
+
+路由 key 为原始路径字符串，value 为动态 import 的组件。
+
+#### 步骤 3：生成 mock-registry.ts
+
+```typescript twoslash
+// @noErrors
+// 生成的 .ktr/mock-registry.ts
+
+// 导出所有 TS mock（具名导出）
+export * from '../ktr/template/hello/card/mock.ts'
+export * from '../ktr/template/user/profile/mock.ts'
+
+// JSON mock 文件清单（按需动态 import）
+export const mockDataFiles = {
+  'hello/card': {
+    default: () => import('../ktr/template/hello/card/data/default.json'),
+    variant: () => import('../ktr/template/hello/card/data/variant.json')
+  },
+  'user/profile': {
+    basic: () => import('../ktr/template/user/profile/data/basic.json')
+  }
+}
+```
+
+框架同时扫描每个模板目录下的：
+
+- `mock.ts` —— TS mock，直接 re-export
+- `data/*.json` —— JSON mock，生成动态 import 函数
+
+#### 步骤 4：生成 registry-types.d.ts
+
+```typescript
+// 生成的 .ktr/registry-types.d.ts
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': typeof import('../ktr/template/hello/card/index.tsx').default
+    'user/profile': typeof import('../ktr/template/user/profile/index.tsx').default
+    'stats/dashboard': typeof import('../ktr/template/stats/dashboard/index.tsx').default
+  }
+}
+```
+
+这是 TypeScript 模块增强（Module Augmentation），让 `renderImage` 和 `createTemplateRenderer` 获得：
+
+1. **路由补全** —— 编辑器自动提示可用路由
+2. **Data 类型推导** —— 根据模板的 Props 类型推导 data 参数
+
+## 实际示例
+
+### 示例 1：标准模板
+
+```text
+ktr/template/
+└── hello/
+    └── card/
+        ├── index.tsx          ← 模板组件
+        ├── mock.ts            ← TS mock
+        ├── components/
+        │   └── badge.tsx      ← 内部组件（不扫描）
+        └── data/
+            ├── default.json   ← JSON mock
+            └── captured.json  ← 捕获数据
+```
+
+```typescript twoslash
+// @filename: ./mock.ts
+export interface HelloCardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+// @filename: ./index.tsx
+// ---cut---
+// ktr/template/hello/card/index.tsx
+import { defineTemplate } from '@karinjs/template-react'
+import type { HelloCardData } from './mock'
+
+export default defineTemplate<HelloCardData>({
+  name: 'Hello 卡片',
+  description: '简单的信息卡片',
+  component: ({ data }) => (
+    <div className="p-6 bg-surface rounded-lg">
+      <h2 className="text-xl font-bold">{data.title}</h2>
+      <div className="mt-4 space-y-2">
+        {data.items.map(item => (
+          <div key={item.label} className="flex justify-between">
+            <span className="text-muted">{item.label}</span>
+            <span className="font-medium">{item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+})
+```
+
+```typescript twoslash
+// @filename: ./index.tsx
+export interface HelloCardData {
+  title: string
+  items: Array<{ label: string; value: string }>
+}
+// @filename: ./mock.ts
+// ---cut---
+// ktr/template/hello/card/mock.ts
+import type { HelloCardData } from './index'
+
+export const basic = {
+  title: 'Karin Template React',
+  items: [
+    { label: '渲染方式', value: 'SSR HTML' },
+    { label: '样式方案', value: 'Tailwind CSS v4' }
+  ]
+} satisfies HelloCardData
+
+export const empty = {
+  title: '空状态',
+  items: []
+} satisfies HelloCardData
+```
+
+注册结果：
+
+- **路由**：`hello/card`
+- **TS mock**：`basic`、`empty`（面板显示为只读数据源）
+- **JSON mock**：`default`、`captured`（面板可编辑）
+
+### 示例 2：共享代码组织
+
+跨模板的工具函数和组件应放在下划线开头的目录：
+
+```text
+ktr/template/
+├── _shared/                    ← 不会被扫描
+│   ├── components/
+│   │   ├── avatar.tsx
+│   │   └── badge.tsx
+│   └── utils/
+│       └── format.ts
+├── user/
+│   └── profile/
+│       └── index.tsx           ← 可 import ../_shared
+└── hello/
+    └── card/
+        └── index.tsx           ← 可 import ../_shared
+```
+
+```typescript twoslash
+// @noErrors
+// ktr/template/user/profile/index.tsx
+import { defineTemplate } from '@karinjs/template-react'
+import { Avatar } from '../../_shared/components/avatar'
+import { formatDate } from '../../_shared/utils/format'
+
+export default defineTemplate({
+  name: '用户资料',
+  component: ({ data }) => (
+    <div>
+      <Avatar src={data.avatar} />
+      <p>{formatDate(data.joinedAt)}</p>
+    </div>
+  )
+})
+```
+
+### 示例 3：多级板块组织
+
+路由深度固定为两级，但可用目录名分组：
+
+```text
+ktr/template/
+├── user/
+│   ├── profile/
+│   │   └── index.tsx        → 路由 user/profile
+│   ├── card/
+│   │   └── index.tsx        → 路由 user/card
+│   └── badge/
+│       └── index.tsx        → 路由 user/badge
+└── stats/
+    ├── chart/
+    │   └── index.tsx        → 路由 stats/chart
+    └── table/
+        └── index.tsx        → 路由 stats/table
+```
+
+开发面板会按板块（第一级目录名）分组显示模板列表。
+
+## 最佳实践
+
+### 1. 命名约定
+
+- **板块名**：小写，用 `-` 分隔单词（如 `user-profile`、`stats-chart`）
+- **模板名**：小写，描述性名词（如 `card`、`profile`、`dashboard`）
+- **避免**：中文路径、特殊字符、空格
+
+```text
+✅ 推荐
+ktr/template/user-info/profile/index.tsx    → user-info/profile
+ktr/template/stats/daily-chart/index.tsx    → stats/daily-chart
+
+❌ 不推荐
+ktr/template/用户信息/个人资料/index.tsx
+ktr/template/stats/Daily Chart/index.tsx
+```
+
+### 2. 目录结构建议
+
+单个模板的推荐结构：
+
+```text
+ktr/template/hello/card/
+├── index.tsx              ← 模板入口，默认导出 defineTemplate
+├── mock.ts                ← TS mock，具名导出多个示例
+├── components/            ← 内部组件（只被本模板使用）
+│   ├── header.tsx
+│   └── footer.tsx
+├── hooks/                 ← 自定义 hooks（可选）
+│   └── use-animation.ts
+└── data/                  ← JSON mock
+    ├── default.json
+    ├── variant.json
+    └── captured.json
+```
+
+### 3. 类型安全实践
+
+在模板文件中定义 Data 接口，mock 文件引用：
+
+```typescript twoslash
+// @filename: ./index.tsx
+// ktr/template/hello/card/index.tsx
+import { defineTemplate } from '@karinjs/template-react'
+
+export interface HelloCardData {
+  title: string
+  subtitle?: string
+  items: Array<{
+    label: string
+    value: string | number
+  }>
+}
+
+export default defineTemplate<HelloCardData>({
+  name: 'Hello 卡片',
+  component: ({ data }) => {
+    // data 有完整类型推导
+    return <div>{data.title}</div>
+  }
+})
+```
+
+```typescript twoslash
+// @filename: ./index.tsx
+export interface HelloCardData {
+  title: string
+  subtitle?: string
+  items: Array<{ label: string; value: string | number }>
+}
+// @filename: ./mock.ts
+// ---cut---
+// ktr/template/hello/card/mock.ts
+import type { HelloCardData } from './index'
+
+// satisfies 确保类型匹配，同时保留字面量类型
+export const basic = {
+  title: 'Karin Template React',
+  items: [{ label: '渲染方式', value: 'SSR HTML' }]
+} satisfies HelloCardData
+
+// 或使用辅助函数
+import { defineMock } from '@karinjs/template-react'
+
+export const advanced = defineMock<HelloCardData>({
+  title: '高级示例',
+  subtitle: '带副标题',
+  items: [
+    { label: '版本', value: '2.0.0' },
+    { label: '星标', value: 1024 }
+  ]
+})
+```
+
+### 4. 何时刷新注册表
+
+注册表会在以下情况自动刷新：
+
+- ✅ `ktr dev` 启动时
+- ✅ `ktr build` 构建时
+- ✅ Vite/Rolldown 插件 `buildStart` 钩子
+
+但以下情况需要手动 `ktr sync`：
+
+- ❌ 新建模板目录和 `index.tsx`
+- ❌ 删除模板目录
+- ❌ 重命名模板目录
+- ❌ 新建/删除 `mock.ts` 或 `data/*.json`
+
+```bash
+# 新建模板后
+mkdir -p ktr/template/user/badge
+touch ktr/template/user/badge/index.tsx
+
+# 手动刷新
+pnpm ktr sync
+
+# 或重启开发服务器（会自动刷新）
+pnpm template
+```
+
+### 5. 调试注册表
+
+注册表文件在 `.ktr/` 目录，可直接查看：
+
+```bash
+# 查看注册的路由
+cat .ktr/template-registry.ts
+
+# 查看 mock 导出
+cat .ktr/mock-registry.ts
+
+# 查看类型增强
+cat .ktr/registry-types.d.ts
+```
+
+如果发现路由未注册或类型不对，检查：
+
+1. 文件路径是否符合 `<板块>/<模板>/index.tsx`
+2. 是否在 `components/` 或 `_*` 目录内
+3. 文件扩展名是否为 `.tsx` 或 `.jsx`
+4. 是否执行过 `ktr sync`
+
+## 下一步
+
+<Cards>
+  <Card title="模板注册表" href="./registry" description="深入理解 .ktr/ 三个文件的作用" />
+  <Card title="数据流" href="./data-flow" description="从定义到渲染的完整链路" />
+  <Card title="编写模板" href="/docs/guide/template" description="defineTemplate 与组件写法" />
+</Cards>

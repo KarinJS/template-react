@@ -1,0 +1,102 @@
+{
+  "name": "@karinjs/template-react",
+  "version": "0.0.0",
+  "description": "React + Tailwind CSS screenshot template kit for Karin plugins.",
+  "author": "ikenxuan, KarinJS Team",
+  "bin": {
+    "ktr": "./bin/ktr.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "panel/dist",
+    "styles",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "browser": "./dist/client.mjs",
+      "import": "./dist/index.mjs"
+    },
+    "./registry-types": {
+      "types": "./dist/registry-types.d.mts",
+      "import": "./dist/registry-types.mjs"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.mts",
+      "import": "./dist/plugin.mjs"
+    },
+    "./styles": {
+      "style": "./styles/index.css",
+      "default": "./styles/index.css"
+    },
+    "./styles/*.css": "./styles/*.css",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "scripts": {
+    "dev": "tsdown --watch",
+    "panel": "vite --config vite.panel.config.ts",
+    "build": "tsc --noEmit && pnpm build:runtime && pnpm build:panel",
+    "cli": "node bin/ktr.mjs",
+    "build:runtime": "tsdown",
+    "build:panel": "vite build --config vite.panel.config.ts",
+    "typecheck": "tsc --noEmit",
+    "demo": "pnpm --filter ktr-examples run dev",
+    "test": "pnpm build:runtime && vitest run --typecheck",
+    "prepublishOnly": "pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "@heroui/styles": "3.2.4",
+    "@tailwindcss/vite": "^4.3.3",
+    "code-inspector-plugin": "^1.6.6",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.5",
+    "vite": "^8.2.0"
+  },
+  "devDependencies": {
+    "@clack/prompts": "^1.7.0",
+    "@heroui/react": "^3.2.4",
+    "@monaco-editor/react": "^4.7.0",
+    "@shikijs/langs": "4.4.1",
+    "@shikijs/themes": "4.4.1",
+    "@types/culori": "4.0.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "@zumer/snapdom": "^2.23.2",
+    "cac": "^7.0.0",
+    "chokidar": "^5.0.0",
+    "clsx": "^2.1.1",
+    "consola": "^3.4.2",
+    "culori": "4.0.2",
+    "defu": "^6.1.7",
+    "fast-glob": "^3.3.3",
+    "gsap": "^3.15.0",
+    "lucide-react": "^1.28.0",
+    "react": "^19.2.8",
+    "react-aria-components": "1.20.0",
+    "react-dom": "^19.2.8",
+    "react-icons": "^5.7.0",
+    "react-resizable-panels": "^4.12.2",
+    "react-router-dom": "^7.18.2",
+    "react-zoom-pan-pinch": "^4.0.4",
+    "shiki": "4.4.1",
+    "tsdown": "0.22.14",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

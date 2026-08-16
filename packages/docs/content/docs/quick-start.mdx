@@ -1,0 +1,396 @@
+---
+title: 快速开始
+description: 从初始化到在群里发出第一张 React 模板截图
+---
+
+# 快速开始
+
+本页帮你在 Karin 插件项目中接入 `@karinjs/template-react`，用 React 组件写一个截图模板，并在群里发出第一张图片。每一步都明确了成功标志，如果没看到预期结果就停下来检查。
+
+**前置条件**：Node.js 22+、pnpm、一个基于 Karin 官方 TypeScript 插件模板的项目。
+
+<Steps>
+<Step>
+### 第 1 步：初始化项目
+
+在你的 Karin 插件项目根目录执行：
+
+```bash
+npx @karinjs/template-react init
+```
+
+命令会启动交互式向导，询问四个配置项：
+
+1. **样式方案**：选择默认选项即可继承 HeroUI 主题，`bg-surface`、`text-accent` 等语义类开箱可用
+2. **是否生成示例模板**：建议选"是"，会复制官方 7 个示例（问候卡片、成员榜单、宽屏仪表盘等）到 `ktr/template/`，照着改就能上手
+3. **是否生成 `src/utils/render.ts`**：建议选"是"，这是模板渲染接入 Karin 截图的胶水层（第 4 步会用到）
+4. **开发面板端口**：保持默认或自定义端口
+
+向导完成后，按提示安装依赖：
+
+```bash
+pnpm install
+```
+
+**✓ 成功标志**：
+
+- 项目根目录出现 `karin.template.ts` 配置文件
+- 出现 `ktr/template/` 目录（包含示例模板，如果选择了生成）
+- 出现 `src/utils/render.ts` 文件（如果选择了生成）
+- `tsconfig.json` 中添加了 `"jsx": "react-jsx"` 配置
+- `package.json` 中添加了依赖和 `template` 脚本
+
+<Callout type="info">如果你还没有项目，用 `npx @karinjs/template-react create <项目名>` 从零创建，之后走同样的问答流程。</Callout>
+
+<Callout type="warn">
+  **依赖管理注意事项**：所有在模板中用到的依赖都需要放在 `packages.json` 的 `devDependencies` 中，构建时会整体打包（包括 React
+  和本包运行时），生产环境即可不用安装有关前端的相关依赖；只有 `node-karin` 保持排除在外。不要手动修改依赖配置——组件和渲染器必须使用同一份
+  React 实例，否则 hooks 会直接报错。
+</Callout>
+
+<Callout type="error">
+  **遇到问题？** 如果初始化失败或出现错误，查看 [故障排查](/docs/troubleshooting/common-issues) 页面的常见问题解决方案。
+</Callout>
+
+</Step>
+<Step>
+### 第 2 步：理解模板结构
+
+让我们看一个完整的模板示例，理解它是如何工作的。以 `ktr/template/hello/card/index.tsx` 为例：
+
+```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+interface CardData {
+  /** 卡片标题 */
+  title: string
+  /** 键值对列表 */
+  items: Array<{ label: string; value: string }>
+}
+
+const Card = ({ data }: TemplateProps<CardData>) => (
+  //               ^?
+  <div className="w-155 rounded-3xl border border-border bg-background p-8 text-foreground">
+    <h1 className="mb-4 text-3xl font-bold">{data.title}</h1>
+    {data.items.map((item) => (
+      <div key={item.label} className="flex justify-between py-2">
+        <span className="text-muted">{item.label}</span>
+        <strong>{item.value}</strong>
+      </div>
+    ))}
+  </div>
+)
+
+export default defineTemplate({ name: '问候卡片', component: Card })
+```
+
+**关键要点**：
+
+1. **路径即路由**：`ktr/template/<板块>/<模板>/index.tsx` 自动注册为路由 `hello/card`；直接写 `.tsx` 文件（不在目录结构中）不会被注册
+2. **使用语义化样式类**：使用 `bg-background`、`text-muted` 等语义类，主题切换和明暗模式自动适配；避免写死颜色如 `bg-white`
+3. **类型安全**：`TemplateProps<CardData>` 确保组件接收的数据结构类型安全
+4. **JSON 示例数据**：放在 `data/` 子目录（如 `ktr/template/hello/card/data/default.json`），放在模板根目录不会被识别
+
+**示例数据结构** `ktr/template/hello/card/data/default.json`：
+
+```json title="ktr/template/hello/card/data/default.json"
+{
+  "title": "欢迎使用",
+  "items": [
+    { "label": "状态", "value": "运行中" },
+    { "label": "版本", "value": "1.0.0" }
+  ]
+}
+```
+
+完整的目录约定和更多示例见 [目录约定](/docs/guide/conventions)。
+
+<Callout type="info">
+  **提示**：语义类如 `bg-surface`、`text-accent`、`border-border` 等会根据用户配置的主题自动适配颜色，无需手动处理明暗模式。
+</Callout>
+
+</Step>
+<Step>
+### 第 3 步：启动开发面板
+
+在项目根目录执行：
+
+```bash
+pnpm template
+```
+
+这个命令等价于 `ktr sync && ktr dev`：
+
+- `sync`：扫描 `ktr/template/` 目录生成 `.ktr/` 注册表和类型定义
+- `dev`：启动开发面板服务器并打开浏览器
+
+**✓ 成功标志**：
+
+- 浏览器自动打开开发面板（通常是 `http://localhost:3000`）
+- 左侧列表显示所有可用模板（如"问候卡片"）
+- 点击模板名称后右侧显示实时预览
+- 修改组件代码或 `data/*.json` 保存后，预览会在 1-2 秒内自动刷新
+
+<Callout type="info">**端口被占用？** 如果默认端口被占用，`ktr dev` 会自动切换到其他可用端口，并在终端显示占用进程的详细信息。</Callout>
+
+<Callout type="error">
+  **遇到问题？** 如果面板无法启动或预览不显示，检查： - 是否执行了 `pnpm install` - `.ktr/` 目录是否存在（如果不存在，手动执行 `npx ktr
+  sync`） - 浏览器控制台是否有报错 更多帮助见 [故障排查](/docs/troubleshooting/common-issues)。
+</Callout>
+
+</Step>
+<Step>
+### 第 4 步：接入 Karin，发出第一张图
+
+现在让我们把模板接入 Karin，在群里发出第一张图片。
+
+#### 4.1 渲染工具函数
+
+如果你在第 1 步选择生成了 `src/utils/render.ts`，文件已经存在。让我们看看它的完整实现：
+
+```ts title="src/utils/render.ts" twoslash
+// @filename: ./src/dir.ts
+/** 插件目录常量，见 src/dir.ts。 */
+export const dir = { pluginName: 'karin-plugin-example' }
+// @filename: ./src/utils/render.ts
+// ---cut---
+import path from 'node:path'
+
+import { karinPathHtml, render, segment, type ImageElement } from 'node-karin'
+import { createTemplateRenderer, type DataOf, type LoadedRegistry } from '@karinjs/template-react'
+
+import { dir } from '../dir'
+
+// ktr 侧按约定装配（包根定位、配置解析、注册表加载、CSS 定位、捕获目录）；
+// outputDir 是 karin 领域的位置，由插件显式指定。
+const renderTemplate = createTemplateRenderer(import.meta.url, {
+  renderer: { outputDir: path.join(karinPathHtml, dir.pluginName) }
+})
+
+/** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
+type Registry = LoadedRegistry
+
+/**
+ * 渲染模板并交给 Karin Puppeteer 截图，返回可直接 reply 的图片消息元素。
+ *
+ * @param templatePath - 模板路由，如 'hello/card'
+ * @param data - 模板数据，类型会根据模板路径自动推导
+ * @param options - Puppeteer 截图选项
+ * @returns 图片消息元素数组，可直接传给 event.reply()
+ */
+export const renderImage = async <K extends keyof Registry & string>(
+  //            ^?
+  templatePath: K,
+  data: DataOf<Registry[K]>,
+  //      ^?
+  options?: Record<string, unknown>
+): Promise<ImageElement[]> => {
+  const { success, htmlPath, error } = await renderTemplate(templatePath, data)
+  if (!success) {
+    throw new Error(`模板渲染失败 ${templatePath}：${error}`)
+  }
+
+  const result = await render.render({
+    name: `${dir.pluginName}/${templatePath}`,
+    file: htmlPath,
+    selector: '#container',
+    type: 'png',
+    omitBackground: true,
+    ...options
+  })
+
+  const list = Array.isArray(result) ? result : [result]
+  return list.map((img) => segment.image(`base64://${img}`))
+}
+```
+
+**关键点**：
+
+- `createTemplateRenderer` 创建渲染器实例，负责将 React 组件渲染为 HTML
+- `renderImage` 函数的 `data` 参数类型会根据 `templatePath` 自动推导，确保类型安全
+- 渲染完成后调用 Karin 的 `render.render()` 进行截图
+- 返回的 `ImageElement[]` 可以直接传给 `event.reply()`
+
+#### 4.2 创建测试指令
+
+创建一个新的指令文件来测试模板渲染：
+
+```ts title="src/apps/template.ts" twoslash
+// @filename: ./src/utils/render.ts
+import type { ImageElement } from 'node-karin'
+import type { DataOf, LoadedRegistry } from '@karinjs/template-react'
+
+/** renderImage 完整类型签名 */
+export declare const renderImage: <K extends keyof LoadedRegistry & string>(
+  templatePath: K,
+  data: DataOf<LoadedRegistry[K]>,
+  options?: Record<string, unknown>
+) => Promise<ImageElement[]>
+
+// @filename: ./src/apps/template.ts
+// ---cut---
+import { karin } from 'node-karin'
+
+import { renderImage } from '../utils/render'
+
+/** 触发指令：#测试模板 */
+export const templateTest = karin.command('^(#)?测试模板$', async (event) => {
+  // renderImage 的第二个参数 data 类型会根据 'hello/card' 自动推导
+  const images = await renderImage('hello/card', {
+    //                     ^?
+    title: '来自机器人的卡片',
+    items: [
+      { label: '状态', value: '渲染成功 ✓' },
+      { label: '时间', value: new Date().toLocaleTimeString('zh-CN') }
+    ]
+  })
+
+  await event.reply(images)
+  return true
+})
+```
+
+**类型安全演示**：
+
+```ts twoslash
+// @filename: virtual.d.ts
+import type { TemplateDef } from '@karinjs/template-react'
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': TemplateDef<{ title: string; items: Array<{ label: string; value: string }> }>
+  }
+}
+// @filename: index.ts
+// @errors: 2345 2322
+import type { DataOf, LoadedRegistry } from '@karinjs/template-react'
+
+declare const renderImage: <K extends keyof LoadedRegistry & string>(templatePath: K, data: DataOf<LoadedRegistry[K]>) => Promise<any>
+// ---cut---
+// ✓ 正确：类型匹配
+await renderImage('hello/card', {
+  title: '标题',
+  items: [{ label: '键', value: '值' }]
+})
+
+// ✗ 错误：缺少必需字段 title
+await renderImage('hello/card', {
+  items: [{ label: '键', value: '值' }]
+})
+
+// ✗ 错误：title 类型错误（应该是 string）
+await renderImage('hello/card', {
+  title: 123,
+  items: [{ label: '键', value: '值' }]
+})
+```
+
+#### 4.3 测试渲染
+
+1. 启动 Karin 开发服务器：
+
+```bash
+pnpm dev
+```
+
+2. 在群聊或私聊中发送指令：
+
+```
+#测试模板
+```
+
+**✓ 成功标志**：
+
+- 机器人回复一张卡片图片，显示"来自机器人的卡片"标题和状态信息
+- 开发面板的数据列表中自动出现 `captured.json`（记录了本次真实渲染的数据）
+- 可以在开发面板中选中 `captured.json` 查看捕获的数据结构
+
+<Callout type="info">
+  **数据捕获功能**：每次通过 `renderImage` 渲染模板时，传入的数据会自动保存到 `ktr/template/<模板路径>/data/captured.json`，方便你在开发面板中重现真实场景。
+</Callout>
+
+<Callout type="error">
+  **遇到问题？** 常见问题排查： - **机器人无响应**：检查指令格式是否正确，确认机器人已启动 - **渲染失败**：查看终端错误信息，确认 `pnpm
+  template` 已执行过（生成注册表） - **类型报错**：执行 `npx ktr sync` 重新生成类型定义 更多帮助见 [接入
+  Karin](/docs/guide/karin-integration) 和 [故障排查](/docs/troubleshooting/common-issues)。
+</Callout>
+
+</Step>
+<Step>
+### 第 5 步：生产构建与发布
+
+开发完成后，需要把插件打包成纯 JS 产物以便发布。产物目录由你的打包配置决定（karin 插件惯例是 `lib/`，本文示例都用它）。
+
+如果宿主应用只是普通的 JavaScript Node 程序，不希望维护 Vite 或 tsdown 入口，可以改用 [`ktr build`](/docs/build/standalone-build)，直接生成可被 Node 导入的独立运行包。
+
+执行构建命令：
+
+```bash
+pnpm build
+```
+
+或者如果你使用的是 Vite：
+
+```bash
+vite build
+```
+
+**构建原理**：
+
+构建成功的前提是 `vite.config.ts` 中配置了 `ktrBuildPlugin()`（来自 `@karinjs/template-react/plugin`）。这个插件会：
+
+1. 打包前自动执行 `ktr sync` 刷新注册表和类型定义
+2. 打包后将所有 CSS 编译到 `<产物目录>/style.css`（跟随打包器 outDir）
+3. 由打包器生成 `template-registry.js`，供生产渲染器发现模板组件
+
+**✓ 成功标志**：
+
+- 产物目录（如 `lib/`）包含以下文件：
+  - `apps/*.js`（你的指令文件）
+  - `utils/render.js`（渲染工具）
+  - `template-registry.js`（模板注册表）
+  - `style.css`（编译后的样式）
+- 发布后用户只需安装你的插件包，无需 `ktr/template/` 源码目录
+
+`mock-registry.js` 不是普通生产渲染的必需产物。只有插件代码明确调用 `loadMockRegistry()`、希望在生产环境读取示例数据时才把它加入打包入口。
+
+**配置示例** `vite.config.ts`：
+
+```ts title="vite.config.ts" twoslash
+import { defineConfig } from 'vite'
+import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
+
+export default defineConfig({
+  plugins: [ktrBuildPlugin()]
+})
+```
+
+完整的构建配置和发布流程见 [构建发布](/docs/build/building)。
+
+<Callout type="info">
+  **打包优化**：所有依赖（包括 React）都会打包进产物，用户安装后无需额外安装依赖。生产环境只需要 `node-karin` 作为外部依赖。
+</Callout>
+
+<Callout type="error">
+  **构建失败？** 常见问题： - **找不到 ktrBuildPlugin**：确认已安装 `@karinjs/template-react` 并在 `vite.config.ts` 中正确导入 -
+  **类型错误**：执行 `npx ktr sync` 重新生成类型定义 - **CSS 缺失**：确认构建配置挂了 `ktrBuildPlugin()` 且没有传 `{ css: false }` 更多帮助见
+  [构建发布](/docs/build/building) 和 [故障排查](/docs/troubleshooting/common-issues)。
+</Callout>
+
+</Step>
+</Steps>
+
+## 下一步
+
+恭喜！你已经完成了从初始化到发出第一张图的完整流程。现在你可以：
+
+<Cards>
+  <Card title="编写模板" href="/docs/guide/template" description="深入了解 defineTemplate 字段、ctx 上下文、外观规则" />
+  <Card title="mock 数据" href="/docs/guide/data" description="学习 TS mock、JSON mock、captured.json 数据捕获" />
+  <Card title="接入 Karin" href="/docs/guide/karin-integration" description="renderImage 逐段讲解与更多指令示例" />
+</Cards>
+
+<Callout type="warn">
+  **开发建议**： - 在开发面板中调试模板样式和数据结构，确认无误后再接入 Karin 指令 - 使用 `captured.json` 收集真实场景的数据，作为测试用例 -
+  遵循语义化样式类约定，确保主题切换正常工作
+</Callout>

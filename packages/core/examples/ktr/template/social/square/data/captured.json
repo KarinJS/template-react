@@ -1,0 +1,20 @@
+{
+  "creator": "@karin-template",
+  "headline": "不离开插件项目，也能开发截图模板",
+  "summary": "适用于动态、卡片、总结与分享图的方形版式。",
+  "stats": [
+    {
+      "label": "版式",
+      "value": "4 种"
+    },
+    {
+      "label": "数据文件",
+      "value": "JSON"
+    },
+    {
+      "label": "主题",
+      "value": "设计变量"
+    }
+  ],
+  "highlights": ["1080x1080", "社媒分享", "主题适配"]
+}

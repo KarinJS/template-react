@@ -1,0 +1,572 @@
+---
+title: 自定义配置
+description: karin.template.ts 完整配置项详解、Vite 配置扩展、按环境区分配置、优先级规则与实际使用场景
+---
+
+`karin.template.ts` 是框架唯一的配置文件，只配置工具链行为；模板、mock、数据按约定自动发现。本页详解所有配置项和实际使用场景。
+
+## 配置文件查找
+
+按 `.ts` → `.mts` → `.js` → `.mjs` 顺序查找，取第一个存在的：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  dev: {
+    port: 5180,
+    open: true
+  }
+})
+```
+
+## 配置优先级
+
+**CLI 命令行覆盖 > `karin.template.ts` > 内置默认值**
+
+```bash
+# 命令行覆盖优先级最高
+pnpm ktr dev --port 3000 --no-open
+```
+
+配置合并使用 `defu`，命令行参数会深度覆盖文件配置。
+
+## 完整配置项详解
+
+### dir.template
+
+**类型**：`string`  
+**默认值**：`'ktr/template'`
+
+模板根目录，所有模板组件、mock、JSON 数据和 `style.css` 按约定放在这里。
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    template: 'src/templates'
+  }
+})
+```
+
+修改后，模板文件从 `src/templates/<板块>/<模板>/index.tsx` 读取。
+
+**使用场景**：
+
+1. **适配现有项目结构**：已有 `src/views` 或 `templates` 目录
+2. **Monorepo 共享模板**：`packages/shared/templates`
+3. **多语言模板分离**：`ktr/template-zh`、`ktr/template-en`
+
+### dir.assets
+
+**类型**：`string`  
+**默认值**：`'ktr/public'`
+
+静态资源目录（字体、图标、背景图）。`/xxx` 引用始终等于 `<dir.assets>/xxx`：dev server 当 publicDir 服务（开发态直接可访问），构建时复制到 `<产物>/assets`，SSR 产出 HTML 时再按 [`html.assetsInlineLimit`](/docs/api/config-cli#htmlassetsinlinelimit) 内联为 base64 或转为 `file://` 绝对路径——开发、构建、生产三态下位置始终正确。
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    assets: 'public'
+  }
+})
+```
+
+模板中引用：
+
+```tsx twoslash
+declare const Component: React.FC
+// ---cut---
+const Avatar = () => <img src="/assets/avatar.png" alt="头像" />
+```
+
+**使用场景**：
+
+1. **复用项目 public 目录**：避免资源重复
+2. **CDN 资源本地化**：下载字体文件到 `ktr/public/fonts`
+3. **多模板共享资源**：`shared/assets`
+
+### dir.copyAssets
+
+**类型**：`boolean`  
+**默认值**：`true`
+
+构建时是否复制静态资源到产物 `assets/`。
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    copyAssets: false
+  }
+})
+```
+
+**使用场景**：
+
+1. **资源已随 npm 包发布**：`package.json` 的 `files` 包含 `ktr/public`
+2. **资源体积大**：避免构建时复制耗时
+3. **资源与代码分离发布**：资源走 CDN，代码走 npm
+
+设为 `false` 时构建会在产物根生成 `ktr-assets.json` 位置清单，渲染时框架据此定位随包发布的资源目录（不需要随包发布 `karin.template.ts`），模板里的 `/xxx` 引用在开发、构建、生产三态下照常解析——包里只有一份资源。
+
+### dir.cssEntry
+
+**类型**：`string`  
+**默认值**：自动探测 `<dir.template>/style.css`
+
+Tailwind CSS 入口文件，缺失时首次启动自动补全。
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    cssEntry: 'src/styles/main.css'
+  }
+})
+```
+
+自定义入口内容：
+
+```css title="src/styles/main.css"
+@import 'tailwindcss';
+@import './custom-utilities.css';
+@import './animations.css';
+```
+
+**使用场景**：
+
+1. **多个样式文件组合**：分离工具类、动画、主题
+2. **按需导入组件库样式**：`@import '@heroui/theme'`
+3. **自定义 Tailwind 插件**：配合 `vite.css.preprocessorOptions`
+
+### extraStylePaths
+
+**类型**：`string[]`  
+**默认值**：`[]`
+
+额外注入 SSR HTML 的样式文件，内容会内联进 `<style>` 标签。
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  extraStylePaths: ['ktr/public/fonts.css', 'ktr/public/icons.css']
+})
+```
+
+**使用场景**：
+
+1. **内联字体定义**：确保截图包含 `@font-face`
+2. **图标库样式**：Material Icons、Font Awesome
+3. **打印样式**：`@media print` 规则
+4. **第三方组件库样式**：确保 SSR HTML 自包含
+
+### dev.port
+
+**类型**：`number`  
+**默认值**：`5180`
+
+开发服务器监听端口，被占用时自动回退到下一个可用端口。
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dev: {
+    port: 3000
+  }
+})
+```
+
+**使用场景**：
+
+1. **端口冲突**：5180 被其他服务占用
+2. **多项目同时开发**：A 项目 3000，B 项目 3001
+3. **固定端口**：Docker 容器映射、防火墙规则
+
+### dev.host
+
+**类型**：`string`  
+**默认值**：`'localhost'`
+
+开发服务器监听主机。`'0.0.0.0'` 暴露给局域网。
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dev: {
+    host: '0.0.0.0'
+  }
+})
+```
+
+**使用场景**：
+
+1. **手机预览**：同局域网手机访问 `http://192.168.x.x:5180`
+2. **多屏调试**：另一台电脑查看效果
+3. **Docker 容器**：暴露给宿主机访问
+4. **虚拟机开发**：宿主机浏览器访问虚拟机服务
+
+### dev.open
+
+**类型**：`boolean`  
+**默认值**：`true`
+
+启动后是否自动打开浏览器。
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dev: {
+    open: false
+  }
+})
+```
+
+**使用场景**：
+
+1. **CI 环境**：自动化测试不需要打开浏览器
+2. **远程开发**：SSH 连接服务器，本地手动打开
+3. **自定义浏览器**：通过 `--open` 指定浏览器路径
+
+### html.headExtra
+
+**类型**：`string`  
+**默认值**：`''`
+
+追加到 SSR HTML `<head>` 的原始 HTML。
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  html: {
+    headExtra: `
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;700&display=swap" rel="stylesheet">
+      <meta name="generator" content="ktr">
+    `
+  }
+})
+```
+
+**使用场景**：
+
+1. **外部字体**：Google Fonts、自托管字体
+2. **meta 标签**：`<meta name="viewport">`、OG 标签
+3. **预加载资源**：`<link rel="preload">`
+4. **第三方脚本**：统计、监控（SSR 环境慎用）
+
+## Vite 配置扩展
+
+### 对象形式
+
+直接合并到内部 Vite 配置：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+import legacy from '@vitejs/plugin-legacy'
+// ---cut---
+export default defineConfig({
+  vite: {
+    plugins: [legacy()],
+    resolve: {
+      alias: {
+        '@': '/ktr/template'
+      }
+    },
+    define: {
+      __APP_VERSION__: JSON.stringify('1.0.0')
+    }
+  }
+})
+```
+
+### 函数形式
+
+按 dev/build 区分配置：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+import { visualizer } from 'rollup-plugin-visualizer'
+// ---cut---
+export default defineConfig({
+  vite: ({ command, mode, config }) => {
+    if (command === 'serve') {
+      return {
+        server: {
+          proxy: {
+            '/api': 'http://localhost:8080'
+          }
+        }
+      }
+    }
+
+    // build 模式
+    return {
+      plugins: [visualizer({ open: true })],
+      build: {
+        minify: 'terser',
+        terserOptions: {
+          compress: { drop_console: true }
+        }
+      }
+    }
+  }
+})
+```
+
+**参数说明**：
+
+- `command`：`'serve'`（开发）或 `'build'`（构建）
+- `mode`：运行模式，通常是 `'development'` 或 `'production'`
+- `config`：已解析的 ktr 配置（`ResolvedKtrConfig`）
+
+**使用场景**：
+
+1. **开发代理**：`server.proxy` 转发 API 请求
+2. **构建优化**：生产环境压缩、tree-shaking
+3. **环境变量**：`define` 注入编译时常量
+4. **路径别名**：`resolve.alias` 简化 import
+5. **插件条件加载**：开发用 inspector，生产用 visualizer
+
+## 按环境区分配置
+
+### 环境变量驱动
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dev: {
+    port: Number.parseInt(process.env.KTR_PORT || '5180'),
+    host: process.env.KTR_HOST || 'localhost'
+  },
+  dir: {
+    template: process.env.NODE_ENV === 'test' ? 'test/fixtures/templates' : 'ktr/template'
+  }
+})
+```
+
+### 多配置文件
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig, type KtrConfig } from '@karinjs/template-react'
+
+const baseConfig: KtrConfig = {
+  dev: { port: 5180 }
+}
+
+const devConfig: KtrConfig = {
+  dev: { open: true }
+}
+
+const prodConfig: KtrConfig = {
+  dev: { open: false }
+}
+
+export default defineConfig(process.env.NODE_ENV === 'production' ? { ...baseConfig, ...prodConfig } : { ...baseConfig, ...devConfig })
+```
+
+## 配置合并规则
+
+使用 `defu` 深度合并，数组和对象合并策略：
+
+```ts
+// 对象：深度合并
+defineConfig({
+  dev: { port: 3000 } // 保留其他 dev 字段
+})
+
+// 数组：替换而非合并
+defineConfig({
+  extraStylePaths: ['a.css', 'b.css'] // 完全替换默认值 []
+})
+```
+
+## 实际使用场景汇总
+
+### 场景 1：Monorepo 多模板项目
+
+```ts title="packages/bot-a/karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dir: {
+    template: '../../shared/templates', // 共享模板
+    assets: '../../shared/assets'
+  },
+  dev: {
+    port: 5181 // 避免冲突
+  }
+})
+```
+
+### 场景 2：生产环境优化
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+import compression from 'vite-plugin-compression'
+// ---cut---
+export default defineConfig({
+  dir: {
+    copyAssets: false // 资源已在 CDN
+  },
+  vite: ({ command }) => {
+    if (command === 'build') {
+      return {
+        plugins: [compression({ algorithm: 'brotliCompress' })],
+        build: {
+          cssCodeSplit: false,
+          minify: 'esbuild'
+        }
+      }
+    }
+    return {}
+  }
+})
+```
+
+### 场景 3：多语言模板
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+const lang = process.env.TEMPLATE_LANG || 'zh'
+
+export default defineConfig({
+  dir: {
+    template: `ktr/template-${lang}`,
+    cssEntry: `ktr/template-${lang}/style.css`
+  }
+})
+```
+
+### 场景 4：开发体验增强
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+import inspect from 'vite-plugin-inspect'
+// ---cut---
+export default defineConfig({
+  dev: {
+    port: 5180,
+    host: '0.0.0.0',
+    open: true
+  },
+  vite: {
+    plugins: [
+      inspect() // http://localhost:5180/__inspect/
+    ],
+    server: {
+      hmr: {
+        overlay: true
+      }
+    }
+  }
+})
+```
+
+### 场景 5：自定义字体和图标
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  extraStylePaths: ['ktr/public/fonts/rubik.css', 'ktr/public/icons/material-symbols.css'],
+  html: {
+    headExtra: '<link rel="preload" href="/assets/fonts/rubik-bold.woff2" as="font" type="font/woff2" crossorigin>'
+  }
+})
+```
+
+### 场景 6：CI/CD 集成
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+const isCI = process.env.CI === 'true'
+
+export default defineConfig({
+  dev: {
+    open: !isCI,
+    port: isCI ? 8080 : 5180
+  },
+  vite: {
+    logLevel: isCI ? 'error' : 'info'
+  }
+})
+```
+
+### 场景 7：开发代理 API
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  vite: {
+    server: {
+      proxy: {
+        '/api': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api/, '')
+        }
+      }
+    }
+  }
+})
+```
+
+### 场景 8：性能分析
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+import { visualizer } from 'rollup-plugin-visualizer'
+// ---cut---
+export default defineConfig({
+  vite: ({ command }) =>
+    command === 'build'
+      ? {
+          plugins: [
+            visualizer({
+              filename: 'stats.html',
+              open: true,
+              gzipSize: true
+            })
+          ]
+        }
+      : {}
+})
+```
+
+## 配置校验
+
+TypeScript 会自动校验配置类型：
+
+```ts title="karin.template.ts" twoslash
+// @errors: 2322
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  dev: {
+    port: '5180' // ❌ 类型错误：应为 number
+  }
+})
+```
+
+运行时校验在 `resolveConfig` 中执行，无效配置会抛出错误并提示修复建议。
+
+<Cards>
+  <Card title="配置与 CLI" href="/docs/api/config-cli" description="CLI 命令用法" />
+  <Card title="插件开发" href="./plugin-dev" description="渲染插件扩展" />
+  <Card title="Monorepo" href="./monorepo" description="多模板项目配置" />
+</Cards>

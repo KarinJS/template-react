@@ -1,0 +1,707 @@
+---
+title: 模板注册表
+description: .ktr/ 三个文件的作用、生成流程和加载策略
+---
+
+ktr 通过**自动生成的注册表**管理模板、mock 数据和类型增强。本页深入讲解 `.ktr/` 目录下三个文件的作用和运行机制。
+
+## .ktr/ 目录概览
+
+```text
+.ktr/                           ← 框架自动生成，类似 Next.js 的 .next/
+├── template-registry.ts        ← 路由 → 组件的映射表
+├── mock-registry.ts            ← mock 数据统一导出
+└── registry-types.d.ts         ← TypeScript 模块增强
+```
+
+<Callout type="warn">**这三个文件由框架自动管理，不要手动编辑、不要提交到 Git、源码不要 import 它们。**</Callout>
+
+将 `.ktr/` 加入 `.gitignore`：
+
+```text title=".gitignore"
+.ktr/
+```
+
+## template-registry.ts
+
+### 作用
+
+存储路由到组件的映射，供运行时加载使用。
+
+### 生成内容
+
+```typescript twoslash
+// @filename: ../ktr/template/hello/card/index.tsx
+import { defineTemplate } from '@karinjs/template-react'
+export default defineTemplate({ component: () => null })
+// @filename: ../ktr/template/user/profile/index.tsx
+import { defineTemplate } from '@karinjs/template-react'
+export default defineTemplate({ component: () => null })
+// @filename: ../ktr/template/stats/dashboard/index.tsx
+import { defineTemplate } from '@karinjs/template-react'
+export default defineTemplate({ component: () => null })
+// @filename: index.ts
+// ---cut---
+// .ktr/template-registry.ts（框架自动生成）
+
+// 导入所有模板组件（编译时静态分析）
+import template_hello_card from '../ktr/template/hello/card/index.tsx'
+import template_user_profile from '../ktr/template/user/profile/index.tsx'
+import template_stats_dashboard from '../ktr/template/stats/dashboard/index.tsx'
+
+// 导出映射表
+export const templates = {
+  'hello/card': template_hello_card,
+  'user/profile': template_user_profile,
+  'stats/dashboard': template_stats_dashboard
+}
+
+// 辅助类型（用于运行时推导）
+export type TemplateRegistry = typeof templates
+```
+
+### 路由命名规则
+
+- **Key**：路由字符串，格式 `<板块>/<模板>`
+- **Value**：组件的 default export
+- **变量名**：`template_` + 路由路径（`/` 替换为 `_`）
+
+```typescript twoslash
+// @filename: ../ktr/template/user/profile/card/index.tsx
+import { defineTemplate } from '@karinjs/template-react'
+export default defineTemplate({ component: () => null })
+// @filename: index.ts
+// ---cut---
+// 示例：路由 user/profile/card
+import template_user_profile_card from '../ktr/template/user/profile/card/index.tsx'
+
+export const templates = {
+  'user/profile/card': template_user_profile_card
+  //      ↑ 路由 key              ↑ 变量名
+}
+```
+
+### 加载方式
+
+开发态和生产态使用不同的加载策略：
+
+```typescript twoslash
+// runtime/registry-loader.ts（简化示意）
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+
+declare function findBundledRegistry(root: string, fileName: string, bundledDir?: string): string | undefined
+// ---cut---
+export async function loadTemplateRegistry(options: { root: string; bundledDir?: string }) {
+  const { root, bundledDir } = options
+
+  // 1. 开发态：.ktr 源文件优先（tsx 即时转译）；
+  //    渲染器自身跑在下游 bundle 里时跳过这一步，直接用产物（见下方加载策略表）
+  const sourceFile = path.join(root, '.ktr', 'template-registry.ts')
+  if (fs.existsSync(sourceFile)) {
+    const mod = await import(sourceFile)
+    return mod.templates
+  }
+
+  // 2. 生产态：回退到打包产物
+  const bundledFile = findBundledRegistry(root, 'template-registry.js', bundledDir)
+  if (bundledFile) {
+    const mod = await import(bundledFile)
+    return mod.templates
+  }
+
+  throw new Error('未找到注册表：开发态请先运行 ktr sync，生产态请确保已打包')
+}
+```
+
+加载策略：
+
+| 环境       | 加载路径                            | 说明                                                                                                       |
+| ---------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **开发态** | `.ktr/template-registry.ts`         | tsx 动态导入，支持 HMR                                                                                     |
+| **生产态** | 打包产物中的 `template-registry.js` | 按 `bundledDir` → package.json `main` 目录 → 根目录扫描发现；渲染器自身在 bundle 里时直接使用，不看 `.ktr` |
+
+## mock-registry.ts
+
+### 作用
+
+统一导出所有 mock 数据（TS mock 和 JSON mock 清单）。
+
+### 生成内容
+
+```typescript twoslash
+// @filename: json-modules.d.ts
+declare module '*.json' {
+  const data: unknown
+  export default data
+}
+// @filename: ../ktr/template/hello/card/mock.ts
+export const basic = { title: 'Hello' }
+// @filename: ../ktr/template/user/profile/mock.ts
+export const profile = { name: 'Karin' }
+// @filename: index.ts
+// ---cut---
+// .ktr/mock-registry.ts（框架自动生成）
+
+// ===== Part 1: TS mock 具名导出 =====
+export * from '../ktr/template/hello/card/mock.ts'
+export * from '../ktr/template/user/profile/mock.ts'
+
+// 如果模板没有 mock.ts，跳过该行
+
+// ===== Part 2: JSON mock 动态导入清单 =====
+export const mockDataFiles = {
+  'hello/card': {
+    default: () => import('../ktr/template/hello/card/data/default.json'),
+    variant: () => import('../ktr/template/hello/card/data/variant.json'),
+    captured: () => import('../ktr/template/hello/card/data/captured.json')
+  },
+  'user/profile': {
+    basic: () => import('../ktr/template/user/profile/data/basic.json')
+  }
+}
+
+// JSON 文件名（去除 .json）即数据名
+```
+
+### TS mock vs JSON mock
+
+| 特性           | TS mock                                  | JSON mock              |
+| -------------- | ---------------------------------------- | ---------------------- |
+| **位置**       | `mock.ts`（与 index.tsx 同级）           | `data/*.json` 子目录   |
+| **导出方式**   | 具名导出（`export const basic = {...}`） | 动态 import 函数       |
+| **类型安全**   | ✅ 编译期校验（satisfies）               | ❌ 运行时解析          |
+| **面板可编辑** | ❌ 只读                                  | ✅ 可新建/编辑/删除    |
+| **适合场景**   | 固定示例，插件代码可复用                 | 快速调试，多组对照数据 |
+
+### 面板如何加载数据
+
+开发面板通过 Mock API 读取数据：
+
+```typescript twoslash
+// dev/mock-api.ts（简化）
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+
+declare function loadTsMocks(templatePath: string): Promise<Record<string, unknown>>
+declare const config: { mockDataDir: string }
+// ---cut---
+export function mockApiMiddleware() {
+  return async (req: any, res: any) => {
+    const url = new URL(req.url, 'http://localhost')
+
+    // GET /data?path=hello/card&name=basic
+    if (url.pathname === '/data') {
+      const templatePath = url.searchParams.get('path')!
+      const name = url.searchParams.get('name')!
+
+      // 1. 优先读取 JSON 文件（面板可编辑）
+      const jsonPath = path.join(config.mockDataDir, templatePath, 'data', `${name}.json`)
+      if (fs.existsSync(jsonPath)) {
+        res.json(JSON.parse(fs.readFileSync(jsonPath, 'utf-8')))
+        return
+      }
+
+      // 2. 回退到 TS mock（面板只读）
+      const tsMocks = await loadTsMocks(templatePath)
+      if (tsMocks[name]) {
+        res.json(tsMocks[name])
+        return
+      }
+
+      res.status(404).json({ error: 'Data entry not found' })
+    }
+  }
+}
+```
+
+数据源优先级：**JSON mock > TS mock**
+
+## registry-types.d.ts
+
+### 作用
+
+通过 TypeScript 模块增强（Module Augmentation）注入类型，让 `renderImage` 获得：
+
+1. **路由补全**：编辑器自动提示可用路由
+2. **Data 类型推导**：根据模板的 Props 类型推导 data 参数
+
+### 生成内容
+
+```typescript
+// .ktr/registry-types.d.ts（框架自动生成）
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': typeof import('../ktr/template/hello/card/index.tsx').default
+    'user/profile': typeof import('../ktr/template/user/profile/index.tsx').default
+    'stats/dashboard': typeof import('../ktr/template/stats/dashboard/index.tsx').default
+  }
+}
+
+export {}
+```
+
+这是一个**环境声明文件**（Ambient Declaration），TypeScript 编译器自动加载。
+
+### 类型增强原理
+
+框架的核心类型定义：
+
+```typescript twoslash
+// packages/core/src/registry-types.ts
+
+// 用户项目通过模块增强填充这个接口
+export interface ProjectRegistry {}
+
+// 注册表的实际类型（带降级）
+export type LoadedRegistry = keyof ProjectRegistry extends never
+  ? AnyRegistry // 未增强时降级为宽松类型
+  : ProjectRegistry // 增强后为精确类型
+
+// 宽松降级类型（向后兼容）
+interface AnyRegistry {
+  [path: string]: {
+    component: (props: any) => any
+    name?: string
+    description?: string
+  }
+}
+```
+
+### 类型推导效果
+
+有了类型增强，`renderImage` 自动获得智能提示：
+
+```typescript twoslash
+// @filename: virtual.d.ts
+import type { TemplateDef } from '@karinjs/template-react'
+
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': TemplateDef<{
+      title: string
+      items: Array<{ label: string; value: string }>
+    }>
+  }
+}
+// @filename: utils/render.ts
+import type { DataOf, LoadedRegistry } from '@karinjs/template-react'
+import type { ImageElement } from 'node-karin'
+
+// 插件胶水层封装的渲染函数（快速上手一节有完整实现）
+export declare const renderImage: <K extends keyof LoadedRegistry & string>(
+  templatePath: K,
+  data: DataOf<LoadedRegistry[K]>
+) => Promise<ImageElement[]>
+// @filename: index.ts
+// @errors: 2345 2322
+import { renderImage } from './utils/render'
+
+// ✅ 路由补全：输入 'hello/ 自动提示 'hello/card'
+// ✅ data 类型推导：根据模板的 Props 自动推导
+await renderImage('hello/card', {
+  title: 'Karin',
+  items: [{ label: '版本', value: '2.0.0' }]
+})
+
+// ❌ 类型错误：路由不存在
+await renderImage('typo/card', {})
+
+// ❌ 类型错误：data 类型不匹配
+await renderImage('hello/card', {
+  title: 123, // 应为 string
+  items: 'wrong' // 应为 array
+})
+```
+
+### 类型安全的最佳实践
+
+在模板中显式定义 Data 接口：
+
+```typescript twoslash
+// @filename: ./index.tsx
+// ktr/template/hello/card/index.tsx
+import { defineTemplate } from '@karinjs/template-react'
+
+// 显式定义并导出 Data 接口
+export interface HelloCardData {
+  title: string
+  subtitle?: string
+  items: Array<{
+    label: string
+    value: string | number
+  }>
+}
+
+// 泛型参数传入类型
+export default defineTemplate<HelloCardData>({
+  name: 'Hello 卡片',
+  description: '简单的信息卡片',
+  component: ({ data, ctx }) => {
+    // data 有完整类型推导
+    return (
+      <div className="p-6 bg-surface rounded-lg">
+        <h2 className="text-xl font-bold">{data.title}</h2>
+        {data.subtitle && (
+          <p className="text-muted">{data.subtitle}</p>
+        )}
+        <div className="mt-4 space-y-2">
+          {data.items.map(item => (
+            <div key={item.label} className="flex justify-between">
+              <span className="text-muted">{item.label}</span>
+              <span className="font-medium">{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+})
+```
+
+mock 文件引用该接口：
+
+```typescript twoslash
+// @filename: ./index.tsx
+export interface HelloCardData {
+  title: string
+  subtitle?: string
+  items: Array<{ label: string; value: string | number }>
+}
+// @filename: ./mock.ts
+// ---cut---
+// ktr/template/hello/card/mock.ts
+import type { HelloCardData } from './index'
+
+export const basic = {
+  title: 'Karin Template React',
+  items: [{ label: '渲染方式', value: 'SSR HTML' }]
+} satisfies HelloCardData
+```
+
+## 注册表生成流程
+
+完整流程由 `ensureConventions()` 函数协调：
+
+```typescript twoslash
+// conventions/registry.ts
+
+import { glob } from 'fast-glob'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+
+export async function ensureConventions(config: any) {
+  const { templateDir, cacheDir } = config
+
+  // 1. 扫描模板路由
+  const routes = await discoverTemplateRoutes(templateDir)
+  // → ['hello/card', 'user/profile', 'stats/dashboard']
+
+  // 2. 生成 template-registry.ts
+  await generateTemplateRegistry(routes, templateDir, cacheDir)
+
+  // 3. 生成 mock-registry.ts
+  await generateMockRegistry(routes, templateDir, cacheDir)
+
+  // 4. 生成 registry-types.d.ts
+  await generateTypeAugmentation(routes, templateDir, cacheDir)
+}
+
+async function discoverTemplateRoutes(templateDir: string): Promise<string[]> {
+  const files = await glob('**/index.{tsx,jsx}', {
+    cwd: templateDir,
+    ignore: ['**/components/**', '**/_*/**']
+  })
+
+  return files.map((file) => file.replace(/\/index\.(tsx|jsx)$/, '')).sort()
+}
+
+async function generateTemplateRegistry(routes: string[], templateDir: string, cacheDir: string) {
+  const imports: string[] = []
+  const entries: string[] = []
+
+  for (const route of routes) {
+    const varName = `template_${route.replace(/\//g, '_')}`
+    const importPath = path.join(templateDir, route, 'index.tsx')
+
+    imports.push(`import ${varName} from '../${importPath}'`)
+    entries.push(`  '${route}': ${varName}`)
+  }
+
+  const content = `${imports.join('\n')}
+
+export const templates = {
+${entries.join(',\n')}
+}
+
+export type TemplateRegistry = typeof templates
+`
+
+  fs.writeFileSync(path.join(cacheDir, 'template-registry.ts'), content)
+}
+
+async function generateMockRegistry(routes: string[], templateDir: string, cacheDir: string) {
+  const tsMockExports: string[] = []
+  const jsonMockEntries: Record<string, Record<string, string>> = {}
+
+  for (const route of routes) {
+    const routeDir = path.join(templateDir, route)
+
+    // 扫描 TS mock
+    const mockFile = path.join(routeDir, 'mock.ts')
+    if (fs.existsSync(mockFile)) {
+      tsMockExports.push(`export * from '../${mockFile}'`)
+    }
+
+    // 扫描 JSON mock
+    const dataDir = path.join(routeDir, 'data')
+    if (fs.existsSync(dataDir)) {
+      const jsonFiles = fs.readdirSync(dataDir).filter((f) => f.endsWith('.json'))
+      if (jsonFiles.length > 0) {
+        jsonMockEntries[route] = {}
+        for (const file of jsonFiles) {
+          const name = file.replace('.json', '')
+          jsonMockEntries[route][name] = `() => import('../${path.join(dataDir, file)}')`
+        }
+      }
+    }
+  }
+
+  let content = '// TS mock exports\n'
+  if (tsMockExports.length > 0) {
+    content += tsMockExports.join('\n') + '\n\n'
+  }
+
+  content += '// JSON mock loaders\n'
+  content += 'export const mockDataFiles = {\n'
+  for (const [route, loaders] of Object.entries(jsonMockEntries)) {
+    content += `  '${route}': {\n`
+    for (const [name, loader] of Object.entries(loaders)) {
+      content += `    '${name}': ${loader},\n`
+    }
+    content += '  },\n'
+  }
+  content += '}\n'
+
+  fs.writeFileSync(path.join(cacheDir, 'mock-registry.ts'), content)
+}
+
+async function generateTypeAugmentation(routes: string[], templateDir: string, cacheDir: string) {
+  const entries: string[] = []
+
+  for (const route of routes) {
+    const importPath = path.join(templateDir, route, 'index.tsx')
+    entries.push(`    '${route}': typeof import('../${importPath}').default`)
+  }
+
+  const content = `declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+${entries.join('\n')}
+  }
+}
+
+export {}
+`
+
+  fs.writeFileSync(path.join(cacheDir, 'registry-types.d.ts'), content)
+}
+```
+
+## 开发态 vs 生产态加载
+
+### 开发态加载
+
+开发服务器和沙盒直接加载 `.ktr/*.ts` 源码：
+
+```typescript twoslash
+// dev/sandbox.ts（简化示意）
+import path from 'node:path'
+
+declare function discoverTemplateRoutes(templateDir: string): Promise<Array<{ route: string; file: string }>>
+declare const config: { templateDir: string }
+// ---cut---
+export async function generateSandboxModule() {
+  // 约定扫描模板路由，逐路由生成 /@fs/ 动态导入（vite 按需编译，HMR 即时生效）
+  const routes = await discoverTemplateRoutes(config.templateDir)
+  const loaders = routes.map((item) => `['${item.route}', () => import('/@fs/${path.join(config.templateDir, item.file)}')]`)
+
+  // 生成虚拟模块代码
+  return `
+    import { createRoot } from 'react-dom/client'
+    
+    const templateLoaders = [
+      ${loaders.join(',\n      ')}
+    ]
+    // 沙盒逻辑（见开发面板架构一章）
+  `
+}
+```
+
+特点：
+
+- **即时更新**：修改模板代码，HMR 立即生效
+- **无需打包**：tsx 动态导入，开发体验流畅
+
+### 生产态加载
+
+Karin 插件从打包产物加载：
+
+```typescript twoslash
+// 用户插件代码
+import { createTemplateRenderer } from '@karinjs/template-react'
+
+// 定位包根（从 import.meta.url 向上找 package.json）
+const render = createTemplateRenderer(import.meta.url)
+
+// 首次调用时内部加载注册表，查找顺序：
+// 1. .ktr/template-registry.ts（开发态源文件，存在时永远优先）
+// 2. bundledDir 显式指定的产物目录
+// 3. package.json main 字段所在目录
+// 4. 根目录下一层目录扫描
+```
+
+特点：
+
+- **独立部署**：注册表随包发布，无需源码
+- **性能优化**：打包后的 JS，加载更快
+
+## 注册表失效排查
+
+### 问题 1：路由未注册
+
+**现象**：新建模板后，`renderImage` 提示路由不存在
+
+**排查步骤**：
+
+1. 检查文件路径格式
+
+```text
+✅ ktr/template/hello/card/index.tsx
+❌ ktr/template/hello/card.tsx           （裸文件不注册）
+❌ ktr/template/hello/card/main.tsx      （必须是 index）
+❌ ktr/template/_draft/card/index.tsx    （下划线目录不扫描）
+```
+
+2. 检查是否执行过 `ktr sync`
+
+```bash
+# 手动刷新注册表
+pnpm ktr sync
+
+# 或重启开发服务器
+pnpm template
+```
+
+3. 查看生成的注册表
+
+```bash
+# 检查路由是否在列表中
+cat .ktr/template-registry.ts | grep 'hello/card'
+```
+
+### 问题 2：类型推导失效
+
+**现象**：`renderImage` 没有路由补全或 data 类型为 any
+
+**排查步骤**：
+
+1. 确认 `registry-types.d.ts` 存在
+
+```bash
+ls -la .ktr/registry-types.d.ts
+```
+
+2. 检查 TypeScript 配置
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "moduleResolution": "bundler", // 或 "node16"
+    "types": ["node"]
+  },
+  "include": [
+    "src/**/*",
+    ".ktr/**/*" // 确保包含 .ktr 目录
+  ]
+}
+```
+
+3. 重启 TypeScript 服务器
+
+VSCode: `Cmd/Ctrl + Shift + P` → "TypeScript: Restart TS Server"
+
+### 问题 3：Mock 数据不显示
+
+**现象**：开发面板数据卡片为空
+
+**排查步骤**：
+
+1. 检查 mock 文件位置
+
+```text
+✅ ktr/template/hello/card/mock.ts          （TS mock）
+✅ ktr/template/hello/card/data/default.json （JSON mock）
+❌ ktr/template/hello/mock.ts                （错误位置）
+```
+
+2. 检查 TS mock 导出方式
+
+```typescript twoslash
+// @filename: ./index.tsx
+export interface HelloCardData {
+  title: string
+}
+// @filename: ./mock.ts
+// ---cut---
+// ✅ 具名导出
+export const basic = { title: 'Hello' }
+
+// ❌ 默认导出（不会被注册）
+export default { title: 'Hello' }
+```
+
+3. 查看生成的 mock 注册表
+
+```bash
+cat .ktr/mock-registry.ts
+```
+
+### 问题 4：生产环境加载失败
+
+**现象**：部署后 `renderImage` 提示"未找到注册表"
+
+**排查步骤**：
+
+1. 确认已构建 CSS
+
+```bash
+pnpm build  # 或 vite build
+ls lib/style.css  # 产物目录随你的打包器 outDir，这里以 lib/ 为例
+```
+
+2. 确认注册表在产物目录
+
+```bash
+# 检查打包产物（目录名同上）
+ls lib/template-registry.js
+```
+
+3. 产物目录不在自动发现路径时，检查 `bundledDir` 配置
+
+```typescript twoslash
+// 插件入口处显式指定产物目录
+import { createTemplateRenderer } from '@karinjs/template-react'
+// ---cut---
+export const render = createTemplateRenderer(import.meta.url, {
+  bundledDir: 'dist' // 打包产物目录；不传时按 main 字段和根目录扫描自动发现
+})
+```
+
+## 下一步
+
+<Cards>
+  <Card title="约定式路由" href="./routing" description="文件扫描规则和路由生成流程" />
+  <Card title="数据流" href="./data-flow" description="从定义到渲染的完整链路" />
+  <Card title="配置与 CLI" href="/docs/api/config-cli" description="karin.template.ts 配置项详解" />
+</Cards>

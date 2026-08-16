@@ -1,0 +1,27 @@
+{
+  "shop": "Karin 模板小铺",
+  "orderId": "订单号 KTR-2026-0805",
+  "rows": [
+    {
+      "label": "渲染方式",
+      "value": "React SSR"
+    },
+    {
+      "label": "预览",
+      "value": "Iframe 沙盒"
+    },
+    {
+      "label": "数据来源",
+      "value": "同目录 JSON"
+    },
+    {
+      "label": "主题",
+      "value": "类名令牌"
+    },
+    {
+      "label": "输出",
+      "value": "PNG 截图"
+    }
+  ],
+  "total": "完成"
+}
