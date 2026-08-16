@@ -2,6 +2,17 @@
   "name": "@karinjs/template-react",
   "version": "0.0.0",
   "description": "React + Tailwind CSS screenshot template kit for Karin plugins.",
+  "keywords": [
+    "image",
+    "karin",
+    "karin-plugin",
+    "react",
+    "screenshot",
+    "ssr",
+    "tailwindcss",
+    "template"
+  ],
+  "license": "MIT",
   "author": "ikenxuan, KarinJS Team",
   "bin": {
     "ktr": "./bin/ktr.mjs"
