@@ -53,14 +53,11 @@ export interface RenderContext {
 }
 
 /**
- * 允许调用方只覆盖部分运行时上下文的输入类型。
- * 不用 Omit 实现：Omit 会把索引签名连同 scale/theme 的精确类型一起吞掉，
+ * 允许调用方只覆盖部分运行时上下文的输入类型（theme 只注入显式提供的字段）。
+ * 不要用 Omit 实现：Omit 会把索引签名连同 scale/theme 的精确类型一起吞掉，
  * Partial 保留索引签名，自定义字段可传入并原样透传。
  */
-export type RenderContextInput = Partial<RenderContext> & {
-  /** 可局部覆盖的主题变量；只注入显式提供的字段。 */
-  theme?: Partial<ThemeContext>
-}
+export type RenderContextInput = Partial<RenderContext>
 
 /** ktr dev/build 合并到内部 Vite 配置上的扩展配置。 */
 export type KtrViteConfig =

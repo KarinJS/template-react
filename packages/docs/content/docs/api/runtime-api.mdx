@@ -61,7 +61,7 @@ const Card = ({ data, ctx }: TemplateProps<CardData>) => {
 
 ### RenderContextInput
 
-渲染函数的第三个参数类型，所有字段可选：
+渲染函数的第三个参数类型，即 `Partial<RenderContext>`，所有字段可选，自定义扩展字段同样原样透传：
 
 ```ts twoslash
 import type { ThemeContext } from '@karinjs/template-react'
@@ -69,6 +69,7 @@ import type { ThemeContext } from '@karinjs/template-react'
 interface RenderContextInput {
   scale?: number
   theme?: Partial<ThemeContext>
+  [key: string]: unknown
 }
 ```
 
