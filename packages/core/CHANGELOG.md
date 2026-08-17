@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.1-beta.5](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.5...template-react-v0.0.1-beta.5) (2026-08-17)
+
+
+### 🐛 修复
+
+* 缩放控制由框架控制。 ([01ee30f](https://github.com/KarinJS/template-react/commit/01ee30fd1eb94718d997b27a7524e691521fe89d))
+
 ## [0.0.1-beta.5](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.4...template-react-v0.0.1-beta.5) (2026-08-17)
 
 
