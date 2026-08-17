@@ -10,7 +10,7 @@
  * 普通 `@theme` 会把它盖掉，导致 token 编译成 var(--color-*) 并固化到 :root，
  * 元素级主题注入（面板下发给沙盒的那套变量）就会失效。
  */
-@import '@heroui/styles/css';
+@import '@heroui/styles';
 
 /*
  * dark: 变体改为类选择器驱动。Tailwind 默认编译成 prefers-color-scheme 媒体查询，
