@@ -119,7 +119,7 @@ export async function loadTemplateRegistry(options: { root: string; bundledDir?:
 | 环境       | 加载路径                            | 说明                                                                                                       |
 | ---------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | **开发态** | `.ktr/template-registry.ts`         | tsx 动态导入，支持 HMR                                                                                     |
-| **生产态** | 打包产物中的 `template-registry.js` | 按 `bundledDir` → package.json `main` 目录 → 根目录扫描发现；渲染器自身在 bundle 里时直接使用，不看 `.ktr` |
+| **生产态** | 打包产物中的 `template-registry.js` | 按 `bundledDir` → package.json `main`/`exports` 入口目录 → 根目录扫描发现；渲染器自身在 bundle 里时直接使用，不看 `.ktr` |
 
 ## mock-registry.ts
 
@@ -558,7 +558,8 @@ const render = createTemplateRenderer(import.meta.url)
 // 1. .ktr/template-registry.ts（开发态源文件，存在时永远优先）
 // 2. bundledDir 显式指定的产物目录
 // 3. package.json main 字段所在目录
-// 4. 根目录下一层目录扫描
+// 4. package.json exports 主入口所在目录（纯 exports 包没有 main）
+// 5. 根目录下一层目录扫描
 ```
 
 特点：
@@ -694,7 +695,7 @@ ls lib/template-registry.js
 import { createTemplateRenderer } from '@karinjs/template-react'
 // ---cut---
 export const render = createTemplateRenderer(import.meta.url, {
-  bundledDir: 'dist' // 打包产物目录；不传时按 main 字段和根目录扫描自动发现
+  bundledDir: 'dist' // 打包产物目录；不传时按 main/exports 入口和根目录扫描自动发现
 })
 ```
 

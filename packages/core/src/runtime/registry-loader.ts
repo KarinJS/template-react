@@ -55,13 +55,48 @@ const nonOutputDirs = new Set(['node_modules', 'src', 'template', 'templates', '
 export const ktrAssetsManifestFileName = 'ktr-assets.json'
 
 /**
+ * 从 package.json 的 exports 主入口提取入口文件路径。
+ * exports 值可以是字符串或（可嵌套的）条件对象，优先 import/require/node/default 条件；
+ * types 条件指向声明文件，不算入口。
+ * @param value exports 字段本身（字符串简写）或 exports['.'] 的值。
+ * @returns 入口文件相对路径；无法识别时返回 undefined。
+ */
+const entryFromExports = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return value
+  }
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+
+  const conditions = value as Record<string, unknown>
+  for (const key of ['import', 'require', 'node', 'default']) {
+    const hit = entryFromExports(conditions[key])
+    if (hit) {
+      return hit
+    }
+  }
+  for (const [key, sub] of Object.entries(conditions)) {
+    if (key === 'types') {
+      continue
+    }
+    const hit = entryFromExports(sub)
+    if (hit) {
+      return hit
+    }
+  }
+  return undefined
+}
+
+/**
  * 收集生产产物目录候选。产物目录由下游构建工具决定，框架不做假设，按优先级发现：
  * 1. 调用方显式传入的 bundledDir；
  * 2. package.json 的 main 字段所在目录（如 lib/index.js → lib/）；
- * 3. 根目录下一层目录扫描（排除源码/资源/隐藏目录）。
+ * 3. package.json 的 exports 主入口所在目录（纯 exports 包没有 main，入口同样是可靠线索）；
+ * 4. 根目录下一层目录扫描（排除源码/资源/隐藏目录）。
  * @param root 项目根目录。
  * @param bundledDir 调用方显式指定的产物目录。
- * @returns 按优先级排序的候选目录绝对路径列表。
+ * @returns 按优先级排序的去重候选目录绝对路径列表。
  */
 export const discoverBundledDirs = (root: string, bundledDir?: string): string[] => {
   const candidateDirs: string[] = []
@@ -70,11 +105,16 @@ export const discoverBundledDirs = (root: string, bundledDir?: string): string[]
     candidateDirs.push(path.isAbsolute(bundledDir) ? bundledDir : path.resolve(root, bundledDir))
   }
 
-  // main 字段是产物目录最可靠的线索（ karin 插件通常指向 lib/index.js ）。
+  // main/exports 是产物目录最可靠的线索（ karin 插件通常指向 lib/index.js ）。
   try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8')) as { main?: string }
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8')) as { main?: string; exports?: unknown }
     if (typeof pkg.main === 'string' && pkg.main.length > 0) {
       candidateDirs.push(path.dirname(path.resolve(root, pkg.main)))
+    }
+    const exportsField = typeof pkg.exports === 'string' ? pkg.exports : (pkg.exports as Record<string, unknown> | undefined)?.['.']
+    const exportsEntry = entryFromExports(exportsField)
+    if (exportsEntry) {
+      candidateDirs.push(path.dirname(path.resolve(root, exportsEntry)))
     }
   } catch {
     // package.json 缺失或损坏时继续走目录扫描。
@@ -87,7 +127,8 @@ export const discoverBundledDirs = (root: string, bundledDir?: string): string[]
     candidateDirs.push(path.join(root, entry.name))
   }
 
-  return candidateDirs
+  // main/exports 线索与目录扫描可能命中同一目录，去重保持候选语义清晰。
+  return [...new Set(candidateDirs)]
 }
 
 /**

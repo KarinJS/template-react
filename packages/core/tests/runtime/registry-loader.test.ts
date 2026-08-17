@@ -93,6 +93,37 @@ describe('registry loader', () => {
     await expect(loadTemplateRegistry({ root, bundledDir: 'anywhere' })).resolves.toEqual({ 'via/option': { name: '显式指定' } })
   })
 
+  it('纯 exports 包（无 main 字段）按 exports 主入口发现产物目录', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-registry-'))
+    // 没有 main，只有 exports；入口在 lib/ 下。
+    fs.writeFileSync(
+      path.join(root, 'package.json'),
+      JSON.stringify({
+        name: 'exports-only',
+        exports: {
+          '.': { default: './lib/index.js' },
+          './template': { types: './lib/core_chunk/template.d.mts', import: './lib/core_chunk/template.js' }
+        }
+      }),
+      'utf-8'
+    )
+    fs.mkdirSync(path.join(root, 'lib'), { recursive: true })
+    fs.writeFileSync(
+      path.join(root, 'lib', 'template-registry.js'),
+      "export const templates = { 'via/exports': { name: 'exports 发现' } }\n",
+      'utf-8'
+    )
+    // 名字排在 lib 前面的目录里放一份诱饵注册表：exports 线索必须优先于目录扫描顺序。
+    fs.mkdirSync(path.join(root, 'aaa'), { recursive: true })
+    fs.writeFileSync(
+      path.join(root, 'aaa', 'template-registry.js'),
+      "export const templates = { 'via/scan': { name: '扫描兜底' } }\n",
+      'utf-8'
+    )
+
+    await expect(loadTemplateRegistry({ root })).resolves.toEqual({ 'via/exports': { name: 'exports 发现' } })
+  })
+
   it('preferSource: false（生产 bundle）直接用产物注册表，产物缺失时才回落源码', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-registry-'))
     writeRegistries(path.join(root, '.ktr'))

@@ -19,7 +19,7 @@ import { resolveTemplateStyle } from './style'
 export interface TemplateRendererOptions {
   /** 透传给 createRenderer 的覆盖项（如 outputDir、extraStylePaths、plugins、htmlFileName），在约定默认值之上合并。 */
   renderer?: Partial<RendererOptions>
-  /** 生产打包产物所在目录（相对包根或绝对路径），默认按 main 字段和根目录扫描自动发现。 */
+  /** 生产打包产物所在目录（相对包根或绝对路径），默认按 package.json 的 main/exports 入口和根目录扫描自动发现。 */
   bundledDir?: string
 }
 

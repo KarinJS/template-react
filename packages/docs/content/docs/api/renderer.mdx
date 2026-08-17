@@ -14,7 +14,7 @@ declare const createTemplateRenderer: (callerUrl: string, options?: TemplateRend
 
 interface TemplateRendererOptions {
   renderer?: Partial<RendererOptions> // 透传给 createRenderer 的覆盖项，在约定默认值之上合并
-  bundledDir?: string // 生产打包产物目录（相对包根或绝对路径），默认按 main 字段与目录扫描自动发现
+  bundledDir?: string // 生产打包产物目录（相对包根或绝对路径），默认按 main/exports 入口与目录扫描自动发现
 }
 
 type TemplateRenderFn = <K extends keyof LoadedRegistry & string>(
@@ -259,7 +259,7 @@ interface LoadRegistryOptions {
   root?: string
   /** 显式指定 karin.template 配置文件路径。 */
   configFile?: string
-  /** 生产打包产物所在目录（相对 root 或绝对路径），默认按 main 字段和根目录扫描自动发现。 */
+  /** 生产打包产物所在目录（相对 root 或绝对路径），默认按 main/exports 入口和根目录扫描自动发现。 */
   bundledDir?: string
 }
 // ---cut---
@@ -267,7 +267,7 @@ declare const loadTemplateRegistry: (options?: LoadRegistryOptions) => Promise<L
 declare const loadMockRegistry: <M extends Record<string, unknown> = Record<string, unknown>>(options?: LoadRegistryOptions) => Promise<M>
 ```
 
-按约定加载 `ktr sync` 生成的注册表，插件源码**不需要 import `.ktr`**。取新规则：渲染器自身跑在下游 bundle 里时（生产）直接用打包产物、忽略 `.ktr` 源码；否则 `.ktr` 源文件优先（开发态），缺失时回退产物（按 `bundledDir` → `main` 目录 → 根目录扫描发现）。也可用 `preferSource: false` 强制产物优先。
+按约定加载 `ktr sync` 生成的注册表，插件源码**不需要 import `.ktr`**。取新规则：渲染器自身跑在下游 bundle 里时（生产）直接用打包产物、忽略 `.ktr` 源码；否则 `.ktr` 源文件优先（开发态），缺失时回退产物（按 `bundledDir` → `main`/`exports` 入口目录 → 根目录扫描发现）。也可用 `preferSource: false` 强制产物优先。
 
 返回值：`loadTemplateRegistry` 返回「路由 → 模板定义」映射（模块增强生效时逐路由精确，否则退化为 `AnyRegistry`）；`loadMockRegistry` 返回各 `mock.ts` 具名导出 + `mockDataFiles` 清单（路由 → `data/*.json` 文件名）。
 
