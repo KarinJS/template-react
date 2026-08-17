@@ -55,7 +55,7 @@
 
 - 优先遵循现有代码风格；涉及面板外观时参考 `D:\GitHub\karin-plugin-kkk\packages\template\src\dev`。
 - 保持 `ktr/template/` 约定大于配置，不把生成注册表写回用户源码目录。
-- 不要给 iframe 沙盒或用户组件外层强加圆角、阴影、背景或额外缩放；用户组件样式必须由用户自己完全控制。
+- 不要给 iframe 沙盒或用户组件外层强加圆角、阴影、背景或额外缩放；用户组件样式必须由用户自己完全控制。唯一的例外是 `ctx.scale`：渲染比例由外壳（SSR HtmlWrapper 和沙盒的 `#container`）统一用 `zoom` 施加（默认 1 不缩放），模板不要自行缩放根元素，否则会叠加成 scale²。
 - 颜色体系继承 HeroUI：`@heroui/styles` 是 core 的正式 dependency，通过 `@karinjs/template-react/styles` 子路径导出给下游。**任何地方都不要再写普通 `@theme { --color-*: var(--*) }` 映射块**——HeroUI 的 `themes/shared/theme.css` 已用 `@theme inline` 桥接，普通 `@theme` 会把它盖掉，导致 token 编译成 `var(--color-*)` 并固化到 `:root`，元素级主题注入失效。
 - 面板主题只影响开发面板外壳；传给用户组件的主题色通过 `ctx.theme` 写成 CSS 变量生效，变量名与 HeroUI 语义色一一对应（`accent` → `--accent`）。框架不发明默认主题色：未显式设置时 SSR 和沙盒都不注入任何颜色变量，HeroUI 自身主题生效。
 - 修改约定扫描、mock API、构建路径或沙盒协议时，要同时补测试。

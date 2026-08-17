@@ -24,6 +24,13 @@ test('registry drives template path and data types', async () => {
   // @ts-expect-error excess property on exact object literal
   await renderTemplate('hello/card', { title: 't', items: [], foo: 1 })
 
+  // ctx 允许携带自定义字段，原样透传给模板和插件；已知字段仍保持精确类型
+  await renderTemplate('hello/card', { title: 't', items: [] }, { useDarkTheme: true })
+  await renderTemplate('hello/card', { title: 't', items: [] }, { scale: 2, theme: { mode: 'dark' }, requestId: 'r-1' })
+
+  // @ts-expect-error ctx 已知字段不接受错误类型
+  await renderTemplate('hello/card', { title: 't', items: [] }, { scale: 'big' })
+
   expectTypeOf<DataOf<(typeof templates)['hello/card']>>().toEqualTypeOf<{
     title: string
     items: Array<{ label: string; value: string }>
@@ -32,6 +39,9 @@ test('registry drives template path and data types', async () => {
   expectTypeOf<NonNullable<TemplateProps<{ ok: boolean }>['ctx']['theme']>['mode']>().toEqualTypeOf<'light' | 'dark' | undefined>()
   expectTypeOf<NonNullable<TemplateProps<{ ok: boolean }>['ctx']['theme']>['accent']>().toEqualTypeOf<string | undefined>()
   expectTypeOf<RenderContextInput>().toMatchTypeOf<{ theme?: { accent?: string } }>()
+  expectTypeOf<TemplateProps<{ ok: boolean }>['ctx']['scale']>().toEqualTypeOf<number>()
+  // 自定义扩展字段读取时为 unknown，由调用方自行收窄
+  expectTypeOf<TemplateProps<{ ok: boolean }>['ctx']['anythingCustom']>().toEqualTypeOf<unknown>()
 
   const cardMock = defineMock<DataOf<(typeof templates)['hello/card']>>({ title: 'typed mock', items: [] })
   expectTypeOf(cardMock.title).toEqualTypeOf<string>()

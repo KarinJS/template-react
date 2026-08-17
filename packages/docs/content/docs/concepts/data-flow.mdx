@@ -114,7 +114,6 @@ type PanelMessage =
   | { source: 'ktr-panel'; type: 'ktr:select'; payload: { path: string } }
   | { source: 'ktr-panel'; type: 'ktr:data'; payload: { path: string; data: unknown; ctx?: Record<string, unknown> } }
   | { source: 'ktr-panel'; type: 'ktr:theme'; payload: { theme?: Partial<ThemeContext> } }
-  | { source: 'ktr-panel'; type: 'ktr:scale'; payload: { scale: number } }
   | { source: 'ktr-panel'; type: 'ktr:inspect'; payload: { enabled: boolean } }
 
 // 沙盒 → 面板消息类型

@@ -13,16 +13,18 @@ description: RenderContext、capture 机制、运行时生命周期与 SSR 执�
 import type { ThemeContext } from '@karinjs/template-react'
 // ---cut---
 interface RenderContext {
-  /** 当前渲染比例，截图模板通常保持为 1。 */
+  /** 当前渲染比例，由外壳统一对 #container 施加 zoom，模板无需自行缩放；默认 1。 */
   scale: number
   /** 调用方显式提供的主题变量；框架不发明默认值。 */
   theme?: Partial<ThemeContext>
+  /** 调用方自定义的扩展字段，原样透传给模板和插件。 */
+  [key: string]: unknown
 }
 ```
 
 ### scale
 
-渲染比例因子，影响最终 HTML 的 viewport 和截图尺寸。通常保持为 `1`，高清截图需求时可以传 `2` 或更高：
+渲染比例因子，由外壳统一对 `#container` 施加 `zoom`（布局盒随缩放变化，截图边界跟着放大，产物分辨率即 scale 倍），开发面板沙盒行为一致。通常保持为 `1`，高清截图需求时可以传 `2` 或更高：
 
 ```ts twoslash
 import { createTemplateRenderer } from '@karinjs/template-react'
@@ -31,7 +33,7 @@ const renderTemplate = createTemplateRenderer(import.meta.url)
 const result = await renderTemplate('hello/card', { title: '高清截图' }, { scale: 2 })
 ```
 
-模板组件内可以根据 `ctx.scale` 调整字体大小、边距等细节，但绝大多数场景直接保持 `1` 即可。
+模板**不要**自行缩放根元素（会叠加成 scale²），也不要把宽高字体乘以 `ctx.scale`；组件内仍可读取它做比例感知逻辑，比如 2x 时替换高清素材。
 
 ### theme
 

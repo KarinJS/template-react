@@ -71,7 +71,7 @@ export default defineTemplate({
 组件第二个参数 `ctx`（类型 `RenderContext`）：
 
 - `ctx.theme`（可选）：调用方显式提供的主题变量，**框架不发明默认主题色**，没传就是 `undefined`，消费时用可选链。深色判断：`ctx.theme?.mode === 'dark'`。
-- `ctx.scale`：渲染比例，截图模板通常为 `1`，不用理会。
+- `ctx.scale`：渲染比例，由外壳统一对 `#container` 施加 `zoom`（默认 `1`），模板不用理会，更不要自行缩放根元素或按比例乘尺寸。
 
 ```tsx twoslash
 import type { TemplateProps } from '@karinjs/template-react'

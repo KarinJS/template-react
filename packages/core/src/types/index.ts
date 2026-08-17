@@ -38,16 +38,26 @@ export interface ThemeContext {
   vars: Record<string, string>
 }
 
-/** 渲染器注入给模板的运行时上下文，用户数据始终放在 data 中。 */
+/**
+ * 渲染器注入给模板的运行时上下文，用户数据始终放在 data 中。
+ * 除下列已知字段外，调用方还可以传入任意自定义字段，
+ * 它们会被原样透传给模板组件的 ctx 和插件上下文，读取时类型为 unknown，需自行收窄。
+ */
 export interface RenderContext {
-  /** 当前渲染比例，截图模板通常保持为 1。 */
+  /** 当前渲染比例，由外壳统一对 #container 施加 zoom，模板无需也不应自行缩放根元素；默认 1。 */
   scale: number
   /** 调用方显式提供的主题变量；框架不发明默认值，缺省时组件库自身主题生效。 */
   theme?: Partial<ThemeContext>
+  /** 调用方自定义的扩展字段，原样透传给模板和插件。 */
+  [key: string]: unknown
 }
 
-/** 允许调用方只覆盖部分运行时上下文的输入类型。 */
-export type RenderContextInput = Omit<Partial<RenderContext>, 'theme'> & {
+/**
+ * 允许调用方只覆盖部分运行时上下文的输入类型。
+ * 不用 Omit 实现：Omit 会把索引签名连同 scale/theme 的精确类型一起吞掉，
+ * Partial 保留索引签名，自定义字段可传入并原样透传。
+ */
+export type RenderContextInput = Partial<RenderContext> & {
   /** 可局部覆盖的主题变量；只注入显式提供的字段。 */
   theme?: Partial<ThemeContext>
 }

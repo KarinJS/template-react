@@ -307,7 +307,6 @@ const renderCurrent = () => {
   renderToken += 1
   const currentToken = renderToken
   applyTheme()
-  document.documentElement.style.setProperty('--ktr-scale', '1')
 
   if (!template) {
     postError(selectedPath, new Error('Template is not registered: ' + selectedPath))
@@ -317,7 +316,10 @@ const renderCurrent = () => {
   try {
     const onRendered = () => reportRendered(startedAt, currentToken)
     // 与 SSR 外壳保持同一截图边界：包一层被动 #container，面板的测量与截图目标（#container ?? body）就和生产 HTML 一致。
+    // ctx.scale 同样由外壳 zoom 施加（与 SSR 的 HtmlWrapper 对齐），面板预览到的就是生产截图的实际比例。
     // 数据为空/加载失败时渲染占位卡，替换模板位置；占位卡走同一 #container 测量，画布的缩放/拖拽行为不变。
+    const ctxScale =
+      typeof selectedCtx.scale === 'number' && Number.isFinite(selectedCtx.scale) && selectedCtx.scale > 0 ? selectedCtx.scale : 1
     const content = emptyState
       ? React.createElement(Placeholder, {
           title: emptyState === 'load-failed' ? '数据加载失败' : '暂无可预览的数据',
@@ -333,7 +335,7 @@ const renderCurrent = () => {
         })
     root.render(
       React.createElement(ErrorBoundary, { key: selectedPath + ':' + Date.now() },
-        React.createElement('div', { id: 'container' },
+        React.createElement('div', { id: 'container', style: { zoom: ctxScale } },
           emptyState ? React.createElement(ReportOnMount, { onRendered }, content) : content
         )
       )
@@ -566,9 +568,11 @@ export const registerSandboxMiddleware = (server: ViteDevServer): void => {
       overflow: hidden;
     }
     /* 与 SSR 外壳一致：#container 充当绝对定位包含块，模板里的 inset-0 氛围层
-       锚定在卡片矩形上而不是 iframe 视口（刷新瞬间视口尺寸未就位会导致氛围层逃逸）。 */
+       锚定在卡片矩形上而不是 iframe 视口（刷新瞬间视口尺寸未就位会导致氛围层逃逸）；
+       isolation 补回旧引擎 transform 顺带的层叠上下文，负 z 层级氛围层不会逃逸。 */
     #container {
       position: relative;
+      isolation: isolate;
     }
   </style>
 </head>

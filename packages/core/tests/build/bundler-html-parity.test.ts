@@ -176,7 +176,8 @@ describe('下游打包器 HTML 一致性', () => {
     expect(viteHtml).toBe(tsdownHtml)
     expect(viteHtml).toContain('<body class="dark" data-theme="dark"')
     expect(viteHtml).toContain('--accent: #123456')
-    expect(viteHtml).toContain('<div id="container"><main class="flex bg-accent p-4">')
+    // ctx.scale 由外壳统一施加 zoom（布局盒随缩放变化，截图边界跟着放大），模板不自行处理。
+    expect(viteHtml).toContain('<div id="container" style="zoom: 1.25"><main class="flex bg-accent p-4">')
     expect(viteHtml).toContain('<h1>BUNDLER PARITY</h1>')
     expect(viteHtml).toContain('.flex')
     expect(viteHtml).toContain('.bg-accent')

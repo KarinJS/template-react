@@ -28,6 +28,10 @@ body {
      卡片矩形上。标准化后外壳没有任何定位，这些层会锚到视口（Karin 截图视口和卡片
      尺寸不一致时，氛围层错位、底部装饰跑到上面）。relative 补回该语义，且不影响外观。 */
   position: relative;
+  /* 旧引擎外壳的 transform 还会顺带创建层叠上下文，标准化后（含 zoom，任何取值都不会
+     创建层叠上下文）模板里 -z-10 的氛围层会逃逸到 <html> 层叠上下文，被不透明的卡片
+     背景整个盖住。isolate 补回该语义，且不影响外观。 */
+  isolation: isolate;
 }
 `
 
@@ -94,8 +98,9 @@ export class HtmlWrapper {
    * 把 React SSR 片段包成可交给 Karin 渲染器截图的完整 HTML。
    * #container 由包装器统一提供，用户组件不需要也不应该自己声明；
    * 它不做任何外观修饰，组件根元素的圆角、阴影、背景完全由用户自己控制。
+   * ctx.scale 也在这里统一施加（zoom），模板不要自行缩放根元素，否则会叠加成 scale²。
    * @param htmlContent SSR 渲染出的模板片段。
-   * @param ctx 当前渲染上下文，用来决定主题变量和 dark 类名。
+   * @param ctx 当前渲染上下文，用来决定主题变量、dark 类名和渲染比例。
    * @returns 完整的 HTML 文档字符串。
    */
   wrapContent(htmlContent: string, ctx: RenderContext): string {
@@ -104,6 +109,11 @@ export class HtmlWrapper {
 
     const mode = ctx.theme?.mode
     const variables = attr(themeVariables(ctx.theme))
+
+    // 渲染比例用 zoom 而非 transform 施加：zoom 让布局盒随缩放变化，截图边界（#container）
+    // 跟着放大，产物分辨率即 scale 倍；transform 不改布局盒，截图范围不会变。
+    // 非法取值（NaN、0、负数、非数字）回退 1，等同于不缩放。
+    const scale = typeof ctx.scale === 'number' && Number.isFinite(ctx.scale) && ctx.scale > 0 ? ctx.scale : 1
 
     // 主题变量只写 body：HeroUI 的 @theme inline 桥接把 bg-accent 编译成 var(--accent)，
     // 变量在任意祖先元素上声明都能被后代继承，不需要落在 :root。
@@ -118,7 +128,7 @@ export class HtmlWrapper {
   ${this.rewriteMarkupAssets(this.headExtra)}
 </head>
 <body class="${mode === 'dark' ? 'dark' : ''}"${mode ? ` data-theme="${mode}"` : ''} style="${variables}">
-  <div id="container">${this.rewriteMarkupAssets(htmlContent)}</div>
+  <div id="container"${scale !== 1 ? ` style="zoom: ${scale}"` : ''}>${this.rewriteMarkupAssets(htmlContent)}</div>
 </body>
 </html>`
   }

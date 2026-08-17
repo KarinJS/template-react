@@ -33,7 +33,6 @@ export type PanelMessage =
     }
   | { source: 'ktr-panel'; type: 'ktr:theme'; payload: PanelThemePayload }
   | { source: 'ktr-panel'; type: 'ktr:panel-theme'; payload: { dark: boolean } }
-  | { source: 'ktr-panel'; type: 'ktr:scale'; payload: { scale: number } }
   | { source: 'ktr-panel'; type: 'ktr:inspect'; payload: { enabled: boolean } }
 
 /** iframe 沙盒回传给开发面板的跨窗口消息。 */

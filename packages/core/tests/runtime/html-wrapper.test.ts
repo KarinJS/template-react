@@ -134,4 +134,23 @@ describe('HtmlWrapper', () => {
     const html = new HtmlWrapper({}).wrapContent('<img src="/a.png">', { scale: 1 })
     expect(html).toContain('src="/a.png"')
   })
+
+  it('ctx.scale 由外壳统一施加：非 1 时给 #container 加 zoom，模板不再自行缩放', () => {
+    const wrapper = new HtmlWrapper({})
+
+    // zoom 让布局盒随缩放变化，截图边界（#container）跟着放大，产物分辨率即 scale 倍。
+    expect(wrapper.wrapContent('<p>hi</p>', { scale: 2 })).toContain('<div id="container" style="zoom: 2">')
+    // scale 为 1（含缺省合并值）时输出与之前完全一致，不携带 style。
+    expect(wrapper.wrapContent('<p>hi</p>', { scale: 1 })).toContain('<div id="container">')
+    // 非法取值（NaN、0、负数）回退 1，不输出 zoom。
+    expect(wrapper.wrapContent('<p>hi</p>', { scale: Number.NaN })).toContain('<div id="container">')
+    expect(wrapper.wrapContent('<p>hi</p>', { scale: 0 })).toContain('<div id="container">')
+    expect(wrapper.wrapContent('<p>hi</p>', { scale: -1 })).toContain('<div id="container">')
+  })
+
+  it('#container 带 isolation，补回旧引擎 transform 顺带的层叠上下文', () => {
+    const html = new HtmlWrapper({}).wrapContent('<p>hi</p>', { scale: 1 })
+    // 没有它，模板里 -z-10 的氛围层会逃逸到 <html> 层叠上下文，被不透明卡片背景整个盖住。
+    expect(html).toContain('isolation: isolate;')
+  })
 })
