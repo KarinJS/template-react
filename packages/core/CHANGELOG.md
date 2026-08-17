@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.1-beta.6](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.5...template-react-v0.0.1-beta.6) (2026-08-17)
+
+
+### 🐛 修复
+
+* next pkg version ([955db0b](https://github.com/KarinJS/template-react/commit/955db0b02e17813ca6ff1f54070115f069f1fd9d))
+* type ([772c762](https://github.com/KarinJS/template-react/commit/772c76213f759136b911661b46fa40dcb6c67bc5))
+* 支持exports扫描 ([a8595b3](https://github.com/KarinJS/template-react/commit/a8595b392f25b9e7b0136f01ab81a06d78f81521))
+* 缩放控制由框架控制。 ([01ee30f](https://github.com/KarinJS/template-react/commit/01ee30fd1eb94718d997b27a7524e691521fe89d))
+
 ## [0.0.1-beta.5](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.4...template-react-v0.0.1-beta.5) (2026-08-17)
 
 
