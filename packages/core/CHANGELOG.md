@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.1-beta.5](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.4...template-react-v0.0.1-beta.5) (2026-08-17)
+
+
+### 🐛 修复
+
+* update build script to exclude ktr-examples and adjust CSS import ([f0d67c4](https://github.com/KarinJS/template-react/commit/f0d67c4580f43bd378f35c09acb6b4515bc6414d))
+
 ## [0.0.1-beta.4](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.3...template-react-v0.0.1-beta.4) (2026-08-16)
 
 
