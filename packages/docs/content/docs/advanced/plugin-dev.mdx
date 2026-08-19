@@ -19,7 +19,7 @@ interface RenderPlugin {
   apply?: (path: string) => boolean
   /** 渲染前钩子：在 React SSR 之前执行 */
   beforeRender?: (ctx: PluginContext) => void | Promise<void>
-  /** 渲染后钩子：在 HTML 生成后执行，可以加工 HTML */
+  /** 渲染后钩子：在模板片段生成后、HtmlWrapper 包装前执行，拿到的是组件片段而非完整文档，可以加工片段 HTML */
   afterRender?: (ctx: PluginContext & { html: string }) => string | void | Promise<string | void>
 }
 ```
@@ -55,8 +55,9 @@ const postPlugin: RenderPlugin = {
 **执行顺序规则**：
 
 1. **beforeRender**：`pre` → `normal` → `post`
-2. **SSR 渲染**：生成 HTML
-3. **afterRender**：`pre` → `normal` → `post`
+2. **SSR 渲染**：生成模板片段（组件渲染出的 HTML，不含 `<html>`/`<head>`/`<body>`）
+3. **afterRender**：`pre` → `normal` → `post`，串行加工片段
+4. **HtmlWrapper 包装**：片段包装成完整文档（注入 CSS、headExtra、改写 `/assets` 引用）后写盘
 
 ### 内部排序机制
 
@@ -91,7 +92,8 @@ const excludeDraftPlugin: RenderPlugin = {
   name: 'exclude-draft',
   apply: (path) => !path.includes('draft'), // 排除 draft 模板
   afterRender: (ctx) => {
-    return ctx.html.replace('</body>', '<div class="watermark">正式版</div></body>')
+    // afterRender 拿到的是组件片段（没有 </body>），直接追加节点即可
+    return ctx.html + '<div class="watermark">正式版</div>'
   }
 }
 ```
@@ -202,7 +204,7 @@ const perfPlugin: RenderPlugin = {
 
 ## afterRender 钩子
 
-在 HTML 生成后执行，可以加工 HTML、注入资源、上传文件。
+在模板片段生成后、HtmlWrapper 包装成完整文档前执行。`ctx.html` 是组件渲染出的片段——没有 `<html>`、`<head>`、`<body>` 标签，对它们做 `replace` 会空转。可以加工片段、包裹或追加节点、上传内容；要往 `<head>` 注入内容请改用 [`html.headExtra`](/docs/advanced/custom-config#htmlheadextra) 配置。
 
 ### 返回值规则
 
@@ -250,21 +252,19 @@ const minifyPlugin: RenderPlugin = {
 
 ### 注入 meta 标签
 
-```ts twoslash
-import type { RenderPlugin } from '@karinjs/template-react'
-// ---cut---
-const injectMetaPlugin: RenderPlugin = {
-  name: 'inject-meta',
-  afterRender: (ctx) => {
-    const meta = `
-      <meta name="generator" content="ktr">
-      <meta name="template" content="${ctx.path}">
-      <meta name="render-time" content="${new Date().toISOString()}">
-    `.trim()
+meta 标签属于 `<head>`，而 `afterRender` 拿到的片段里没有 `<head>`，这类注入走 `html.headExtra` 配置：
 
-    return ctx.html.replace('</head>', `${meta}\n</head>`)
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
+// ---cut---
+export default defineConfig({
+  html: {
+    headExtra: `
+      <meta name="generator" content="ktr">
+      <meta name="template" content="user/card">
+    `
   }
-}
+})
 ```
 
 ### 水印插件
@@ -277,11 +277,12 @@ const watermarkPlugin: RenderPlugin = {
   apply: (path) => !path.includes('official'), // 非正式版才加水印
   afterRender: (ctx) => {
     const watermark = `
-      <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 72px; color: rgba(0,0,0,0.05); pointer-events: none; user-select: none; z-index: 9999;">
+      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 72px; color: rgba(0,0,0,0.05); pointer-events: none; user-select: none; z-index: 9999;">
         DRAFT
       </div>
     `
-    return ctx.html.replace('</body>', `${watermark}\n</body>`)
+    // 片段没有 </body>，直接追加节点（外壳 #container 是 position: relative 定位包含块）
+    return ctx.html + watermark
   }
 }
 ```
@@ -296,6 +297,8 @@ import path from 'node:path'
 const inlineAssetsPlugin: RenderPlugin = {
   name: 'inline-assets',
   afterRender: async (ctx) => {
+    // 注意时机：afterRender 在 HtmlWrapper 包装前执行，此时 /assets 引用还是模板原始写法
+    // （框架的 base64/file:// 改写发生在之后的包装阶段），所以这里能匹配到原始路径
     let html = ctx.html
 
     // 内联小图片（< 10KB）
@@ -401,22 +404,22 @@ const cachePlugin: RenderPlugin = {
 }
 ```
 
-### 4. OG 图片生成插件
+### 4. OG 图片标签
 
-```ts twoslash
-import type { RenderPlugin } from '@karinjs/template-react'
+og 标签属于 `<head>`，`afterRender` 的片段里没有 `<head>`，这类注入走 `html.headExtra` 配置：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
 // ---cut---
-const ogImagePlugin: RenderPlugin = {
-  name: 'og-image',
-  afterRender: (ctx) => {
-    const ogTags = `
-      <meta property="og:title" content="模板: ${ctx.path}">
+export default defineConfig({
+  html: {
+    headExtra: `
+      <meta property="og:title" content="模板预览">
       <meta property="og:type" content="website">
-      <meta property="og:image" content="/preview/${ctx.path.replace('/', '_')}.png">
+      <meta property="og:image" content="/preview/user_card.png">
     `
-    return ctx.html.replace('</head>', `${ogTags}\n</head>`)
   }
-}
+})
 ```
 
 ### 5. 多语言插件
@@ -428,7 +431,8 @@ const i18nPlugin: RenderPlugin = {
   name: 'i18n',
   afterRender: (ctx) => {
     const lang = (ctx.ctx as any).lang || 'zh-CN'
-    return ctx.html.replace('<html', `<html lang="${lang}"`)
+    // 片段里没有 <html> 标签，用一层带 lang 的包裹 div 代替
+    return `<div lang="${lang}">${ctx.html}</div>`
   }
 }
 ```
@@ -456,20 +460,20 @@ const responsiveImagePlugin: RenderPlugin = {
 }
 ```
 
-### 7. 安全插件
+### 7. CSP 安全策略
 
-```ts twoslash
-import type { RenderPlugin } from '@karinjs/template-react'
+CSP 是 `<head>` 里的 meta 标签，`afterRender` 的片段够不到 `<head>`，走 `html.headExtra` 配置：
+
+```ts title="karin.template.ts" twoslash
+import { defineConfig } from '@karinjs/template-react'
 // ---cut---
-const securityPlugin: RenderPlugin = {
-  name: 'security',
-  afterRender: (ctx) => {
-    const csp = `
+export default defineConfig({
+  html: {
+    headExtra: `
       <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:">
     `
-    return ctx.html.replace('</head>', `${csp}\n</head>`)
   }
-}
+})
 ```
 
 ### 8. 统计插件
@@ -552,7 +556,8 @@ import type { RenderPlugin } from '@karinjs/template-react'
 
 const watermarkPlugin: RenderPlugin = {
   name: 'watermark',
-  afterRender: (ctx) => ctx.html.replace('</body>', '<div class="watermark">My Bot</div></body>')
+  // afterRender 拿到的是组件片段（没有 </body>），直接追加节点
+  afterRender: (ctx) => ctx.html + '<div class="watermark">My Bot</div>'
 }
 
 const render = createTemplateRenderer(import.meta.url, {
@@ -634,8 +639,9 @@ function createWatermarkPlugin(text: string, opacity = 0.05): RenderPlugin {
   return {
     name: 'watermark',
     afterRender: (ctx) => {
+      // 片段没有 </body>，直接追加节点
       const watermark = `<div style="opacity: ${opacity}">${text}</div>`
-      return ctx.html.replace('</body>', `${watermark}\n</body>`)
+      return ctx.html + watermark
     }
   }
 }

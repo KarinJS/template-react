@@ -20,7 +20,7 @@ export interface ProjectRegistry {}
 // .ktr/registry-types.d.ts
 declare module '@karinjs/template-react/registry-types' {
   interface ProjectRegistry {
-    'user/card': typeof import('../ktr/template/user/card/index.tsx').default
+    'user/card': typeof import('../ktr/template/user/card/index').default
   }
 }
 
@@ -34,8 +34,25 @@ export type LoadedRegistry = keyof ProjectRegistry extends never ? AnyRegistry :
 ```json title="packages/core/package.json"
 {
   "exports": {
-    ".": "./src/index.ts",
-    "./registry-types": "./src/registry-types.ts"
+    ".": {
+      "types": "./dist/index.d.mts",
+      "browser": "./dist/client.mjs",
+      "import": "./dist/index.mjs"
+    },
+    "./registry-types": {
+      "types": "./dist/registry-types.d.mts",
+      "import": "./dist/registry-types.mjs"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.mts",
+      "import": "./dist/plugin.mjs"
+    },
+    "./styles": {
+      "style": "./styles/index.css",
+      "default": "./styles/index.css"
+    },
+    "./styles/*.css": "./styles/*.css",
+    "./package.json": "./package.json"
   }
 }
 ```
@@ -71,7 +88,7 @@ export default defineTemplate<UserCardData>({ component: () => null })
 // ---cut---
 declare module '@karinjs/template-react/registry-types' {
   interface ProjectRegistry {
-    'user/card': typeof import('../ktr/template/user/card/index.tsx').default
+    'user/card': typeof import('../ktr/template/user/card/index').default
   }
 }
 ```
@@ -134,11 +151,14 @@ const _check: ExtractedData extends UserCardData ? true : false = true
 
 ```ts twoslash
 import type React from 'react'
+import type { RenderContext } from '@karinjs/template-react'
 
 // 1. TemplateProps 携带泛型
+// ctx 是 RenderContext：scale + 可选 theme（Partial<ThemeContext>），
+// 并带 [key: string]: unknown 索引签名透传调用方自定义字段
 export interface TemplateProps<D> {
   data: D
-  ctx: { scale: number; theme?: any }
+  ctx: RenderContext
 }
 
 // 2. TemplateDef 保留泛型

@@ -43,14 +43,20 @@ export default defineTemplate({ component: () => null })
 // @filename: index.ts
 // ---cut---
 // .ktr/template-registry.ts（框架自动生成）
+import type { TemplateDef } from '@karinjs/template-react'
 
-// 导入所有模板组件（编译时静态分析）
-import template_hello_card from '../ktr/template/hello/card/index.tsx'
-import template_user_profile from '../ktr/template/user/profile/index.tsx'
-import template_stats_dashboard from '../ktr/template/stats/dashboard/index.tsx'
+// 导入所有模板组件（静态 import，路径不含扩展名）
+import template_hello_card from '../ktr/template/hello/card/index'
+import template_user_profile from '../ktr/template/user/profile/index'
+import template_stats_dashboard from '../ktr/template/stats/dashboard/index'
 
-// 导出映射表
-export const templates = {
+// 透传模板文件的具名导出
+export * from '../ktr/template/hello/card/index'
+export * from '../ktr/template/user/profile/index'
+export * from '../ktr/template/stats/dashboard/index'
+
+// 导出映射表（宽松标注，逐路由精确类型由 registry-types.d.ts 模块增强提供）
+export const templates: Record<string, TemplateDef<any>> = {
   'hello/card': template_hello_card,
   'user/profile': template_user_profile,
   'stats/dashboard': template_stats_dashboard
@@ -73,7 +79,7 @@ export default defineTemplate({ component: () => null })
 // @filename: index.ts
 // ---cut---
 // 示例：路由 user/profile/card
-import template_user_profile_card from '../ktr/template/user/profile/card/index.tsx'
+import template_user_profile_card from '../ktr/template/user/profile/card/index'
 
 export const templates = {
   'user/profile/card': template_user_profile_card
@@ -116,9 +122,9 @@ export async function loadTemplateRegistry(options: { root: string; bundledDir?:
 
 加载策略：
 
-| 环境       | 加载路径                            | 说明                                                                                                       |
-| ---------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **开发态** | `.ktr/template-registry.ts`         | tsx 动态导入，支持 HMR                                                                                     |
+| 环境       | 加载路径                            | 说明                                                                                                                     |
+| ---------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **开发态** | `.ktr/template-registry.ts`         | tsx 动态导入，支持 HMR                                                                                                   |
 | **生产态** | 打包产物中的 `template-registry.js` | 按 `bundledDir` → package.json `main`/`exports` 入口目录 → 根目录扫描发现；渲染器自身在 bundle 里时直接使用，不看 `.ktr` |
 
 ## mock-registry.ts
@@ -144,24 +150,18 @@ export const profile = { name: 'Karin' }
 // .ktr/mock-registry.ts（框架自动生成）
 
 // ===== Part 1: TS mock 具名导出 =====
-export * from '../ktr/template/hello/card/mock.ts'
-export * from '../ktr/template/user/profile/mock.ts'
+export * from '../ktr/template/hello/card/mock'
+export * from '../ktr/template/user/profile/mock'
 
 // 如果模板没有 mock.ts，跳过该行
 
-// ===== Part 2: JSON mock 动态导入清单 =====
+// ===== Part 2: JSON mock 文件清单 =====
 export const mockDataFiles = {
-  'hello/card': {
-    default: () => import('../ktr/template/hello/card/data/default.json'),
-    variant: () => import('../ktr/template/hello/card/data/variant.json'),
-    captured: () => import('../ktr/template/hello/card/data/captured.json')
-  },
-  'user/profile': {
-    basic: () => import('../ktr/template/user/profile/data/basic.json')
-  }
-}
+  'hello/card': ['captured.json', 'default.json', 'variant.json'],
+  'user/profile': ['basic.json']
+} as const
 
-// JSON 文件名（去除 .json）即数据名
+// 面板按「路由 + 文件名」定位 data/ 下的 JSON 文件
 ```
 
 ### TS mock vs JSON mock
@@ -169,7 +169,7 @@ export const mockDataFiles = {
 | 特性           | TS mock                                  | JSON mock              |
 | -------------- | ---------------------------------------- | ---------------------- |
 | **位置**       | `mock.ts`（与 index.tsx 同级）           | `data/*.json` 子目录   |
-| **导出方式**   | 具名导出（`export const basic = {...}`） | 动态 import 函数       |
+| **导出方式**   | 具名导出（`export const basic = {...}`） | 文件名字符串清单       |
 | **类型安全**   | ✅ 编译期校验（satisfies）               | ❌ 运行时解析          |
 | **面板可编辑** | ❌ 只读                                  | ✅ 可新建/编辑/删除    |
 | **适合场景**   | 固定示例，插件代码可复用                 | 快速调试，多组对照数据 |
@@ -233,9 +233,9 @@ export function mockApiMiddleware() {
 
 declare module '@karinjs/template-react/registry-types' {
   interface ProjectRegistry {
-    'hello/card': typeof import('../ktr/template/hello/card/index.tsx').default
-    'user/profile': typeof import('../ktr/template/user/profile/index.tsx').default
-    'stats/dashboard': typeof import('../ktr/template/stats/dashboard/index.tsx').default
+    'hello/card': typeof import('../ktr/template/hello/card/index').default
+    'user/profile': typeof import('../ktr/template/user/profile/index').default
+    'stats/dashboard': typeof import('../ktr/template/stats/dashboard/index').default
   }
 }
 
@@ -246,27 +246,28 @@ export {}
 
 ### 类型增强原理
 
-框架的核心类型定义：
+框架的核心类型定义分两处：
 
 ```typescript twoslash
-// packages/core/src/registry-types.ts
+import type { TemplateDef } from '@karinjs/template-react'
+// ---cut---
+// packages/core/src/registry-types.ts —— 只有增强位本身
 
 // 用户项目通过模块增强填充这个接口
 export interface ProjectRegistry {}
+
+// packages/core/src/types/index.ts —— 其余类型定义在这里
+
+// 从模板定义中提取 data 类型
+export type DataOf<T> = T extends TemplateDef<infer D> ? D : never
+
+// 宽松降级类型（向后兼容）
+export type AnyRegistry = Record<string, TemplateDef<any>>
 
 // 注册表的实际类型（带降级）
 export type LoadedRegistry = keyof ProjectRegistry extends never
   ? AnyRegistry // 未增强时降级为宽松类型
   : ProjectRegistry // 增强后为精确类型
-
-// 宽松降级类型（向后兼容）
-interface AnyRegistry {
-  [path: string]: {
-    component: (props: any) => any
-    name?: string
-    description?: string
-  }
-}
 ```
 
 ### 类型推导效果
@@ -409,12 +410,12 @@ export async function ensureConventions(config: any) {
 }
 
 async function discoverTemplateRoutes(templateDir: string): Promise<string[]> {
-  const files = await glob('**/index.{tsx,jsx}', {
+  const files = await glob('**/index.tsx', {
     cwd: templateDir,
     ignore: ['**/components/**', '**/_*/**']
   })
 
-  return files.map((file) => file.replace(/\/index\.(tsx|jsx)$/, '')).sort()
+  return files.map((file) => file.replace(/\/index\.tsx$/, '')).sort()
 }
 
 async function generateTemplateRegistry(routes: string[], templateDir: string, cacheDir: string) {
@@ -423,15 +424,17 @@ async function generateTemplateRegistry(routes: string[], templateDir: string, c
 
   for (const route of routes) {
     const varName = `template_${route.replace(/\//g, '_')}`
-    const importPath = path.join(templateDir, route, 'index.tsx')
+    // 生成路径不含扩展名
+    const importPath = path.join(templateDir, route, 'index')
 
     imports.push(`import ${varName} from '../${importPath}'`)
     entries.push(`  '${route}': ${varName}`)
   }
 
-  const content = `${imports.join('\n')}
+  const content = `import type { TemplateDef } from '@karinjs/template-react'
+${imports.join('\n')}
 
-export const templates = {
+export const templates: Record<string, TemplateDef<any>> = {
 ${entries.join(',\n')}
 }
 
@@ -443,27 +446,23 @@ export type TemplateRegistry = typeof templates
 
 async function generateMockRegistry(routes: string[], templateDir: string, cacheDir: string) {
   const tsMockExports: string[] = []
-  const jsonMockEntries: Record<string, Record<string, string>> = {}
+  const jsonMockEntries: Record<string, string[]> = {}
 
   for (const route of routes) {
     const routeDir = path.join(templateDir, route)
 
-    // 扫描 TS mock
+    // 扫描 TS mock（生成路径不含扩展名）
     const mockFile = path.join(routeDir, 'mock.ts')
     if (fs.existsSync(mockFile)) {
-      tsMockExports.push(`export * from '../${mockFile}'`)
+      tsMockExports.push(`export * from '../${mockFile.replace(/\.ts$/, '')}'`)
     }
 
-    // 扫描 JSON mock
+    // 扫描 JSON mock，按路由聚合文件名字符串清单
     const dataDir = path.join(routeDir, 'data')
     if (fs.existsSync(dataDir)) {
       const jsonFiles = fs.readdirSync(dataDir).filter((f) => f.endsWith('.json'))
       if (jsonFiles.length > 0) {
-        jsonMockEntries[route] = {}
-        for (const file of jsonFiles) {
-          const name = file.replace('.json', '')
-          jsonMockEntries[route][name] = `() => import('../${path.join(dataDir, file)}')`
-        }
+        jsonMockEntries[route] = jsonFiles
       }
     }
   }
@@ -473,16 +472,12 @@ async function generateMockRegistry(routes: string[], templateDir: string, cache
     content += tsMockExports.join('\n') + '\n\n'
   }
 
-  content += '// JSON mock loaders\n'
+  content += '// JSON mock 文件清单\n'
   content += 'export const mockDataFiles = {\n'
-  for (const [route, loaders] of Object.entries(jsonMockEntries)) {
-    content += `  '${route}': {\n`
-    for (const [name, loader] of Object.entries(loaders)) {
-      content += `    '${name}': ${loader},\n`
-    }
-    content += '  },\n'
+  for (const [route, files] of Object.entries(jsonMockEntries)) {
+    content += `  '${route}': [${files.map((file) => `'${file}'`).join(', ')}],\n`
   }
-  content += '}\n'
+  content += '} as const\n'
 
   fs.writeFileSync(path.join(cacheDir, 'mock-registry.ts'), content)
 }
@@ -491,7 +486,7 @@ async function generateTypeAugmentation(routes: string[], templateDir: string, c
   const entries: string[] = []
 
   for (const route of routes) {
-    const importPath = path.join(templateDir, route, 'index.tsx')
+    const importPath = path.join(templateDir, route, 'index')
     entries.push(`    '${route}': typeof import('../${importPath}').default`)
   }
 

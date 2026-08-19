@@ -116,7 +116,7 @@ tsdown
 `createTemplateRenderer` 按约定自动发现，不需要配置：
 
 - **注册表**：渲染器自身跑在下游 bundle 里时（生产构建插件在产物 chunk 注入 `__KTR_BUNDLED__` 标记）直接用打包产物，不读 `.ktr` 源码也不加载 `karin.template.ts`；否则（ktr 作为 npm 包被开发态引用）`.ktr` 源文件优先，缺失时回退产物。产物按 `bundledDir` 选项 → `package.json` 的 `main`/`exports` 入口目录 → 根目录扫描发现。
-- **样式**：开发态读 dev server 实时编译的缓存，生产态默认按 karin 惯例读 `lib/style.css`。
+- **样式**：开发态读 dev server 实时编译的缓存，生产态默认按 karin 惯例读 `lib/style.css`。产物 CSS 与 dev 缓存同时存在时，`resolveTemplateStyle` 按 mtime 取较新的一份——重新构建后又跑过 dev server 时缓存会胜出，反之则用新构建的产物，避免两边不同步。
 
 产物目录不叫 `lib/` 时显式指定：
 

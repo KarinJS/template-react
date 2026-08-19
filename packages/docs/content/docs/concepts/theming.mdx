@@ -162,39 +162,23 @@ HeroUI 变量使用 `oklch()` 颜色空间，优势：
 
 ### 方法 3：多主题切换
 
-通过 data 属性实现主题切换：
+框架产物（SSR 外壳和面板沙盒）只写 `light` / `dark` 二值的 `class` 和 `data-theme`，`[data-theme='red']` 这类自定义主题选择器在产物上永远不会命中。多主题换肤的正确做法是在调用侧按主题下发变量值——通过 `theme` 的语义色字段或 `theme.vars` 直通口：
 
 ```css title="ktr/template/style.css"
 @import 'tailwindcss';
 @import '@karinjs/template-react/styles';
 @source './**/*.{ts,tsx}';
 
-/* 默认主题（蓝色） */
+/* 默认主题（蓝色），不传主题时的兜底 */
 :root {
   --accent: oklch(0.62 0.19 254);
 }
 
-/* 红色主题 */
-[data-theme='red'] {
-  --accent: oklch(0.62 0.25 27);
-  --accent-foreground: oklch(1 0 0);
-}
-
-/* 绿色主题 */
-[data-theme='green'] {
-  --accent: oklch(0.62 0.22 145);
-  --accent-foreground: oklch(1 0 0);
-}
-
-/* 深色模式 */
-.dark {
+/* 深色模式仍按明暗二值组织 */
+.dark,
+[data-theme='dark'] {
   --background: oklch(0.12 0 0);
   --foreground: oklch(0.95 0 0);
-}
-
-/* 深色 + 红色主题 */
-.dark[data-theme='red'] {
-  --accent: oklch(0.72 0.22 27);
 }
 ```
 
@@ -413,21 +397,21 @@ export default defineTemplate<HelloCardData>({
 
 ## 深色模式
 
-### CSS 变体方式
+### CSS 适配方式
 
-使用 Tailwind 的 `dark:` 变体：
+HeroUI v3 没有 `surface-dark`、`foreground-dark` 这类 `-dark` 后缀 token——语义色的明暗值由 CSS 变量承载，框架切换 `.dark` 类时变量自动翻转，一个类名即可：
 
 ```tsx twoslash
-// ✅ 使用 dark: 变体，纯 CSS 适配明暗
+// ✅ 语义 token 单类写法，变量随 .dark 自动翻转
 export const card = (
-  <div className="bg-surface dark:bg-surface-dark border border-border dark:border-border-dark">
-    <h2 className="text-foreground dark:text-foreground-dark">标题</h2>
-    <p className="text-muted dark:text-muted-dark">描述</p>
+  <div className="bg-surface border border-border">
+    <h2 className="text-foreground">标题</h2>
+    <p className="text-muted">描述</p>
   </div>
 )
 ```
 
-框架自动处理明暗类名切换，组件无需关心。
+不需要用 `dark:` 变体逐个覆盖语义色；`dark:` 只留给明暗下真正不同的样式（如 `shadow-sm dark:shadow-none`）。框架自动处理明暗类名切换，组件无需关心。
 
 ### 逻辑判断方式
 
@@ -460,7 +444,7 @@ export default defineTemplate({
 
 框架通过两种机制触发深色模式：
 
-1. **`.dark` 类名** —— Tailwind 默认策略
+1. **`.dark` 类名** —— ktr 在样式基座里用 `@custom-variant` 把 `dark:` 重定义为类选择器驱动（Tailwind v4 默认编译成 prefers-color-scheme 媒体查询，在截图浏览器的浅色偏好下永不命中）
 2. **`[data-theme="dark"]` 属性** —— 兼容第三方组件库
 
 ```css
@@ -584,8 +568,8 @@ await renderImage('hello/card', data, {
 import type { RenderContext } from '@karinjs/template-react'
 declare const ctx: RenderContext
 // ---cut---
-// ✅ 推荐：纯样式差异用 dark: 变体
-export const card = <div className="bg-surface dark:bg-surface-dark shadow-sm dark:shadow-none" />
+// ✅ 推荐：语义色随变量自动翻转，明暗样式差异用 dark: 变体
+export const card = <div className="bg-surface shadow-sm dark:shadow-none" />
 
 // ❌ 不推荐：简单样式差异不要用 JS 判断
 const shadowClass = ctx.theme?.mode === 'dark' ? '' : 'shadow-sm'
@@ -618,24 +602,23 @@ oklch 调整技巧：
 - **降低饱和度**：降低 C
 - **换色相**：调整 H（0=红，120=绿，240=蓝）
 
-### 5. 多主题用 data 属性
+### 5. 多主题用 theme.vars 下发
+
+框架外壳只写 `light` / `dark` 二值，`[data-theme='red']` 这类自定义主题选择器在产物上永不命中。多主题在调用侧组织成变量集合，渲染时整体下发：
 
 ```css
-/* 通过 data-theme 切换主题 */
+/* style.css 只准备默认主题与明暗两套变量 */
 :root {
   --accent: oklch(0.62 0.19 254); /* 默认蓝色 */
 }
 
-[data-theme='red'] {
-  --accent: oklch(0.62 0.25 27); /* 红色 */
-}
-
-[data-theme='green'] {
-  --accent: oklch(0.62 0.22 145); /* 绿色 */
+.dark,
+[data-theme='dark'] {
+  --background: oklch(0.12 0 0);
 }
 ```
 
-运行时通过 `theme.vars` 下发任意 CSS 变量，或在 SSR/沙盒外壳上设置 `data-theme` 属性切换。
+运行时通过 `theme` 的语义色字段（如 `accent`）或 `theme.vars` 直通口下发对应主题的变量值，即可完成换肤。
 
 ## 常见问题
 

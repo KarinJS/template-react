@@ -288,6 +288,7 @@ const OptimizedImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) =>
 
 ```css title="ktr/template/style.css"
 @import 'tailwindcss';
+@import '@karinjs/template-react/styles';
 
 /* 限制扫描范围 */
 @source '../ktr/template';
@@ -349,7 +350,8 @@ const inlineCriticalCSS: RenderPlugin = {
   name: 'inline-critical-css',
   afterRender: (ctx) => {
     const criticalCSS = fs.readFileSync('dist/critical.css', 'utf-8')
-    return ctx.html.replace('</head>', `<style>${criticalCSS}</style>\n</head>`)
+    // afterRender 拿到的是包装前的模板片段，直接把 <style> 拼到片段前
+    return `<style>${criticalCSS}</style>\n${ctx.html}`
   }
 }
 ```
@@ -545,13 +547,13 @@ export default defineTemplate({
 **优化**：
 
 ```css title="ktr/template/style.css"
-/* 1. 限制扫描范围 */
+/* 1. 样式基座整包引入：@karinjs/template-react/styles 已包含 HeroUI 语义色和 dark: 变体，
+      不能再按 @heroui/theme/button 这种 v2 包路径分包导入 */
 @import 'tailwindcss';
-@source '../ktr/template';
+@import '@karinjs/template-react/styles';
 
-/* 2. 只导入需要的 HeroUI 组件 */
-@import '@heroui/theme/button';
-@import '@heroui/theme/card';
+/* 2. 限制扫描范围：Tailwind 只编译扫描到的类名，未使用的类不进产物 */
+@source '../ktr/template';
 ```
 
 ```ts title="karin.template.ts" twoslash

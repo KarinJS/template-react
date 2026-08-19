@@ -353,9 +353,10 @@ pnpm ktr dev --port 3000
 指定端口，被占用时自动尝试下一个可用端口（3001、3002...），并在终端打印：
 
 ```
-Port 3000 is in use by process "node" (PID: 12345)
-To release: kill -9 12345
-Using port 3001 instead
+⚠  端口 3000 已被占用，已自动切换到 3001
+   占用进程：node(12345)
+   要释放原端口，可执行：
+   kill -9 12345
 ```
 
 **场景 4：CI 环境或无头服务器**
@@ -482,12 +483,13 @@ export default defineConfig({
 # 打包
 pnpm build
 
-# 验证产物结构
-ls -R dist/lib
+# 验证产物结构（dist 为 vite/tsdown 默认 outDir）
+ls -R dist
 # 应包含：
 # - style.css（编译后的 CSS）
 # - assets/（静态资源）
-# - .ktr/（生产注册表）
+# 注意：.ktr/ 固定留在项目根目录，不会复制进产物；
+# 生产注册表由打包器入口 chunk 产出，跟随产物代码一起发布
 
 # 验证渲染功能
 node -e "
@@ -521,7 +523,7 @@ pnpm ktr dev --no-open
 
 ### 端口被占用
 
-**症状**：启动时提示 `Port 5180 is in use`。
+**症状**：启动时提示「端口 5180 已被占用」。
 
 **解决**：
 
@@ -557,7 +559,7 @@ pnpm ktr dev --no-open
 **解决**：
 
 1. 检查 `ktr/template/style.css` 存在且包含 `@import 'tailwindcss'`。
-2. 开发态确认 `.ktr/style.css` 已生成（`ktr dev` 自动生成）。
+2. 开发态确认 `node_modules/.cache/ktr/style.css` 已生成（`ktr dev` 自动生成）。
 3. 集成打包器模式确认产物目录包含 `style.css`（如 `lib/style.css`）；standalone 模式不生成独立 CSS 文件，CSS 已内嵌在 `dist/ktr/index.mjs`。
 4. 额外样式检查 `extraStylePaths` 路径正确且文件存在。
 

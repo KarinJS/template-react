@@ -22,7 +22,7 @@ description: 使用 ktr build 生成包含模板、React SSR runtime、CSS 和�
 - 模板路由文件必须是 `ktr/template/<板块>/<模板>/index.tsx`。
 - 下游项目需要安装 `typescript`、React 和对应类型声明。
 - 模板 data 必须有明确类型，不能退化为 `any`、`unknown` 或 `never`。
-- 第一阶段不支持 `index.jsx`、CJS 和模板动态 import。
+- 第一阶段不支持 `index.jsx` 和 CJS。模板动态 import 已支持：`standalone.singleChunk: false` 开启代码分割后，额外 chunk 落在 `chunks/[name]-[hash].mjs`；仅默认 `singleChunk: true` 时会因产生多个 chunk 报构建错误。
 
 宿主业务代码可以是 JavaScript；TypeScript 只用于模板开发和构建检查。
 
@@ -114,9 +114,9 @@ export default defineConfig({
 pnpm ktr build
 ```
 
-也可以写入 `packages.json`：
+也可以写入 `package.json`：
 
-```json title="packages.json"
+```json title="package.json"
 {
   "type": "module",
   "scripts": {
@@ -211,7 +211,8 @@ type CardData = {
 interface RendererOptions {
   outputDir?: string
   captureDir?: string
-  htmlFileName?: 'route' | 'timestamp'
+  // 默认 'fixed'：每个路由固定文件名覆盖写；'timestamp' 追加时间戳；函数形式自定义文件主名
+  htmlFileName?: 'fixed' | 'timestamp' | ((templatePath: string) => string)
 }
 
 declare const createTemplateRenderer: (options?: RendererOptions) => (templatePath: 'hello/card', data: CardData) => Promise<unknown>
@@ -273,7 +274,7 @@ declare function renderTemplate<K extends keyof TemplateDataMap>(templatePath: K
 
 ### 生成多个 chunk
 
-默认 `singleChunk: true`。移除模板中的动态 import，或等待后续多 chunk 支持。
+默认 `singleChunk: true` 要求产物只有一个 chunk。模板里需要保留动态 import 时，设置 `standalone.singleChunk: false` 开启代码分割，额外 chunk 落在 `chunks/` 子目录即可。
 
 ### 未声明的外部依赖
 

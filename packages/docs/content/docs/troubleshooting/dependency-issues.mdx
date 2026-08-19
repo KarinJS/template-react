@@ -60,7 +60,7 @@ Yarn 2+ (Berry) 未经测试，遇到问题时切换到 pnpm 或 npm。
 
 ```bash
 npm ERR! Could not resolve dependency:
-npm ERR! peer react@"^18.3.1" from @karinjs/template-react@x.x.x
+npm ERR! peer react@">=18.0.0" from @karinjs/template-react@x.x.x
 npm ERR! node_modules/@karinjs/template-react
 ```
 
@@ -96,15 +96,17 @@ karin-plugin-example@1.0.0
   └── react-dom@17.0.2
 ```
 
-**2. 升级到 React 18.3+**
+**2. 升级到 React 19（与脚手架一致）**
+
+peer 只要求 `react >=18.0.0`，但建议与脚手架默认口径一致，直接装 React 19：
 
 ```json title="package.json" twoslash
 {
   "devDependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4"
   }
 }
 ```
@@ -172,21 +174,23 @@ pnpm 报 `WARN  Issues with peer dependencies found`，列出一堆不匹配的�
  WARN  Issues with peer dependencies found
 .
 └─┬ @karinjs/template-react
-  └── ✕ unmet peer react@"^18.3.1": found 18.2.0
+  └── ✕ unmet peer react@">=18.0.0": found 17.0.2
 ```
 
 npm 报 `npm WARN peer dep missing`。
 
 ### 原因
 
-peer dependencies 声明的是"宿主项目应该提供的版本"，用于确保插件和宿主用同一份依赖。`@karinjs/template-react` 声明了 `react@^18.3.1` 作为 peer，如果项目安装的版本不匹配就会警告。
+peer dependencies 声明的是"宿主项目应该提供的版本"，用于确保插件和宿主用同一份依赖。`@karinjs/template-react` 声明了 `react >=18.0.0` 作为 peer，如果项目安装的版本不匹配就会警告。
 
 ### 解决方案
 
-**1. 升级到匹配版本（推荐）**
+**1. 升级到 React 19（推荐）**
+
+peer 只要求 `>=18.0.0`，建议与脚手架默认口径一致：
 
 ```bash
-pnpm add -D react@^18.3.1 react-dom@^18.3.1
+pnpm add -D react@^19.2.8 react-dom@^19.2.8
 ```
 
 **2. 允许不匹配（pnpm）**
@@ -208,7 +212,7 @@ npm install --legacy-peer-deps
 ```
 
 <Callout>
-  警告不会阻止安装，但可能导致运行时错误。优先升级依赖版本，只在确认兼容但版本号不匹配（如 `18.2.0` vs `^18.3.1`）时才忽略警告。
+  警告不会阻止安装，但可能导致运行时错误。优先升级依赖版本，只在确认兼容但版本号不匹配（如 `19.0.0-rc` 预发布版本不匹配 `>=18.0.0`）时才忽略警告。
 </Callout>
 
 ---

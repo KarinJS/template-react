@@ -20,7 +20,7 @@ pnpm install
 
 ### 原因
 
-React 版本冲突或 peer dependencies 不匹配。`@karinjs/template-react` 要求 React 18.3+，如果项目里已有旧版 React 或其他包锁定了不兼容的版本，包管理器拒绝安装。
+React 版本冲突或 peer dependencies 不匹配。`@karinjs/template-react` 的 peer 要求是 `react >=18.0.0`（`react-dom` 同），脚手架默认安装 React 19（`^19.2.8`）。如果项目里已有 React 17 或更旧版本、或其他包锁定了不兼容的版本，包管理器拒绝安装。
 
 ### 解决方案
 
@@ -30,13 +30,13 @@ React 版本冲突或 peer dependencies 不匹配。`@karinjs/template-react` �
 pnpm list react react-dom
 ```
 
-如果版本低于 18.3，先升级：
+如果版本低于 18.0，先升级。建议与脚手架口径一致，直接装 React 19：
 
 ```json title="package.json" twoslash
 {
   "devDependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }
 ```

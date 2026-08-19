@@ -552,13 +552,13 @@ export async function screenshot(htmlPath: string): Promise<Uint8Array> {
 └──────────┬──────────────┘
            ↓
 ┌─────────────────────────┐
-│ HTML 包装器              │ 1. 内联 CSS
-│                          │ 2. 注入主题变量到 <body> style
-│                          │ 3. 添加 <html>、<head>、<meta>
+│ 插件钩子                 │ afterRender() → 可修改模板 HTML 片段
 └──────────┬──────────────┘
            ↓
 ┌─────────────────────────┐
-│ 插件钩子                 │ afterRender() → 可修改 HTML
+│ HTML 包装器              │ 1. 内联 CSS
+│                          │ 2. 注入主题变量到 <body> style
+│                          │ 3. 添加 <html>、<head>、<meta>
 └──────────┬──────────────┘
            ↓
 ┌─────────────────────────┐

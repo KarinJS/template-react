@@ -59,46 +59,89 @@ pnpm install
 让我们看一个完整的模板示例，理解它是如何工作的。以 `ktr/template/hello/card/index.tsx` 为例：
 
 ```tsx title="ktr/template/hello/card/index.tsx" twoslash
+import { Card, Chip } from '@heroui/react'
+import { Braces, Layers3, Sparkles } from 'lucide-react'
+
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 
-interface CardData {
-  /** 卡片标题 */
+/** Hello 卡片模板的数据结构，适合固定宽度的信息摘要截图。 */
+type HelloCardData = {
+  /** 主标题。 */
   title: string
-  /** 键值对列表 */
+  /** 可选副标题。 */
+  subtitle?: string
+  /** 展示在卡片内容区的键值对。 */
   items: Array<{ label: string; value: string }>
 }
 
-const Card = ({ data }: TemplateProps<CardData>) => (
-  //               ^?
-  <div className="w-155 rounded-3xl border border-border bg-background p-8 text-foreground">
-    <h1 className="mb-4 text-3xl font-bold">{data.title}</h1>
-    {data.items.map((item) => (
-      <div key={item.label} className="flex justify-between py-2">
-        <span className="text-muted">{item.label}</span>
-        <strong>{item.value}</strong>
+const HelloCard = ({ data }: TemplateProps<HelloCardData>) => (
+  //                    ^?
+  <Card className="w-155 gap-0 overflow-hidden rounded-3xl border border-border bg-background p-0 text-foreground">
+    <Card.Header className="flex-row items-start justify-between gap-4 border-b border-border px-8 py-7">
+      <div className="min-w-0">
+        <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
+          <Sparkles size={16} />
+          Karin 模板示例
+        </div>
+        <Card.Title className="text-3xl font-bold tracking-normal">{data.title}</Card.Title>
+        {data.subtitle && <Card.Description className="mt-2 text-sm text-accent">{data.subtitle}</Card.Description>}
       </div>
-    ))}
-  </div>
+
+      <Chip className="bg-accent text-accent-foreground" size="md" variant="tertiary">
+        <Layers3 size={14} />
+        HeroUI
+      </Chip>
+    </Card.Header>
+
+    <Card.Content className="grid gap-3 px-8 py-7">
+      {data.items.map((item, index) => (
+        <div key={item.label} className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent-soft text-accent">
+              {index === 0 ? <Braces size={16} /> : <Layers3 size={16} />}
+            </span>
+            <span className="truncate text-sm text-muted">{item.label}</span>
+          </div>
+          <strong className="text-base">{item.value}</strong>
+        </div>
+      ))}
+    </Card.Content>
+  </Card>
 )
 
-export default defineTemplate({ name: '问候卡片', component: Card })
+export default defineTemplate({
+  name: '问候卡片',
+  description: 'HeroUI + lucide-react 截图卡片',
+  component: HelloCard
+})
 ```
 
 **关键要点**：
 
 1. **路径即路由**：`ktr/template/<板块>/<模板>/index.tsx` 自动注册为路由 `hello/card`；直接写 `.tsx` 文件（不在目录结构中）不会被注册
 2. **使用语义化样式类**：使用 `bg-background`、`text-muted` 等语义类，主题切换和明暗模式自动适配；避免写死颜色如 `bg-white`
-3. **类型安全**：`TemplateProps<CardData>` 确保组件接收的数据结构类型安全
+3. **类型安全**：`TemplateProps<HelloCardData>` 确保组件接收的数据结构类型安全
 4. **JSON 示例数据**：放在 `data/` 子目录（如 `ktr/template/hello/card/data/default.json`），放在模板根目录不会被识别
 
 **示例数据结构** `ktr/template/hello/card/data/default.json`：
 
 ```json title="ktr/template/hello/card/data/default.json"
 {
-  "title": "欢迎使用",
+  "title": "Karin Template React",
+  "subtitle": "React + Tailwind CSS + TypeScript",
   "items": [
-    { "label": "状态", "value": "运行中" },
-    { "label": "版本", "value": "1.0.0" }
+    {
+      "label": "渲染方式",
+      "value": "SSR HTML"
+    },
+    {
+      "label": "预览",
+      "value": "Iframe 沙盒"
+    },
+    {
+      "label": "类型",
+      "value": "注册表驱动"
+    }
   ]
 }
 ```
@@ -126,7 +169,7 @@ pnpm template
 
 **✓ 成功标志**：
 
-- 浏览器自动打开开发面板（通常是 `http://localhost:3000`）
+- 浏览器自动打开开发面板（通常是 `http://localhost:5180/__ktr/panel/`）
 - 左侧列表显示所有可用模板（如"问候卡片"）
 - 点击模板名称后右侧显示实时预览
 - 修改组件代码或 `data/*.json` 保存后，预览会在 1-2 秒内自动刷新
@@ -149,40 +192,30 @@ pnpm template
 如果你在第 1 步选择生成了 `src/utils/render.ts`，文件已经存在。让我们看看它的完整实现：
 
 ```ts title="src/utils/render.ts" twoslash
-// @filename: ./src/dir.ts
-/** 插件目录常量，见 src/dir.ts。 */
-export const dir = { pluginName: 'karin-plugin-example' }
-// @filename: ./src/utils/render.ts
-// ---cut---
 import path from 'node:path'
 
 import { karinPathHtml, render, segment, type ImageElement } from 'node-karin'
 import { createTemplateRenderer, type DataOf, type LoadedRegistry } from '@karinjs/template-react'
 
-import { dir } from '../dir'
-
 // ktr 侧按约定装配（包根定位、配置解析、注册表加载、CSS 定位、捕获目录）；
 // outputDir 是 karin 领域的位置，由插件显式指定。
 const renderTemplate = createTemplateRenderer(import.meta.url, {
-  renderer: { outputDir: path.join(karinPathHtml, dir.pluginName) }
+  renderer: { outputDir: path.join(karinPathHtml, 'karin-plugin-example') }
 })
 
 /** 注册表类型：.ktr/registry-types.d.ts 模块增强生效后为逐路由精确类型。 */
 type Registry = LoadedRegistry
 
 /**
- * 渲染模板并交给 Karin Puppeteer 截图，返回可直接 reply 的图片消息元素。
- *
- * @param templatePath - 模板路由，如 'hello/card'
- * @param data - 模板数据，类型会根据模板路径自动推导
- * @param options - Puppeteer 截图选项
- * @returns 图片消息元素数组，可直接传给 event.reply()
+ * 渲染模板并交给 Karin Puppeteer 截图。
+ * @param templatePath 模板路由，如 hello/card。
+ * @param data 模板数据，类型由模板组件推导。
+ * @param options 透传给 render.render 的额外截图参数。
+ * @returns 可直接 reply 的图片消息元素。
  */
 export const renderImage = async <K extends keyof Registry & string>(
-  //            ^?
   templatePath: K,
   data: DataOf<Registry[K]>,
-  //      ^?
   options?: Record<string, unknown>
 ): Promise<ImageElement[]> => {
   const { success, htmlPath, error } = await renderTemplate(templatePath, data)
@@ -191,7 +224,7 @@ export const renderImage = async <K extends keyof Registry & string>(
   }
 
   const result = await render.render({
-    name: `${dir.pluginName}/${templatePath}`,
+    name: `karin-plugin-example/${templatePath}`,
     file: htmlPath,
     selector: '#container',
     type: 'png',

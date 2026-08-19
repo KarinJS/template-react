@@ -142,7 +142,7 @@ export default defineConfig({
 **使用场景**：
 
 1. **多个样式文件组合**：分离工具类、动画、主题
-2. **按需导入组件库样式**：`@import '@heroui/theme'`
+2. **引入自己的设计 token**：`@import './tokens.css'`（HeroUI 样式基座已由 `@karinjs/template-react/styles` 整包引入，无需单独导入）
 3. **自定义 Tailwind 插件**：配合 `vite.css.preprocessorOptions`
 
 ### extraStylePaths
@@ -235,7 +235,7 @@ export default defineConfig({
 
 1. **CI 环境**：自动化测试不需要打开浏览器
 2. **远程开发**：SSH 连接服务器，本地手动打开
-3. **自定义浏览器**：通过 `--open` 指定浏览器路径
+3. **自定义浏览器**：`dev.open` 是纯布尔开关，没有浏览器路径入口；设为 `false` 后用脚本自行打开指定浏览器
 
 ### html.headExtra
 
@@ -386,9 +386,9 @@ defineConfig({
   dev: { port: 3000 } // 保留其他 dev 字段
 })
 
-// 数组：替换而非合并
+// 数组：拼接而非替换（用户值在前、默认值在后）
 defineConfig({
-  extraStylePaths: ['a.css', 'b.css'] // 完全替换默认值 []
+  extraStylePaths: ['a.css', 'b.css'] // 默认值是 []，拼接结果等同于替换
 })
 ```
 
@@ -563,7 +563,7 @@ export default defineConfig({
 })
 ```
 
-运行时校验在 `resolveConfig` 中执行，无效配置会抛出错误并提示修复建议。
+运行时只有配置文件加载失败（语法错误、模块解析失败等）才会抛错；`resolveConfig` 本身不做配置值校验，类型错误由 TypeScript 在 `defineConfig` 处拦截。
 
 <Cards>
   <Card title="配置与 CLI" href="/docs/api/config-cli" description="CLI 命令用法" />

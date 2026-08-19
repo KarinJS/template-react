@@ -125,7 +125,7 @@ await screenshot(htmlPath)
 
 特点：
 
-- React 18 `renderToReadableStream` 生成 HTML
+- React 19 `renderToReadableStream` 生成 HTML
 - 内联 CSS，无外部依赖
 - 主题变量直接写入 `<body>` 样式
 - 输出文件可独立运行
@@ -169,8 +169,8 @@ Karin 插件调用 renderImage()
 ┌─────────────────────┐
 │  createRenderer      │ ← 执行 beforeRender 钩子
 │                      │ ← renderToReadableStream
+│                      │ ← 执行 afterRender 钩子（加工模板片段）
 │                      │ ← 包装 HTML 外壳，内联 CSS
-│                      │ ← 执行 afterRender 钩子
 └──────────┬──────────┘
            ↓
 ┌─────────────────────┐
@@ -228,7 +228,7 @@ TypeScript 类型随约定文件自动生成：
 // .ktr/registry-types.d.ts（框架生成）
 declare module '@karinjs/template-react/registry-types' {
   interface ProjectRegistry {
-    'hello/card': typeof import('../ktr/template/hello/card/index.tsx').default
+    'hello/card': typeof import('../ktr/template/hello/card/index').default
   }
 }
 ```

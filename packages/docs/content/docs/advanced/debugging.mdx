@@ -19,12 +19,7 @@ pnpm template
 # 点击工具栏「定位」按钮，或按住 Shift+Alt 点击元素
 ```
 
-检查模式会在控制台输出：
-
-```
-[ktr:inspect] 点击位置: user/card/index.tsx:23:5
-[ktr:inspect] 组件: UserCard
-```
+检查模式由 code-inspector-plugin 实现：开启后点击模板中的元素会直接跳转到编辑器对应源码位置，不会在控制台输出额外日志。
 
 ### React DevTools
 
@@ -412,18 +407,19 @@ type UserCardData = Registry['user/card'] extends { __data?: infer D } ? D : nev
 开启 mock API 详细日志：
 
 ```ts title="packages/core/src/dev/mock-api.ts"
-export function mockApiMiddleware(config: ResolvedKtrConfig) {
-  return async (req, res, next) => {
+// 实际导出是 registerMockApi(server, config)，在中间件里加日志即可追踪请求
+export const registerMockApi = (server: ViteDevServer, config: ResolvedKtrConfig): void => {
+  server.middlewares.use('/__ktr/api', (req, res, next) => {
     const start = Date.now()
-    const url = new URL(req.url!, 'http://localhost')
 
-    console.log(`[Mock API] ${req.method} ${url.pathname}`)
+    console.log(`[Mock API] ${req.method} ${req.url}`)
 
-    // ... 处理请求
+    res.on('finish', () => {
+      console.log(`[Mock API] ${req.method} ${req.url} - ${Date.now() - start}ms`)
+    })
 
-    const duration = Date.now() - start
-    console.log(`[Mock API] ${req.method} ${url.pathname} - ${duration}ms`)
-  }
+    next()
+  })
 }
 ```
 
@@ -480,16 +476,13 @@ eventSource.onerror = (error) => {
 追踪文件变更：
 
 ```ts title="packages/core/src/dev/data-watch.ts"
-import chokidar from 'chokidar'
+// 实际导出是 registerDataWatch(server, config)，复用 Vite 内置 watcher，不另起 chokidar 实例
+export const registerDataWatch = (server: ViteDevServer, config: ResolvedKtrConfig): void => {
+  server.watcher.add(config.mockDataDir)
 
-export function startDataWatch(config: ResolvedKtrConfig) {
-  const watcher = chokidar.watch('**/*.json', {
-    cwd: config.mockDataDir,
-    ignoreInitial: true
-  })
-
-  watcher.on('all', (event, path) => {
-    console.log('[文件监听] 事件:', event, '路径:', path)
+  server.watcher.on('all', (event, file) => {
+    if (!file.endsWith('.json')) return
+    console.log('[文件监听] 事件:', event, '路径:', file)
   })
 }
 ```
@@ -593,8 +586,8 @@ cat ktr/template/style.css
 cat lib/style.css
 # 检查是否包含对应的 CSS 规则
 
-# 3. 检查 HTML
-cat temp/html/user_card.html
+# 3. 检查 HTML（默认输出目录是 dist/template/html/）
+cat dist/template/html/user_card.html
 # 检查 <style> 标签内容
 ```
 
@@ -603,6 +596,7 @@ cat temp/html/user_card.html
 ```css title="ktr/template/style.css"
 /* ✅ 正确 */
 @import 'tailwindcss';
+@import '@karinjs/template-react/styles';
 @source '../ktr/template';
 
 /* ❌ 错误：缺少 @source */

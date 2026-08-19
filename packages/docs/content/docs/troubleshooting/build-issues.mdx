@@ -111,7 +111,7 @@ export default defineConfig({
 
 ### 原因
 
-`ktrBuildPlugin` 未启用 CSS 编译，或 Tailwind 插件未正确配置。
+`ktrBuildPlugin` 未启用 CSS 编译。注意 CSS 走的是 ktr 内部独立管线（内部 Vite 构建 `configFile: false`，自带 tailwindcss 插件），与下游 `vite.config.ts` 里的插件顺序无关。
 
 ### 解决方案
 
@@ -141,26 +141,7 @@ export default defineConfig({
 })
 ```
 
-**2. 确保 Tailwind 插件在前**
-
-Tailwind 必须在 `ktrBuildPlugin` 之前：
-
-```ts title="vite.config.ts" twoslash
-import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
-import { ktrBuildPlugin } from '@karinjs/template-react/plugin'
-
-export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(), // ← Tailwind 在前
-    ktrBuildPlugin() // ← ktr 在后
-  ]
-})
-```
-
-**3. 检查 CSS 入口文件**
+**2. 检查 CSS 入口文件**
 
 确保 `ktr/template/style.css` 存在且内容正确：
 
@@ -172,7 +153,7 @@ export default defineConfig({
 
 缺失时手动创建，或重新执行 `pnpm ktr init`。
 
-**4. 验证产物**
+**3. 验证产物**
 
 构建成功后检查：
 
@@ -521,19 +502,27 @@ pnpm ktr sync
 cat .ktr/template-registry.ts
 ```
 
-输出应该包含所有模板的 import 和 export：
+输出应该包含所有模板的 import 和具名导出：
 
 ```ts title=".ktr/template-registry.ts"
-import template_0 from '../ktr/template/hello/card/index.tsx'
-import template_1 from '../ktr/template/hello/list/index.tsx'
+// 此文件由 @karinjs/template-react 自动生成，请不要手动修改。
+// 按约定维护 ktr/template/ 下的组件、mock 与 JSON 数据，运行 ktr sync/dev/build 会自动刷新这里。
+import type { TemplateDef } from '@karinjs/template-react'
+import template_hello_card from '../ktr/template/hello/card/index'
+import template_hello_list from '../ktr/template/hello/list/index'
 
-export default {
-  'hello/card': template_0,
-  'hello/list': template_1
+export * from '../ktr/template/hello/card/index'
+export * from '../ktr/template/hello/list/index'
+
+export const templates: Record<string, TemplateDef<any>> = {
+  'hello/card': template_hello_card,
+  'hello/list': template_hello_list
 }
+
+export type TemplateRegistry = typeof templates
 ```
 
-如果输出是空对象 `export default {}`，说明模板扫描失败。
+如果 `templates` 是空对象（`export const templates: Record<string, TemplateDef<any>> = {}`），说明模板扫描失败。
 
 **2. 检查模板目录配置**
 

@@ -160,33 +160,36 @@ DataOf<TemplateDef<RankData>> 提取 RankData
 ## LoadedRegistry
 
 ```ts twoslash
-import type { TemplateDef } from '@karinjs/template-react'
+import type { AnyRegistry, ProjectRegistry } from '@karinjs/template-react'
 // ---cut---
-type LoadedRegistry = Record<string, TemplateDef<any>>
+type LoadedRegistry = keyof ProjectRegistry extends never ? AnyRegistry : ProjectRegistry
 ```
 
-加载后的模板注册表类型，默认是宽泛的 `Record<string, TemplateDef<any>>`，通过**模块增强**变为逐路由精确类型。
+约定加载（`loadTemplateRegistry`）返回的注册表类型，是一个**条件类型别名**：模块增强生效时 `ProjectRegistry` 携带逐路由精确类型，`LoadedRegistry` 解析为它；未增强时 `keyof ProjectRegistry extends never` 成立，退化为 `AnyRegistry`（`Record<string, TemplateDef<any>>`），路由与 data 类型放宽。
 
 ### 模块增强机制
 
 `ktr sync` 扫描 `ktr/template/` 后，生成 `.ktr/registry-types.d.ts`：
 
 ```ts title=".ktr/registry-types.d.ts"
-import type { TemplateDef } from '@karinjs/template-react'
+// 此文件由 @karinjs/template-react 自动生成，请不要手动修改。
+// 按约定维护 ktr/template/ 下的组件、mock 与 JSON 数据，运行 ktr sync/dev/build 会自动刷新这里。
+// 下游源码无需 import .ktr：ktr sync 会把逐路由精确类型注入 @karinjs/template-react/registry-types。
+export {}
 
-declare module '@karinjs/template-react' {
-  export interface LoadedRegistry {
-    'hello/card': TemplateDef<import('../ktr/template/hello/card/index.js').CardData>
-    'hello/list': TemplateDef<import('../ktr/template/hello/list/index.js').HelloListData>
-    'user/profile': TemplateDef<import('../ktr/template/user/profile/index.js').ProfileData>
+declare module '@karinjs/template-react/registry-types' {
+  interface ProjectRegistry {
+    'hello/card': typeof import('../ktr/template/hello/card/index').default
+    'hello/list': typeof import('../ktr/template/hello/list/index').default
+    'user/profile': typeof import('../ktr/template/user/profile/index').default
   }
 }
 ```
 
-TypeScript 的模块增强会把这些定义**合并到原始接口**上，使得 `LoadedRegistry` 变为：
+TypeScript 的模块增强会把这些路由**合并到 `ProjectRegistry` 接口**上，`LoadedRegistry` 随之解析为逐路由精确类型，效果等价于：
 
 ```ts
-interface LoadedRegistry {
+interface ProjectRegistry {
   'hello/card': TemplateDef<CardData>
   'hello/list': TemplateDef<HelloListData>
   'user/profile': TemplateDef<ProfileData>
@@ -227,11 +230,11 @@ await renderTemplate('hello/card', { wrongField: 123 })
 1. **检查 `.ktr/registry-types.d.ts` 是否存在**：不存在时跑 `pnpm ktr sync` 生成。
 2. **检查 tsconfig.json 的 include**：确保包含 `.ktr/**/*.d.ts`。
 3. **重启 TS Server**：VSCode 中按 `Ctrl+Shift+P` → `TypeScript: Restart TS Server`。
-4. **检查模板导出**：确保模板的数据接口是 `export interface`，内联匿名类型无法被模块增强引用。
+4. **检查模板导出**：确保模板组件通过 `export default defineTemplate(...)` 默认导出。增强通过 `typeof import('...').default` 提取类型，内联/匿名数据类型也能精确推导，不要求数据接口具名导出。
 
-### 生产态降级
+### 未增强时的类型退化
 
-生产环境未部署 `.ktr/` 源文件时，`LoadedRegistry` 降级为默认的 `Record<string, TemplateDef<any>>`，失去逐路由类型推导，但运行时行为不受影响。
+增强是否生效是**编译期**问题，只取决于 `.ktr/registry-types.d.ts` 是否被下游 tsconfig 的 `include` 覆盖，与生产部署无关。未被 TS 工程包含时 `keyof ProjectRegistry extends never` 成立，`LoadedRegistry` 退化为 `AnyRegistry`（`Record<string, TemplateDef<any>>`），失去逐路由类型推导，运行时行为不受影响。
 
 ## TemplateDef
 
@@ -344,27 +347,28 @@ const redundantTemplate: TemplateDef<MyData> = {
 
 ## 类型推导最佳实践
 
-### 1. 始终导出数据接口
+### 1. 数据接口无需具名导出
 
-模块增强依赖 `import('../path/to/template').DataType`，接口必须是具名导出：
+模块增强通过 `typeof import('../path/to/template').default` 从默认导出提取完整的 `TemplateDef<D>`，数据类型跟随默认导出走，不要求接口具名导出。具名导出接口方便复用，内联匿名类型同样能被精确推导：
 
 ```tsx twoslash
-// ✅ 正确：导出接口
+import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
+
+// ✅ 可以：具名导出接口，方便在其他文件复用
 export interface CardData {
   title: string
 }
 
-import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
 const Card = ({ data }: TemplateProps<CardData>) => <div>{data.title}</div>
 export default defineTemplate({ component: Card })
 ```
 
 ```tsx twoslash
 import { defineTemplate, type TemplateProps } from '@karinjs/template-react'
-// ❌ 错误：内联匿名类型
+
+// ✅ 也可以：内联匿名类型，typeof import('...').default 仍能精确提取
 const Card = ({ data }: TemplateProps<{ title: string }>) => <div>{data.title}</div>
 export default defineTemplate({ component: Card })
-// 模块增强无法引用匿名类型
 ```
 
 ### 2. 组件 props 优先标注

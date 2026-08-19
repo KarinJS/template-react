@@ -103,23 +103,23 @@ VSCode 按 `Ctrl+Shift+P`（macOS `Cmd+Shift+P`），运行 `TypeScript: Restart
 ```
 
 <Callout type="error">
-  **不要**把 `.ktr/` 加到 `files` 或 `include` 数组——类型增强声明是全局的（`declare module`），TypeScript 编译器会自动发现。显式 include
-  反而可能导致重复声明错误。
+  **不要**把 `.ktr/` 从 TS 工程里排除——模块增强依赖 `registry-types.d.ts` 被 TypeScript 工程包含。被 `exclude` 排掉或未落入 `include`
+  范围时增强不生效，`LoadedRegistry` 会退化为宽松类型。
 </Callout>
 
-实际上正确的做法是**完全不管** `.ktr/`，让 TypeScript 自己发现：
+正确做法是让 `include` 覆盖 `.ktr/`：
 
 ```json title="tsconfig.json（推荐）" twoslash
 {
   "compilerOptions": {
     "jsx": "react-jsx"
   },
-  "include": ["src", "ktr"],
-  "exclude": ["node_modules", "lib", ".ktr"]
+  "include": ["src", "ktr", ".ktr"],
+  "exclude": ["node_modules", "lib"]
 }
 ```
 
-模块增强声明通过 `.d.ts` 文件自动生效，不需要 import。
+模块增强声明通过 `.d.ts` 文件自动生效，下游不需要 import `.ktr/` 里的任何文件。
 
 **4. 检查 types 字段**
 
@@ -497,7 +497,7 @@ validate 返回 `false` 时 SSR 直接报错 `Template data validation failed`�
 
 ### 症状
 
-在 monorepo（pnpm workspace、Turborepo、Nx）里，类型增强声明完全不生效，`LoadedRegistry` 始终是空接口。
+在 monorepo（pnpm workspace、Turborepo、Nx）里，类型增强声明完全不生效，`LoadedRegistry` 退化为 `AnyRegistry`（`Record<string, TemplateDef<any>>`），失去逐路由精确类型。
 
 ### 原因
 
@@ -538,25 +538,17 @@ cd packages/my-plugin
 pnpm ktr sync
 ```
 
-检查 `.ktr/registry-types.d.ts` 的 `declare module` 路径是否正确：
+检查 `.ktr/registry-types.d.ts` 的 `declare module` 目标和接口名是否正确：
 
 ```ts title=".ktr/registry-types.d.ts"
-// ✅ 正确：绝对路径
 declare module '@karinjs/template-react/registry-types' {
-  interface LoadedRegistry {
-    /* ... */
-  }
-}
-
-// ❌ 错误：相对路径
-declare module '../node_modules/@karinjs/template-react/registry-types' {
-  interface LoadedRegistry {
+  interface ProjectRegistry {
     /* ... */
   }
 }
 ```
 
-相对路径说明 ktr 的包根定位失败，检查依赖是否安装在插件包自己的 `node_modules` 里（见 [依赖问题详解 - monorepo](/docs/troubleshooting/dependency-issues#monorepo)）。
+该文件由 ktr 生成，模块路径固定为 `'@karinjs/template-react/registry-types'`，增强的接口是 `ProjectRegistry`。如果内容被手动改过，直接删除后重新执行 `pnpm ktr sync` 生成。
 
 ---
 

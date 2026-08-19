@@ -31,14 +31,13 @@ ktr/template/
 
 ### 扫描规则详解
 
-框架使用 `fast-glob` 扫描模板目录，模式为 `**/index.{tsx,jsx}`，但有以下过滤规则：
+框架使用 `fast-glob` 扫描模板目录，模式为 `**/index.tsx`，但有以下过滤规则：
 
-| 规则                     | 示例                                  | 说明             |
-| ------------------------ | ------------------------------------- | ---------------- |
-| **必须是 index 文件**    | `card/index.tsx` ✅<br/>`card.tsx` ❌ | 强制两级目录结构 |
-| **忽略 components 目录** | `card/components/badge.tsx` ❌        | 模板内部组件     |
-| **忽略下划线开头目录**   | `_shared/utils/index.tsx` ❌          | 跨模板共享代码   |
-| **支持 jsx 和 tsx**      | `index.jsx` ✅<br/>`index.js` ❌      | 必须是 JSX 文件  |
+| 规则                     | 示例                                  | 说明                     |
+| ------------------------ | ------------------------------------- | ------------------------ |
+| **必须是 index 文件**    | `card/index.tsx` ✅<br/>`card.tsx` ❌ | 目录深度不限，两级是惯例 |
+| **忽略 components 目录** | `card/components/badge.tsx` ❌        | 模板内部组件             |
+| **忽略下划线开头目录**   | `_shared/utils/index.tsx` ❌          | 跨模板共享代码           |
 
 ```typescript twoslash
 // @noErrors
@@ -46,7 +45,7 @@ ktr/template/
 import { glob } from 'fast-glob'
 
 async function discoverTemplateRoutes(templateDir: string) {
-  const files = await glob('**/index.{tsx,jsx}', {
+  const files = await glob('**/index.tsx', {
     cwd: templateDir,
     ignore: [
       '**/components/**', // 忽略内部组件
@@ -56,7 +55,7 @@ async function discoverTemplateRoutes(templateDir: string) {
 
   return files.map((file) => {
     // hello/card/index.tsx → hello/card
-    return file.replace(/\/index\.(tsx|jsx)$/, '')
+    return file.replace(/\/index\.tsx$/, '')
   })
 }
 ```
@@ -108,7 +107,7 @@ import { glob } from 'fast-glob'
 import * as path from 'node:path'
 
 async function discoverTemplateRoutes(templateDir: string) {
-  const files = await glob('**/index.{tsx,jsx}', {
+  const files = await glob('**/index.tsx', {
     cwd: templateDir,
     ignore: ['**/components/**', '**/_*/**']
   })
@@ -116,7 +115,7 @@ async function discoverTemplateRoutes(templateDir: string) {
   // 转换为路由字符串
   const routes = files.map((file) => {
     // 移除 /index.tsx 后缀
-    return file.replace(/\/index\.(tsx|jsx)$/, '')
+    return file.replace(/\/index\.tsx$/, '')
   })
 
   return routes.sort() // 按字母排序
@@ -130,18 +129,26 @@ async function discoverTemplateRoutes(templateDir: string) {
 ```typescript twoslash
 // @noErrors
 // 生成的 .ktr/template-registry.ts
-import template_hello_card from '../ktr/template/hello/card/index.tsx'
-import template_user_profile from '../ktr/template/user/profile/index.tsx'
-import template_stats_dashboard from '../ktr/template/stats/dashboard/index.tsx'
+import type { TemplateDef } from '@karinjs/template-react'
+import template_hello_card from '../ktr/template/hello/card/index'
+import template_user_profile from '../ktr/template/user/profile/index'
+import template_stats_dashboard from '../ktr/template/stats/dashboard/index'
 
-export const templates = {
+// 透传模板文件的具名导出，下游可以直接从注册表模块导入
+export * from '../ktr/template/hello/card/index'
+export * from '../ktr/template/user/profile/index'
+export * from '../ktr/template/stats/dashboard/index'
+
+export const templates: Record<string, TemplateDef<any>> = {
   'hello/card': template_hello_card,
   'user/profile': template_user_profile,
   'stats/dashboard': template_stats_dashboard
 }
+
+export type TemplateRegistry = typeof templates
 ```
 
-路由 key 为原始路径字符串，value 为动态 import 的组件。
+路由 key 为原始路径字符串，value 为静态 import 的组件 default 导出。
 
 #### 步骤 3：生成 mock-registry.ts
 
@@ -150,25 +157,20 @@ export const templates = {
 // 生成的 .ktr/mock-registry.ts
 
 // 导出所有 TS mock（具名导出）
-export * from '../ktr/template/hello/card/mock.ts'
-export * from '../ktr/template/user/profile/mock.ts'
+export * from '../ktr/template/hello/card/mock'
+export * from '../ktr/template/user/profile/mock'
 
-// JSON mock 文件清单（按需动态 import）
+// JSON mock 文件清单（保留 .json 后缀的文件名字符串数组）
 export const mockDataFiles = {
-  'hello/card': {
-    default: () => import('../ktr/template/hello/card/data/default.json'),
-    variant: () => import('../ktr/template/hello/card/data/variant.json')
-  },
-  'user/profile': {
-    basic: () => import('../ktr/template/user/profile/data/basic.json')
-  }
-}
+  'hello/card': ['default.json', 'variant.json'],
+  'user/profile': ['basic.json']
+} as const
 ```
 
 框架同时扫描每个模板目录下的：
 
 - `mock.ts` —— TS mock，直接 re-export
-- `data/*.json` —— JSON mock，生成动态 import 函数
+- `data/*.json` —— JSON mock，按路由聚合成文件名字符串清单
 
 #### 步骤 4：生成 registry-types.d.ts
 
@@ -176,9 +178,9 @@ export const mockDataFiles = {
 // 生成的 .ktr/registry-types.d.ts
 declare module '@karinjs/template-react/registry-types' {
   interface ProjectRegistry {
-    'hello/card': typeof import('../ktr/template/hello/card/index.tsx').default
-    'user/profile': typeof import('../ktr/template/user/profile/index.tsx').default
-    'stats/dashboard': typeof import('../ktr/template/stats/dashboard/index.tsx').default
+    'hello/card': typeof import('../ktr/template/hello/card/index').default
+    'user/profile': typeof import('../ktr/template/user/profile/index').default
+    'stats/dashboard': typeof import('../ktr/template/stats/dashboard/index').default
   }
 }
 ```
@@ -307,7 +309,7 @@ export default defineTemplate({
 
 ### 示例 3：多级板块组织
 
-路由深度固定为两级，但可用目录名分组：
+路由深度不限——两级 `<板块>/<模板>` 只是惯例，更深的目录同样注册（如 `demo/nested/deep/index.tsx` → 路由 `demo/nested/deep`）：
 
 ```text
 ktr/template/
@@ -427,26 +429,14 @@ export const advanced = defineMock<HelloCardData>({
 注册表会在以下情况自动刷新：
 
 - ✅ `ktr dev` 启动时
+- ✅ 开发面板每次请求模板列表前（自动 `ensureTemplateRegistry` 重扫，模板增删即时生效）
 - ✅ `ktr build` 构建时
 - ✅ Vite/Rolldown 插件 `buildStart` 钩子
 
-但以下情况需要手动 `ktr sync`：
-
-- ❌ 新建模板目录和 `index.tsx`
-- ❌ 删除模板目录
-- ❌ 重命名模板目录
-- ❌ 新建/删除 `mock.ts` 或 `data/*.json`
+开发态新建、删除、重命名模板目录，或增删 `mock.ts` / `data/*.json`，都**无需手动 `ktr sync`，也无需重启 dev server**——面板刷新页面即可看到变化。`ktr sync` 用于不走 dev server 和构建流程的场景（比如只想要 `.ktr` 类型增强时）：
 
 ```bash
-# 新建模板后
-mkdir -p ktr/template/user/badge
-touch ktr/template/user/badge/index.tsx
-
-# 手动刷新
 pnpm ktr sync
-
-# 或重启开发服务器（会自动刷新）
-pnpm template
 ```
 
 ### 5. 调试注册表
@@ -468,7 +458,7 @@ cat .ktr/registry-types.d.ts
 
 1. 文件路径是否符合 `<板块>/<模板>/index.tsx`
 2. 是否在 `components/` 或 `_*` 目录内
-3. 文件扩展名是否为 `.tsx` 或 `.jsx`
+3. 文件扩展名是否为 `.tsx`（只扫描 `index.tsx`）
 4. 是否执行过 `ktr sync`
 
 ## 下一步
