@@ -1,5 +1,5 @@
 import { Button, Chip, Label, ListBox, Select, Tooltip } from '@heroui/react'
-import { Edit, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Edit, FilePlus2, RefreshCw, Trash2 } from 'lucide-react'
 import type React from 'react'
 
 import type { DataEntry } from '../types'
@@ -19,9 +19,9 @@ interface DataFileSelectorProps {
   panelThemeStyle?: React.CSSProperties
   /** 切换数据文件回调。 */
   onChange: (value: string) => void
-  /** 新建 JSON 数据文件回调。 */
-  onCreate: () => void
-  /** 删除当前 JSON 数据文件回调。 */
+  /** 打开「另存为」弹窗回调（把当前数据以新名字保存到同级目录）。 */
+  onSaveAs: () => void
+  /** 打开删除确认弹窗回调。 */
   onDelete: () => void
   /** 打开 mock 数据编辑弹窗回调。 */
   onEdit: () => void
@@ -40,7 +40,7 @@ export const DataFileSelector = ({
   panelTheme = 'light',
   panelThemeStyle,
   onChange,
-  onCreate,
+  onSaveAs,
   onDelete,
   onEdit,
   onRefresh
@@ -66,13 +66,13 @@ export const DataFileSelector = ({
         </Tooltip>
         <Tooltip closeDelay={80} delay={300}>
           <Tooltip.Trigger>
-            <Button isIconOnly aria-label="新建数据文件" size="sm" variant="ghost" onPress={onCreate}>
-              <Plus size={13} />
+            <Button isIconOnly aria-label="另存为数据文件" isDisabled={!value} size="sm" variant="ghost" onPress={onSaveAs}>
+              <FilePlus2 size={13} />
             </Button>
           </Tooltip.Trigger>
           <Tooltip.Content showArrow>
             <Tooltip.Arrow />
-            <p className="text-xs">新建数据文件</p>
+            <p className="text-xs">把当前数据另存为新文件</p>
           </Tooltip.Content>
         </Tooltip>
       </div>

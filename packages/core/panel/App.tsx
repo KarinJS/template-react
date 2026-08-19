@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { Group, Panel, Separator, type GroupImperativeHandle } from 'react-resizable-panels'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { duration, ease, prefersReducedMotion } from './animation/tokens'
+import { DeleteDataConfirmModal, SaveDataAsModal } from './components/DataFileModals'
 import { DataFileSelector } from './components/DataFileSelector'
 import { MockDataEditorModal } from './components/MockDataEditorModal'
 import { PanelHeader } from './components/PanelHeader'
@@ -146,6 +147,10 @@ const App = () => {
   const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 })
   const [status, setStatus] = useState('Ready')
   const [editorOpen, setEditorOpen] = useState(false)
+  /** 「另存为数据文件」弹窗开关。 */
+  const [saveAsOpen, setSaveAsOpen] = useState(false)
+  /** 删除数据文件的二次确认弹窗开关。 */
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   /** 右侧主题构建器面板是否展开。默认收起，避免一进面板就挤占画布宽度。 */
   const [themeBuilderOpen, setThemeBuilderOpen] = useState(false)
   /** 抽屉是否挂载：开关动画期间保持挂载，动画结束才卸载。 */
@@ -683,24 +688,40 @@ const App = () => {
     }
   }
 
-  /** 新建一个空 JSON mock 文件并立即切换过去。 */
-  const createData = async () => {
+  /**
+   * 把当前正在渲染的数据另存为同级目录下的新 JSON 文件，并立即切换过去。
+   * 保存内容取当前编辑器文本（加载/保存后始终与沙盒渲染保持一致）；
+   * 捕获快照的完整 { data, ctx } 形状原样保留。
+   */
+  const saveDataAs = async (filename: string) => {
     if (!selectedPath) {
       return
     }
 
-    const name = window.prompt('新数据文件名', 'default.json')?.trim() || ''
-    if (!name) {
+    let data: unknown
+    try {
+      data = JSON.parse(jsonText)
+    } catch {
+      toast.danger('另存为失败', { description: '当前数据不是合法 JSON，请先在编辑器中修正' })
       return
     }
 
-    const filename = name.endsWith('.json') ? name : `${name}.json`
-    await fetch(`/__ktr/api/data?path=${encodeURIComponent(selectedPath)}&name=${encodeURIComponent(filename)}`, {
-      body: '{}',
+    const response = await fetch(`/__ktr/api/data?path=${encodeURIComponent(selectedPath)}&name=${encodeURIComponent(filename)}`, {
+      body: JSON.stringify(data),
       headers: { 'Content-Type': 'application/json' },
       method: 'PUT'
     })
-    navigatePanel(selectedPath, filename)
+
+    if (response.ok) {
+      setSaveAsOpen(false)
+      setStatus(`${filename} saved`)
+      toast.success('另存为成功', { description: `${filename} 已写入数据目录` })
+      await loadEntries(selectedPath, filename)
+      navigatePanel(selectedPath, filename)
+    } else {
+      setStatus(`Save ${response.status}`)
+      toast.danger('另存为失败', { description: `接口返回 ${response.status}，请检查开发服务器` })
+    }
   }
 
   /** 删除当前选中的 JSON mock 文件，并回落到默认数据。 */
@@ -712,6 +733,7 @@ const App = () => {
     await fetch(`/__ktr/api/data?path=${encodeURIComponent(selectedPath)}&name=${encodeURIComponent(selectedDataName)}`, {
       method: 'DELETE'
     })
+    setDeleteConfirmOpen(false)
     navigatePanel(selectedPath, undefined, true)
   }
 
@@ -829,10 +851,10 @@ const App = () => {
                     readonly={Boolean(selectedEntry?.readonly)}
                     value={selectedDataName}
                     onChange={selectData}
-                    onCreate={createData}
-                    onDelete={deleteData}
+                    onDelete={() => setDeleteConfirmOpen(true)}
                     onEdit={() => setEditorOpen(true)}
                     onRefresh={refreshDataFiles}
+                    onSaveAs={() => setSaveAsOpen(true)}
                   />
                 </div>
               </ScrollShadow>
@@ -927,6 +949,25 @@ const App = () => {
         onClose={() => setEditorOpen(false)}
         onJsonTextChange={setJsonText}
         onSave={saveData}
+      />
+
+      <SaveDataAsModal
+        currentName={selectedDataName}
+        existingNames={entries.map((entry) => entry.name)}
+        isOpen={saveAsOpen}
+        panelTheme={shellTheme}
+        panelThemeStyle={panelThemeStyle}
+        onClose={() => setSaveAsOpen(false)}
+        onSave={(filename) => void saveDataAs(filename)}
+      />
+
+      <DeleteDataConfirmModal
+        isOpen={deleteConfirmOpen}
+        name={selectedDataName}
+        panelTheme={shellTheme}
+        panelThemeStyle={panelThemeStyle}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={() => void deleteData()}
       />
 
       <ScreenshotPreviewModal
