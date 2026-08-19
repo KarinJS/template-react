@@ -1,8 +1,10 @@
 import { Button, Label, Modal, Switch, toast } from '@heroui/react'
 import { Camera, Copy, Download, Droplets, Maximize, Minus, Moon, Plus, Sun, X } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch'
 
+import { duration } from '../animation/tokens'
+import { useCanvasGestures } from '../canvas/useCanvasGestures'
+import { useCanvasTransform } from '../canvas/useCanvasTransform'
 import { applyWatermark, getWatermarkEnabled, setWatermarkEnabled } from '../utils/watermark'
 
 /** 截图预览弹窗的属性。 */
@@ -59,7 +61,6 @@ export const ScreenshotPreviewModal = ({
   onClose,
   onRecaptureWithTheme
 }: ScreenshotPreviewModalProps) => {
-  const transformRef = useRef<ReactZoomPanPinchRef | null>(null)
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const scaleIndicatorTimerRef = useRef<number | null>(null)
 
@@ -73,6 +74,30 @@ export const ScreenshotPreviewModal = ({
   const [isCopying, setIsCopying] = useState(false)
   const [isRetaking, setIsRetaking] = useState(false)
 
+  /** 短暂显示左上角缩放比例提示。 */
+  const flashScaleIndicator = () => {
+    setShowScaleIndicator(true)
+    if (scaleIndicatorTimerRef.current !== null) {
+      window.clearTimeout(scaleIndicatorTimerRef.current)
+    }
+    scaleIndicatorTimerRef.current = window.setTimeout(() => setShowScaleIndicator(false), 1000)
+  }
+
+  // 与主画布同一套 GSAP 变换引擎：滚轮锚点缩放、拖拽平移 + 惯性、双击复位。
+  // 内容包装层铺满画布并 flex 居中，因此「复位」就是恒等变换。
+  const engine = useCanvasTransform({ onScaleChange: setScale })
+
+  /** 回到适应视图：内容层居中铺满，恒等变换即为适应。 */
+  const resetView = () => engine.animateTo(0, 0, 1, duration.layout)
+
+  const { isPanning } = useCanvasGestures({
+    containerRef: canvasRef,
+    engine,
+    enabled: open && Boolean(displayUrl),
+    onFit: resetView,
+    onFlashScale: flashScaleIndicator
+  })
+
   // 打开弹窗时把重截开关对齐到当前截图主题
   useEffect(() => {
     if (open) {
@@ -82,8 +107,8 @@ export const ScreenshotPreviewModal = ({
 
   // 新截图到达时重置缩放，从适应视图开始浏览
   useEffect(() => {
-    transformRef.current?.resetTransform(0)
-  }, [imageUrl])
+    engine.setInstant(0, 0, 1)
+  }, [engine, imageUrl])
 
   // 水印开关变化时即时重铺预览图：预览、复制、下载三处始终是同一份内容。
   // applyWatermark 会新建 Object URL，effect 清理时负责回收，避免内存泄漏。
@@ -137,68 +162,15 @@ export const ScreenshotPreviewModal = ({
     []
   )
 
-  /** 短暂显示左上角缩放比例提示。 */
-  const flashScaleIndicator = () => {
-    setShowScaleIndicator(true)
-    if (scaleIndicatorTimerRef.current !== null) {
-      window.clearTimeout(scaleIndicatorTimerRef.current)
-    }
-    scaleIndicatorTimerRef.current = window.setTimeout(() => setShowScaleIndicator(false), 1000)
-  }
-
-  // 画布手势与主画布保持一致：库自带的 wheel/dblclick 禁用，统一走手算。
-  // 依赖 open：HeroUI 在弹窗关闭时不挂载内容，首次渲染 canvasRef 还是 null，
-  // 必须在弹窗真正打开后再挂监听，否则滚轮缩放永远不会生效。
-  useEffect(() => {
-    if (!open) {
-      return
-    }
+  /** 以画布中心为锚点步进缩放（右下角控件组用）。 */
+  const zoomStep = (factor: number) => {
     const canvas = canvasRef.current
     if (!canvas) {
       return
     }
-
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault()
-      event.stopPropagation()
-
-      const transformInstance = transformRef.current
-      const transformState = transformInstance?.state
-      if (!transformInstance?.instance || !transformState) {
-        return
-      }
-
-      const delta = -event.deltaY * 0.001
-      const newScale = Math.min(Math.max(transformState.scale * (1 + delta), 0.01), 5)
-      const rect = canvas.getBoundingClientRect()
-      const mouseX = event.clientX - rect.left
-      const mouseY = event.clientY - rect.top
-      const { positionX, positionY, scale: currentScale } = transformState
-      const scaleDiff = newScale - currentScale
-      // 以鼠标所在点为缩放锚点，复刻主画布滚轮缩放时内容跟随指针的体验；
-      // 平滑感来自 TransformComponent 的 contentStyle 过渡，这里 animationTime 保持 0。
-      transformInstance.setTransform(
-        positionX - (mouseX - positionX) * (scaleDiff / currentScale),
-        positionY - (mouseY - positionY) * (scaleDiff / currentScale),
-        newScale,
-        0,
-        'easeOut'
-      )
-      flashScaleIndicator()
-    }
-
-    const handleDoubleClick = (event: MouseEvent) => {
-      event.preventDefault()
-      transformRef.current?.resetTransform(300, 'easeOut')
-    }
-
-    canvas.addEventListener('wheel', handleWheel, { passive: false })
-    canvas.addEventListener('dblclick', handleDoubleClick)
-    return () => {
-      canvas.removeEventListener('wheel', handleWheel)
-      canvas.removeEventListener('dblclick', handleDoubleClick)
-    }
-  }, [open])
+    engine.zoomAtAnimated(canvas.clientWidth / 2, canvas.clientHeight / 2, engine.get().scale * factor)
+    flashScaleIndicator()
+  }
 
   /** 切换水印开关并持久化到 localStorage，预览图随 displayUrl effect 即时更新。 */
   const handleWatermarkChange = (enabled: boolean) => {
@@ -277,13 +249,12 @@ export const ScreenshotPreviewModal = ({
         <Modal.Dialog className="flex h-[min(92vh,1100px)] max-h-[92vh] flex-col overflow-hidden rounded-4xl border border-border bg-surface shadow-lg">
           <Modal.Body className="flex-1 overflow-hidden">
             <div ref={canvasRef} className="relative h-full overflow-hidden rounded-3xl border border-border bg-background">
-              {/* 网格背景与主画布完全同一配方：实心 1px 色标、18px 间距、不额外降透明度
-                  （颜色→透明渐变 + opacity-60 在浅色底下会淡到看不见） */}
+              {/* 点阵背板与主画布同一配方 */}
               <div
                 className="pointer-events-none absolute inset-0"
                 style={{
-                  backgroundImage: `repeating-linear-gradient(0deg, color-mix(in oklab, var(--separator) 88%, transparent) 0px, color-mix(in oklab, var(--separator) 88%, transparent) 1px, transparent 1px, transparent 18px),
-                     repeating-linear-gradient(90deg, color-mix(in oklab, var(--separator) 88%, transparent) 0px, color-mix(in oklab, var(--separator) 88%, transparent) 1px, transparent 1px, transparent 18px)`
+                  backgroundImage: 'radial-gradient(color-mix(in oklab, var(--muted) 26%, transparent) 1px, transparent 1px)',
+                  backgroundSize: '18px 18px'
                 }}
               />
 
@@ -292,7 +263,7 @@ export const ScreenshotPreviewModal = ({
                 style={{
                   opacity: showScaleIndicator ? 1 : 0,
                   transform: showScaleIndicator ? 'translateY(0)' : 'translateY(-10px)',
-                  transition: 'opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                  transition: 'opacity 0.2s ease-out, transform 0.2s ease-out'
                 }}
               >
                 {Math.round(scale * 100)}%
@@ -300,68 +271,37 @@ export const ScreenshotPreviewModal = ({
 
               {displayUrl ? (
                 <div className="relative h-full w-full">
-                  <TransformWrapper
-                    ref={transformRef}
-                    centerOnInit
-                    disablePadding
-                    doubleClick={{ disabled: true }}
-                    initialScale={1}
-                    limitToBounds={false}
-                    maxScale={5}
-                    minScale={0.01}
-                    panning={{ velocityDisabled: false, disabled: false }}
-                    wheel={{ step: 0.02, disabled: true }}
-                    onTransform={(_ref, state) => setScale(state.scale)}
+                  {/* 变换层铺满画布并居中图片，原点 0 0；复位即恒等变换 */}
+                  <div
+                    ref={engine.elementRef}
+                    className="absolute inset-0 flex items-center justify-center will-change-transform"
+                    style={{ transformOrigin: '0 0', cursor: isPanning ? 'grabbing' : 'grab' }}
                   >
-                    <TransformComponent
-                      contentClass="flex h-full! w-full! items-center justify-center"
-                      contentStyle={{ transition: 'transform 0.3s ease-out', willChange: 'transform' }}
-                      wrapperClass="h-full! w-full!"
-                    >
-                      <img
-                        alt="Screenshot preview"
-                        className="object-contain"
-                        draggable={false}
-                        src={displayUrl}
-                        style={{
-                          userSelect: 'none',
-                          WebkitUserSelect: 'none',
-                          filter: 'drop-shadow(0 30px 80px rgba(0, 0, 0, 0.22))'
-                        }}
-                      />
-                    </TransformComponent>
-                  </TransformWrapper>
+                    <img
+                      alt="Screenshot preview"
+                      className="object-contain"
+                      draggable={false}
+                      src={displayUrl}
+                      style={{
+                        userSelect: 'none',
+                        WebkitUserSelect: 'none',
+                        filter: 'drop-shadow(0 30px 80px rgba(0, 0, 0, 0.22))'
+                      }}
+                    />
+                  </div>
 
                   {/* 浮动缩放控件组：给不习惯手势的用户一个明确入口 */}
                   <div className="absolute right-4 bottom-4 z-50 flex items-center gap-0.5 rounded-2xl border border-border bg-surface/90 p-1 shadow-sm backdrop-blur-sm">
-                    <Button
-                      isIconOnly
-                      aria-label="缩小"
-                      size="sm"
-                      variant="ghost"
-                      onPress={() => transformRef.current?.zoomOut(0.25, 200, 'easeOut')}
-                    >
+                    <Button isIconOnly aria-label="缩小" size="sm" variant="ghost" onPress={() => zoomStep(0.8)}>
                       <Minus size={14} />
                     </Button>
                     <span className="min-w-11 text-center text-xs font-medium text-foreground tabular-nums">
                       {Math.round(scale * 100)}%
                     </span>
-                    <Button
-                      isIconOnly
-                      aria-label="放大"
-                      size="sm"
-                      variant="ghost"
-                      onPress={() => transformRef.current?.zoomIn(0.25, 200, 'easeOut')}
-                    >
+                    <Button isIconOnly aria-label="放大" size="sm" variant="ghost" onPress={() => zoomStep(1.25)}>
                       <Plus size={14} />
                     </Button>
-                    <Button
-                      isIconOnly
-                      aria-label="适应画布"
-                      size="sm"
-                      variant="ghost"
-                      onPress={() => transformRef.current?.resetTransform(300, 'easeOut')}
-                    >
+                    <Button isIconOnly aria-label="适应画布" size="sm" variant="ghost" onPress={resetView}>
                       <Maximize size={14} />
                     </Button>
                   </div>

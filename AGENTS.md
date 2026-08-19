@@ -9,6 +9,7 @@
 ## 工作区结构
 
 - `packages/core`：发布包 `@karinjs/template-react`，包含公共类型、CLI、配置加载、约定扫描、开发服务器、SSR 运行时和面板源码。
+  - `packages/core/panel`：预构建开发面板（React 19 + HeroUI v3 + Tailwind v4）。画布变换是自研 GSAP 引擎（`panel/canvas/`：`useCanvasTransform` 持有 `{x, y, scale}` 状态直写 translate3d+scale，`useCanvasGestures` 滚轮锚点缩放/拖拽惯性/双击适应，截图弹窗复用同一引擎）；所有动效的时长/曲线统一引用 `panel/animation/tokens.ts`（reduced-motion 用 `motionDuration()` 归零降级），禁止散落魔法数。面板标识是 `panel/public/frame-logo.png`。
 - `packages/docs`：文档站工程（Fumadocs，GitHub Pages 静态部署）。
 - `skills/`：Agent Skills 技能包（`karin-template-react`，供下游通过 `npx skills add` 安装）。`scripts/fetch-docs.mjs` 是技能自带的零依赖文档抓取脚本（文档站 → GitHub raw/API 自动降级），SKILL.md 指引 Agent 用它而不是自带的 fetch 工具拉取最新文档；脚本抓取的缓存写入技能目录的 `.cache/`（已 gitignore）。
 

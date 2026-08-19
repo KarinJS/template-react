@@ -1,17 +1,18 @@
-import { Breadcrumbs, Button, ButtonGroup, ScrollShadow, Toast, Toolbar, Tooltip, toast } from '@heroui/react'
+import { ScrollShadow, Toast, toast } from '@heroui/react'
 import gsap from 'gsap'
-import { Brush, Camera, Crosshair, Maximize2, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Group, Panel, Separator, type GroupImperativeHandle } from 'react-resizable-panels'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { FaGithub } from 'react-icons/fa'
+import { duration, ease, prefersReducedMotion } from './animation/tokens'
 import { DataFileSelector } from './components/DataFileSelector'
 import { MockDataEditorModal } from './components/MockDataEditorModal'
-import { PanelThemeSelect } from './components/PanelThemeSelect'
+import { PanelHeader } from './components/PanelHeader'
 import { PlatformSelector } from './components/PlatformSelector'
 import { PreviewPanel, type PreviewPanelRef } from './components/PreviewPanel'
+import { PreviewToolbar } from './components/PreviewToolbar'
 import { ScreenshotPreviewModal } from './components/ScreenshotPreviewModal'
 import { ThemeBuilderPanel } from './components/ThemeBuilderPanel'
+import { useSandboxBridge } from './hooks/useSandboxBridge'
 import { calculateForeground, formatOklch } from './theme/oklch'
 import { usePanelTheme } from './theme/usePanelTheme'
 import { useSandboxThemeSync } from './theme/useSandboxThemeSync'
@@ -19,7 +20,6 @@ import { useThemeBuilder } from './theme/useThemeBuilder'
 import type { DataEntry, SandboxMessage, TemplateMeta } from './types'
 import { useDataFileSync } from './useDataFileSync'
 
-const panelSource = 'ktr-panel'
 const templateDarkStorageKey = 'ktr-template-dark'
 
 /** 捕获数据文件名，与 src/runtime/capture.ts 的 capturedDataFileName 保持一致（面板走浏览器包，不能直接 import node 侧源码）。 */
@@ -122,24 +122,6 @@ const useStoredBoolean = (key: string, defaultValue: boolean) => {
   return [value, setValue] as const
 }
 
-/** Karin 标识只服务于开发面板外壳，不会注入到用户截图模板中。 */
-const KarinMark = () => (
-  <svg className="h-10 w-10" viewBox="0 0 230 221" xmlns="http://www.w3.org/2000/svg">
-    <path
-      d="M132.75,87.37l-53.72-53.37c-4.66-4.63-1.38-12.58,5.18-12.58h115.13c6.57,0,9.84,7.95,5.18,12.58l-53.72,53.37c-4.99,4.96-13.06,4.96-18.05,0Z"
-      fill="currentColor"
-    />
-    <path
-      d="M28.49,186.89l.03-51.42c-.02-6.57,7.92-9.87,12.56-5.23l57.02,57.02c4.64,4.64,1.34,12.41-5.23,12.39h-51.42c-7.04-.02-12.94-5.72-12.96-12.76Z"
-      fill="currentColor"
-    />
-    <path
-      d="M41.54,23.68l163.04,163.05c4.78,4.78,1.39,12.95-5.36,12.94h-47.88c-9.69,0-18.99-3.86-25.84-10.71L39.3,102.75c-6.85-6.85-10.7-16.15-10.7-25.84V29.04c0-6.76,8.16-10.14,12.94-5.36Z"
-      fill="currentColor"
-    />
-  </svg>
-)
-
 /** 开发面板主组件：维护模板、数据文件和主题状态，并通过 postMessage 驱动 iframe 沙盒渲染。 */
 const App = () => {
   const location = useLocation()
@@ -147,7 +129,7 @@ const App = () => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const previewPanelRef = useRef<PreviewPanelRef | null>(null)
   const [templates, setTemplates] = useState<TemplateMeta[]>([])
-  // 约定模板注册进度：沙盒逐个 import 时上报，模板清单到位前用于渲染侧边栏进度条。
+  // 约定模板注册进度：沙盒逐个 import 时上报，模板清单到位前用于渲染侧边栏骨架屏。
   const [registerProgress, setRegisterProgress] = useState<{ loaded: number; total: number; path: string } | null>(null)
   const [selectedPath, setSelectedPath] = useState('')
   const [entries, setEntries] = useState<DataEntry[]>([])
@@ -179,6 +161,7 @@ const App = () => {
   /**
    * 开关主题抽屉：GSAP 逐帧写布局百分比，抽屉从屏幕右缘挤入/挤出，
    * 预览区和左侧栏随每帧 setLayout 同步让位，三者严格同帧。
+   * 减少动态效果偏好下不做逐帧动画，直接写终态布局并翻标志位。
    */
   const toggleThemeBuilder = () => {
     const group = groupRef.current
@@ -193,14 +176,29 @@ const App = () => {
     const layout = group.getLayout()
     const sidebar = layout.sidebar ?? 18
 
+    if (prefersReducedMotion()) {
+      // 瞬时开合：卸载交给 react-resizable-panels 自动让位；打开则等 Panel 挂载后写目标宽度，避免闪一帧。
+      if (themeBuilderOpen) {
+        setThemeBuilderOpen(false)
+        setDrawerMounted(false)
+      } else {
+        setDrawerMounted(true)
+        setThemeBuilderOpen(true)
+        requestAnimationFrame(() => {
+          group.setLayout({ sidebar, preview: 100 - sidebar - drawerTargetSize, 'theme-builder': drawerTargetSize })
+        })
+      }
+      return
+    }
+
     if (themeBuilderOpen) {
       // 关闭：挤出到 0 宽后卸载。
       const state = { size: layout['theme-builder'] ?? drawerTargetSize }
       setDrawerAnimating(true)
       drawerTweenRef.current = gsap.to(state, {
         size: 0,
-        duration: 0.28,
-        ease: 'power3.in',
+        duration: duration.settle,
+        ease: ease.exit,
         onUpdate: () => group.setLayout({ sidebar, preview: 100 - sidebar - state.size, 'theme-builder': state.size }),
         onComplete: () => {
           setThemeBuilderOpen(false)
@@ -221,8 +219,8 @@ const App = () => {
       group.setLayout({ sidebar, preview: 100 - sidebar - state.size, 'theme-builder': state.size })
       drawerTweenRef.current = gsap.to(state, {
         size: drawerTargetSize,
-        duration: 0.35,
-        ease: 'power3.out',
+        duration: duration.layout,
+        ease: ease.out,
         onUpdate: () => group.setLayout({ sidebar, preview: 100 - sidebar - state.size, 'theme-builder': state.size }),
         onComplete: () => setDrawerAnimating(false)
       })
@@ -241,7 +239,50 @@ const App = () => {
   const routeRequestRef = useRef(0)
   // WebSocket 回调里通过 ref 读取最新模板路由，避免闭包捕获旧的 selectedPath。
   const selectedPathRef = useRef('')
-  const [sandboxReadyTick, setSandboxReadyTick] = useState(0)
+
+  // 面板与沙盒的通信桥：下行 postSandbox 发指令，上行消息分发到各状态回调。
+  const { postSandbox, sandboxReadyTick } = useSandboxBridge({
+    iframeRef,
+    onReady: setTemplates,
+    onRegisterProgress: (next) => {
+      // 约定模板逐个注册的进度，侧边栏据此渲染骨架屏替代「等待模板注册」。
+      // 只接受前进：沙盒可能因 Vite 依赖优化重跑而整页刷新并从头注册，
+      // 此时直接覆盖会让进度计数肉眼可见地倒转回零。总数变化（模板增删）才允许重置。
+      setRegisterProgress((prev) => {
+        if (prev && prev.total === next.total && next.loaded < prev.loaded) {
+          return prev
+        }
+        return next
+      })
+    },
+    onRendered: ({ path, elapsed, size }) => {
+      // 沙盒渲染完成后回报实际内容尺寸，画布据此决定居中和适应比例。
+      setStatus(`${path} · ${elapsed}ms`)
+      if (size) {
+        setPreviewSize(size)
+      }
+      if (shouldAutoFitRef.current) {
+        setFitRequest((request) => request + 1)
+        shouldAutoFitRef.current = false
+      }
+    },
+    onError: ({ message }) => setStatus(message),
+    onHmr: ({ path }) => {
+      // 用户组件热更新后重新适应画布，避免旧尺寸让内容漂移出屏。
+      setStatus(`${path} updated`)
+      shouldAutoFitRef.current = true
+    },
+    onInspectHold: (held) => {
+      // 沙盒上行的检查状态同步：held 为 true 表示沙盒内按住了 Shift+Alt；
+      // 为 false（松开热键 / Esc / 点选成功）时两个来源一起退出，保证面板和客户端不脱节。
+      if (held) {
+        setInspectHold(true)
+      } else {
+        setInspectHold(false)
+        setInspectSticky(false)
+      }
+    }
+  })
 
   // URL 是面板状态的单一来源，切换板块、模板和数据文件都先写入路由。
   const routeSelection = useMemo(() => parsePanelRoute(location.pathname, location.search), [location.pathname, location.search])
@@ -344,11 +385,6 @@ const App = () => {
   // 主题 CSS 注入 iframe：与上面的 ctx.theme 并行的第二条路，负责全部视觉变量。
   useSandboxThemeSync(iframeRef, themeBuilder.sandboxCss, sandboxReadyTick, themeBuilder.customFonts)
 
-  /** 向 iframe 沙盒发送渲染指令或主题数据。 */
-  const postSandbox = useCallback((type: string, payload: unknown) => {
-    iframeRef.current?.contentWindow?.postMessage({ source: panelSource, type, payload }, window.location.origin)
-  }, [])
-
   /** 通过 react-router 切换当前开发板块，确保刷新和直接访问都能复现状态。 */
   const navigatePanel = useCallback(
     (path: string, dataName?: string, replace = false) => {
@@ -438,70 +474,6 @@ const App = () => {
     }
   })
 
-  // 监听 iframe 沙盒回传的消息，驱动模板清单、状态栏和画布尺寸更新。
-  useEffect(() => {
-    const onMessage = (event: MessageEvent<SandboxMessage>) => {
-      if (event.origin !== window.location.origin || event.data?.source !== 'ktr-sandbox') {
-        return
-      }
-
-      if (event.data.type === 'ktr:ready') {
-        const nextTemplates = event.data.payload.templates
-        setTemplates(nextTemplates)
-        setSandboxReadyTick((tick) => tick + 1)
-      }
-
-      if (event.data.type === 'ktr:register-progress') {
-        // 约定模板逐个注册的进度，侧边栏据此渲染进度条替代「等待模板注册」。
-        // 只接受前进：沙盒可能因 Vite 依赖优化重跑而整页刷新并从头注册，
-        // 此时直接覆盖会让进度条肉眼可见地倒转回零。总数变化（模板增删）才允许重置。
-        const next = event.data.payload
-        setRegisterProgress((prev) => {
-          if (prev && prev.total === next.total && next.loaded < prev.loaded) {
-            return prev
-          }
-          return next
-        })
-      }
-
-      if (event.data.type === 'ktr:rendered') {
-        // 沙盒渲染完成后回报实际内容尺寸，画布据此决定居中和适应比例。
-        setStatus(`${event.data.payload.path} · ${event.data.payload.elapsed}ms`)
-        if (event.data.payload.size) {
-          setPreviewSize(event.data.payload.size)
-        }
-        if (shouldAutoFitRef.current) {
-          setFitRequest((request) => request + 1)
-          shouldAutoFitRef.current = false
-        }
-      }
-
-      if (event.data.type === 'ktr:error') {
-        setStatus(event.data.payload.message)
-      }
-
-      if (event.data.type === 'ktr:hmr') {
-        // 用户组件热更新后重新适应画布，避免旧尺寸让内容漂移出屏。
-        setStatus(`${event.data.payload.path} updated`)
-        shouldAutoFitRef.current = true
-      }
-
-      if (event.data.type === 'ktr:inspect-hold') {
-        // 沙盒上行的检查状态同步：held 为 true 表示沙盒内按住了 Shift+Alt；
-        // 为 false（松开热键 / Esc / 点选成功）时两个来源一起退出，保证面板和客户端不脱节。
-        if (event.data.payload.held) {
-          setInspectHold(true)
-        } else {
-          setInspectHold(false)
-          setInspectSticky(false)
-        }
-      }
-    }
-
-    window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [])
-
   // 路由是模板切换和数据加载的唯一入口：地址变化时同步选择状态并拉取数据。
   useEffect(() => {
     if (templates.length === 0) {
@@ -509,16 +481,23 @@ const App = () => {
     }
 
     const routePath = routeSelection.templatePath
-    const validTemplatePath =
-      routePath && templates.some((template) => template.path === routePath) ? routePath : (templates[0]?.path ?? '')
+    const validTemplatePath = routePath && templates.some((template) => template.path === routePath) ? routePath : ''
 
+    // 路由没有指向有效模板时，不再自动选中第一个模板：
+    // 清空选择并让画布停在空状态，等用户从列表里主动点击后才渲染。
     if (!validTemplatePath) {
-      return
-    }
-
-    // 地址中的模板不存在时回落到第一个模板，并用 replace 避免污染浏览历史。
-    if (validTemplatePath !== routePath) {
-      navigatePanel(validTemplatePath, routeSelection.dataName, true)
+      routeRequestRef.current += 1
+      if (routePath) {
+        // 地址里的模板已不存在（如热更新后被删除）：清掉无效地址，用 replace 避免污染浏览历史。
+        navigatePanel('', undefined, true)
+      }
+      if (selectedPath) {
+        setSelectedPath('')
+        setEntries([])
+        setSelectedDataName('')
+        setJsonText(pretty({}))
+        setPreviewSize({ width: 1, height: 1 })
+      }
       return
     }
 
@@ -805,6 +784,17 @@ const App = () => {
     [postSandbox, templateTheme, screenshotUrl]
   )
 
+  // 预览顶栏状态行：模板描述（或最近渲染状态）+ 数据文件 + 面板/模板主题摘要。
+  const statusLine = [
+    selectedTemplate?.description ?? status,
+    `数据：${selectedDataName || 'none'}`,
+    `面板：${
+      panelThemePreference === 'system' ? `跟随系统（${shellTheme === 'dark' ? '深色' : '浅色'}）` : shellTheme === 'dark' ? '深色' : '浅色'
+    }`,
+    `模板：${templateDark ? '深色' : '浅色'}`,
+    `模板主题：${themeBuilder.isDefault ? '组件库默认' : '已自定义'}`
+  ].join(' · ')
+
   return (
     <div className={shellTheme} data-theme={shellTheme} style={panelThemeStyle}>
       {/* Toast 挂在根布局 div 上，跟随面板主题换肤；从顶部向下弹出。 */}
@@ -813,56 +803,24 @@ const App = () => {
         <Group className="h-full w-full" groupRef={groupRef} orientation="horizontal">
           <Panel defaultSize="18%" id="sidebar" maxSize="28%" minSize="16%">
             <aside className="flex h-full min-w-0 flex-col border-r border-border">
-              <div className="flex min-h-14 shrink-0 items-center border-b border-border px-4 py-2">
-                <div className="flex w-full items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-9 shrink-0 items-center justify-center text-foreground">
-                      <KarinMark />
-                    </div>
+              <PanelHeader
+                panelTheme={shellTheme}
+                panelThemePreference={panelThemePreference}
+                panelThemeStyle={panelThemeStyle}
+                onPanelThemePreferenceChange={setPanelThemePreference}
+              />
 
-                    <div className="min-w-0">
-                      <div className="text-[10px] font-semibold tracking-[0.24em] text-muted">Karin Template React</div>
-                      <div className="truncate text-sm font-semibold leading-tight tracking-normal text-foreground">图片模板开发面板</div>
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-1">
-                    <PanelThemeSelect
-                      panelTheme={shellTheme}
-                      panelThemeStyle={panelThemeStyle}
-                      value={panelThemePreference}
-                      onChange={setPanelThemePreference}
-                    />
-
-                    <Tooltip closeDelay={80} delay={200}>
-                      <Tooltip.Trigger>
-                        <Button
-                          aria-label="在 GitHub 上查看"
-                          className="size-9 min-h-0 shrink-0 items-center justify-center rounded-lg p-0"
-                          isIconOnly
-                          onPress={() => window.open('https://github.com/KarinJS/karin', '_blank', 'noopener,noreferrer')}
-                          variant="ghost"
-                        >
-                          <FaGithub className="text-foreground h-5 w-5" />
-                        </Button>
-                      </Tooltip.Trigger>
-                      <Tooltip.Content showArrow>
-                        <Tooltip.Arrow />
-                        <p className="text-xs">在 GitHub 上查看</p>
-                      </Tooltip.Content>
-                    </Tooltip>
-                  </div>
-                </div>
-              </div>
-
-              <ScrollShadow className="min-h-0 flex-1 px-4 py-4" hideScrollBar size={56}>
-                <div className="space-y-4 pb-6">
+              <ScrollShadow className="min-h-0 flex-1 px-3 py-4" hideScrollBar size={56}>
+                {/* 扁平分区：不套卡片，分区之间只用发丝分割线隔开。 */}
+                <div className="flex flex-col pb-6">
                   <PlatformSelector
                     selectedPath={selectedPath}
                     templates={templates}
                     registerProgress={registerProgress}
                     onSelect={selectTemplate}
                   />
+
+                  <div className="mx-1 my-5 border-t border-border" />
 
                   <DataFileSelector
                     entries={entries}
@@ -887,60 +845,17 @@ const App = () => {
               64% 那种按两面板算的下限会把侧边栏压到它自己的下限。 */}
           <Panel defaultSize="82%" id="preview" minSize="44%">
             <section className="flex h-full min-w-0 flex-col bg-background">
-              <div className="flex h-14 shrink-0 items-center border-b border-border px-4">
-                <div className="flex w-full min-w-0 items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1 space-y-0.5">
-                    <div className="overflow-hidden">
-                      <Breadcrumbs isDisabled className="gap-1 text-sm text-muted">
-                        <Breadcrumbs.Item href="#">templates</Breadcrumbs.Item>
-                        {templateParts.map((part, index) => (
-                          <Breadcrumbs.Item key={`${part}-${index}`} href="#">
-                            {part}
-                          </Breadcrumbs.Item>
-                        ))}
-                      </Breadcrumbs>
-                    </div>
-                    <div className="mt-1 truncate text-[11px] leading-tight text-muted">
-                      {selectedTemplate?.description ?? status} · 数据：{selectedDataName || 'none'} · 面板：
-                      {panelThemePreference === 'system'
-                        ? `跟随系统（${shellTheme === 'dark' ? '深色' : '浅色'}）`
-                        : shellTheme === 'dark'
-                          ? '深色'
-                          : '浅色'}{' '}
-                      · 模板：{templateDark ? '深色' : '浅色'} · 模板主题：{themeBuilder.isDefault ? '组件库默认' : '已自定义'}
-                    </div>
-                  </div>
-
-                  <Toolbar aria-label="预览操作" className="shrink-0 gap-1 rounded-xl border border-border bg-surface p-1" isAttached>
-                    <ButtonGroup size="sm" variant="secondary">
-                      <Button onPress={() => loadData(selectedPath, selectedDataName, true)}>
-                        <RefreshCw size={16} />
-                        重载
-                      </Button>
-                      <Button onPress={() => previewPanelRef.current?.fitToCanvas()}>
-                        <ButtonGroup.Separator />
-                        <Maximize2 size={16} />
-                        适应
-                      </Button>
-                      <Button onPress={captureScreenshot}>
-                        <ButtonGroup.Separator />
-                        <Camera size={16} />
-                        截图
-                      </Button>
-                    </ButtonGroup>
-
-                    <Button onPress={() => setInspectSticky((sticky) => !sticky)} size="sm" variant={inspectMode ? 'primary' : 'secondary'}>
-                      <Crosshair size={16} />
-                      定位
-                    </Button>
-
-                    <Button onPress={toggleThemeBuilder} size="sm" variant={themeBuilderOpen ? 'primary' : 'secondary'}>
-                      <Brush size={16} />
-                      模板主题
-                    </Button>
-                  </Toolbar>
-                </div>
-              </div>
+              <PreviewToolbar
+                inspectMode={inspectMode}
+                statusLine={statusLine}
+                templateParts={templateParts}
+                themeBuilderOpen={themeBuilderOpen}
+                onCaptureScreenshot={() => void captureScreenshot()}
+                onFit={() => previewPanelRef.current?.fitToCanvas()}
+                onReload={() => void loadData(selectedPath, selectedDataName, true)}
+                onToggleInspect={() => setInspectSticky((sticky) => !sticky)}
+                onToggleThemeBuilder={toggleThemeBuilder}
+              />
 
               <div className="min-h-0 flex-1">
                 <PreviewPanel
@@ -952,6 +867,7 @@ const App = () => {
                   inspectMode={inspectMode}
                   panelDark={panelDark}
                   scale={scale}
+                  onCaptureScreenshot={() => void captureScreenshot()}
                   onScaleChange={setScale}
                 />
               </div>

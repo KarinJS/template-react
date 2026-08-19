@@ -61,7 +61,7 @@ ktr 开发面板采用**面板 + 沙盒分离**架构：面板是预构建的 Re
 - **框架**：React 19 + HeroUI（`@heroui/react`）
 - **样式**：Tailwind CSS v4
 - **路由**：react-router-dom，模板地址 `/templates/<板块>/<模板>?data=<数据名>`，可分享、可刷新
-- **画布**：react-zoom-pan-pinch（滚轮缩放、拖拽平移、双击适应）
+- **画布**：自研 GSAP 变换引擎（`panel/canvas/`，滚轮光标锚点缩放、拖拽惯性平移、双击/快捷键适应）
 - **分发形式**：随包预构建为静态资源（`panel/dist`），dev server 的面板中间件挂在 `/__ktr/panel` 托管，不需要下游构建面板源码
 
 ### 核心功能模块
