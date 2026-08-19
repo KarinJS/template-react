@@ -1,10 +1,12 @@
-import { Description, Label, ProgressBar, ScrollShadow, Skeleton, Tabs } from '@heroui/react'
+import { Button, Description, Label, ProgressBar, Skeleton, Tabs, Tooltip, toast } from '@heroui/react'
 import gsap from 'gsap'
 import { Flip } from 'gsap/Flip'
+import { Copy, TriangleAlert } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, type Key } from 'react'
 
 import { duration, ease, motionDuration } from '../animation/tokens'
 import type { RegisterProgress, TemplateMeta } from '../types'
+import { ShadowScroll } from './ShadowScroll'
 import { TemplateTree } from './TemplateTree'
 
 gsap.registerPlugin(Flip)
@@ -25,6 +27,19 @@ interface PlatformSelectorProps {
   registerProgress?: RegisterProgress | null
   /** 选择模板回调，参数为模板约定路由。 */
   onSelect: (path: string) => void
+  /** 注册长时间无动静：为 true 时用错误指引替换骨架屏（通常是 .ktr 注册表缺失或模板位置不对）。 */
+  registerStale?: boolean
+}
+
+/** 复制初始化命令到剪贴板，失败时明确提示。 */
+const copySyncCommand = async () => {
+  try {
+    await navigator.clipboard.writeText('pnpm ktr sync')
+    toast.success('复制成功', { description: '初始化命令 pnpm ktr sync 已复制到剪贴板' })
+  } catch (error) {
+    console.error('复制初始化命令失败:', error)
+    toast.danger('复制失败', { description: '无法访问剪贴板，请检查浏览器权限' })
+  }
 }
 
 /** 按路由第一段（板块）把模板分组，供 Tabs 展示。 */
@@ -37,7 +52,7 @@ const groupTemplates = (templates: TemplateMeta[]) =>
   }, {})
 
 /** 模板分区：板块分段切换 + 扁平模板列表，切换板块时自动选中该组第一个模板。 */
-export const PlatformSelector = ({ templates, selectedPath, registerProgress, onSelect }: PlatformSelectorProps) => {
+export const PlatformSelector = ({ templates, selectedPath, registerProgress, registerStale, onSelect }: PlatformSelectorProps) => {
   const groups = useMemo(() => groupTemplates(templates), [templates])
   const groupEntries = Object.entries(groups)
   const selectedGroup = selectedPath?.split('/')[0]
@@ -126,11 +141,10 @@ export const PlatformSelector = ({ templates, selectedPath, registerProgress, on
 
           {groupEntries.map(([group, items]) => (
             <Tabs.Panel key={group} className="pt-2" id={group}>
-              {/* 只渲染激活板块的内容：非激活 Panel 只是隐藏而不卸载，里面的 ScrollShadow
-                  会在 display:none 时测量（容器高度为 0），误判为溢出并留下底部渐变遮罩，
-                  切回短列表时遮罩残留遮挡列表项。按激活态挂载可强制重新测量。 */}
+              {/* 只渲染激活板块的内容：非激活 Panel 只是隐藏而不卸载，按激活态挂载强制重新布局。
+                  遮罩用自研 ShadowScroll（观察内容高度），板块切换/折叠展开都会重新测量。 */}
               {group === activeGroup && (
-                <ScrollShadow className="max-h-[calc(100vh-24rem)]" hideScrollBar size={48}>
+                <ShadowScroll className="max-h-[calc(100vh-24rem)]" size={48}>
                   <TemplateTree
                     group={group}
                     items={items}
@@ -140,11 +154,48 @@ export const PlatformSelector = ({ templates, selectedPath, registerProgress, on
                       onSelect(path)
                     }}
                   />
-                </ScrollShadow>
+                </ShadowScroll>
               )}
             </Tabs.Panel>
           ))}
         </Tabs>
+      ) : registerStale ? (
+        // 长时间收不到沙盒的注册消息：.ktr 注册表缺失或模板未按约定放置。
+        // 骨架屏/进度条此时是在假装加载，换成可操作的指引。
+        <div className="mt-2.5 space-y-2.5 rounded-xl border border-danger/40 bg-danger/10 px-3 py-3" role="alert">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-danger">
+            <TriangleAlert size={13} />
+            模板注册表未就绪
+          </div>
+          <p className="text-xs leading-relaxed text-foreground/80">
+            长时间未收到沙盒的模板注册消息：通常还没生成 <code className="rounded bg-background/70 px-1">.ktr</code>{' '}
+            注册表，或模板未按目录约定放置。
+          </p>
+          <div className="flex items-center gap-1.5">
+            <code className="min-w-0 flex-1 truncate rounded-md bg-background/80 px-2 py-1 text-[11px] text-foreground">pnpm ktr sync</code>
+            <Tooltip closeDelay={80} delay={300}>
+              <Tooltip.Trigger className="flex items-center">
+                <Button
+                  isIconOnly
+                  aria-label="复制初始化命令"
+                  className="flex size-6 min-h-0 items-center justify-center rounded-md p-0"
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => void copySyncCommand()}
+                >
+                  <Copy size={12} />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Content showArrow>
+                <Tooltip.Arrow />
+                <p className="text-xs">复制初始化命令</p>
+              </Tooltip.Content>
+            </Tooltip>
+          </div>
+          <p className="text-[11px] leading-relaxed text-muted">
+            在项目根目录执行同步后重试；模板应放在 ktr/template/&lt;板块&gt;/&lt;模板&gt;/index.tsx，详见文档「目录约定」。
+          </p>
+        </div>
       ) : (
         <div className="mt-2.5 space-y-1" aria-busy="true" aria-label="模板注册中">
           {/* 注册期占位：骨架条目对齐真实列表项的两行结构（名称 + 描述）。 */}

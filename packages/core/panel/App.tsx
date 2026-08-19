@@ -1,4 +1,4 @@
-import { ScrollShadow, Toast, toast } from '@heroui/react'
+import { Toast, toast } from '@heroui/react'
 import gsap from 'gsap'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Group, Panel, Separator, type GroupImperativeHandle } from 'react-resizable-panels'
@@ -12,6 +12,7 @@ import { PlatformSelector } from './components/PlatformSelector'
 import { PreviewPanel, type PreviewPanelRef } from './components/PreviewPanel'
 import { PreviewToolbar } from './components/PreviewToolbar'
 import { ScreenshotPreviewModal } from './components/ScreenshotPreviewModal'
+import { ShadowScroll } from './components/ShadowScroll'
 import { ThemeBuilderPanel } from './components/ThemeBuilderPanel'
 import { useSandboxBridge } from './hooks/useSandboxBridge'
 import { calculateForeground, formatOklch } from './theme/oklch'
@@ -132,6 +133,8 @@ const App = () => {
   const [templates, setTemplates] = useState<TemplateMeta[]>([])
   // 约定模板注册进度：沙盒逐个 import 时上报，模板清单到位前用于渲染侧边栏骨架屏。
   const [registerProgress, setRegisterProgress] = useState<{ loaded: number; total: number; path: string } | null>(null)
+  /** 注册长时间无动静：沙盒大概率没跑起来（.ktr 注册表缺失或模板位置不对），侧边栏换指引而非永远骨架屏。 */
+  const [registerStale, setRegisterStale] = useState(false)
   const [selectedPath, setSelectedPath] = useState('')
   const [entries, setEntries] = useState<DataEntry[]>([])
   const [selectedDataName, setSelectedDataName] = useState('')
@@ -457,6 +460,17 @@ const App = () => {
   useEffect(() => {
     selectedPathRef.current = selectedPath
   }, [selectedPath])
+
+  // 模板注册超时检测：清单和进度都长时间没有动静（默认 10s）视为注册失败，
+  // 有进展（ready 或任一进度上报）就复位并重新开始计时。
+  useEffect(() => {
+    if (templates.length > 0 || registerProgress) {
+      setRegisterStale(false)
+      return
+    }
+    const timer = window.setTimeout(() => setRegisterStale(true), 10000)
+    return () => window.clearTimeout(timer)
+  }, [templates.length, registerProgress])
 
   // 订阅 dev server 的数据文件变更推送：刷新当前模板的数据下拉，捕获数据更新时自动切换并重渲染。
   useDataFileSync((payload) => {
@@ -806,16 +820,10 @@ const App = () => {
     [postSandbox, templateTheme, screenshotUrl]
   )
 
-  // 预览顶栏状态行：模板描述（或最近渲染状态）+ 数据文件 + 面板/模板主题摘要。
-  const statusLine = [
-    selectedTemplate?.description ?? status,
-    `数据：${selectedDataName || 'none'}`,
-    `面板：${
-      panelThemePreference === 'system' ? `跟随系统（${shellTheme === 'dark' ? '深色' : '浅色'}）` : shellTheme === 'dark' ? '深色' : '浅色'
-    }`,
-    `模板：${templateDark ? '深色' : '浅色'}`,
-    `模板主题：${themeBuilder.isDefault ? '组件库默认' : '已自定义'}`
-  ].join(' · ')
+  // 预览顶栏状态行的各信息片：描述主文案 + 数据文件 + 面板/模板明暗 + 模板主题摘要。
+  const statusDescription = selectedTemplate?.description ?? status
+  const panelThemeLabel =
+    panelThemePreference === 'system' ? `跟随系统（${shellTheme === 'dark' ? '深色' : '浅色'}）` : shellTheme === 'dark' ? '深色' : '浅色'
 
   return (
     <div className={shellTheme} data-theme={shellTheme} style={panelThemeStyle}>
@@ -832,13 +840,14 @@ const App = () => {
                 onPanelThemePreferenceChange={setPanelThemePreference}
               />
 
-              <ScrollShadow className="min-h-0 flex-1 px-3 py-4" hideScrollBar size={56}>
+              <ShadowScroll className="min-h-0 flex-1 px-3 py-4" size={56}>
                 {/* 扁平分区：不套卡片，分区之间只用发丝分割线隔开。 */}
                 <div className="flex flex-col pb-6">
                   <PlatformSelector
                     selectedPath={selectedPath}
                     templates={templates}
                     registerProgress={registerProgress}
+                    registerStale={registerStale}
                     onSelect={selectTemplate}
                   />
 
@@ -857,7 +866,7 @@ const App = () => {
                     onSaveAs={() => setSaveAsOpen(true)}
                   />
                 </div>
-              </ScrollShadow>
+              </ShadowScroll>
             </aside>
           </Panel>
 
@@ -868,10 +877,15 @@ const App = () => {
           <Panel defaultSize="82%" id="preview" minSize="44%">
             <section className="flex h-full min-w-0 flex-col bg-background">
               <PreviewToolbar
+                dataName={selectedDataName}
+                description={statusDescription}
                 inspectMode={inspectMode}
-                statusLine={statusLine}
+                panelLabel={panelThemeLabel}
+                templateLabel={templateDark ? '深色' : '浅色'}
                 templateParts={templateParts}
+                templatePath={selectedPath}
                 themeBuilderOpen={themeBuilderOpen}
+                themeLabel={themeBuilder.isDefault ? '组件库默认' : '已自定义'}
                 onCaptureScreenshot={() => void captureScreenshot()}
                 onFit={() => previewPanelRef.current?.fitToCanvas()}
                 onReload={() => void loadData(selectedPath, selectedDataName, true)}

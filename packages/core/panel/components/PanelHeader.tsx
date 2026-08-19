@@ -42,7 +42,7 @@ interface PanelHeaderProps {
 
 /** 侧边栏头部：Logo + 标题双行文字 + 面板主题切换 + GitHub 入口。 */
 export const PanelHeader = ({ panelTheme, panelThemeStyle, panelThemePreference, onPanelThemePreferenceChange }: PanelHeaderProps) => (
-  <div className="flex min-h-14 shrink-0 items-center border-b border-border px-4 py-2">
+  <div className="flex min-h-16 shrink-0 items-center border-b border-border px-4 py-2">
     <div className="flex w-full items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-3">
         <PanelLogo />

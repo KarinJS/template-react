@@ -170,6 +170,16 @@ export const useCanvasTransform = ({ onScaleChange, minScale = 0.01, maxScale = 
         animateTo(pointX - (pointX - state.x) * ratio, pointY - (pointY - state.y) * ratio, clamped, seconds)
       },
 
+      /** 以容器内某点为锚点立即缩放：滑块拖拽等直接操控场景，1:1 跟手无动画延迟。 */
+      zoomAtInstant: (pointX: number, pointY: number, nextScale: number) => {
+        const clamped = clamp(nextScale)
+        if (clamped === state.scale) {
+          return
+        }
+        const ratio = clamped / state.scale
+        setInstant(pointX - (pointX - state.x) * ratio, pointY - (pointY - state.y) * ratio, clamped)
+      },
+
       /** 拖拽平移：立即跟随指针增量，1:1 跟手无延迟。 */
       panBy: (deltaX: number, deltaY: number) => {
         state.x += deltaX

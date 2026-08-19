@@ -49,6 +49,7 @@
 - `pnpm --filter @karinjs/template-react run test`：运行 core 单元测试和类型测试。
 - `pnpm --filter @karinjs/template-react run build`：构建 runtime/CLI 和 panel 静态产物。
 - `pnpm --filter @karinjs/template-react run demo`：启动 `packages/core/examples`（12 个示例模板）的开发面板，供面板/约定改动联调。
+- `pnpm --filter @karinjs/template-react run panel`：面板源码调试服务器（固定 5173）。`vite.panel.config.ts` 已挂 examples 完整后端（约定扫描、沙盒、mock API、数据 SSE、依赖预扫描），单进程同时具备面板源码 HMR 和真实示例数据——改面板代码用它，不需要先 build:panel 再启 demo；`dist/client.mjs` 缺失时先跑一次 `pnpm build:runtime`。
 - `pnpm --filter template-react-docs run build`：构建文档站静态产物（`out/`）。
 - `pnpm lint` / `pnpm format`：全仓 oxlint / oxfmt 检查。
 

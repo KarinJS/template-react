@@ -5,6 +5,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { duration, motionDuration } from '../animation/tokens'
 import { CanvasEmptyState } from '../canvas/CanvasEmptyState'
 import { CanvasToolbar } from '../canvas/CanvasToolbar'
+import { CanvasZoomSlider } from '../canvas/CanvasZoomSlider'
 import { computeFitTransform, useCanvasTransform } from '../canvas/useCanvasTransform'
 import { useCanvasGestures } from '../canvas/useCanvasGestures'
 
@@ -53,13 +54,16 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
     const panelTheme = panelDark ? 'dark' : 'light'
     const isContentVisible = hasTemplate && contentSize.width > 1 && contentSize.height > 1
 
-    /** 短暂显示左上角缩放比例提示。 */
+    /** 缩放活动停止后，比例提示和缩放滑块的驻留时间：留足把指针移向滑块的时间。 */
+    const zoomUiDwellMs = 2000
+
+    /** 短暂显示左上角缩放比例提示（同时驱动左侧缩放滑块的滑出窗口）。 */
     const showScale = useCallback(() => {
       setShowScaleIndicator(true)
       if (scaleIndicatorTimeoutRef.current !== null) {
         window.clearTimeout(scaleIndicatorTimeoutRef.current)
       }
-      scaleIndicatorTimeoutRef.current = window.setTimeout(() => setShowScaleIndicator(false), 1000)
+      scaleIndicatorTimeoutRef.current = window.setTimeout(() => setShowScaleIndicator(false), zoomUiDwellMs)
     }, [])
 
     const engine = useCanvasTransform({ onScaleChange })
@@ -94,6 +98,19 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
         const centerY = container.clientHeight / 2
         const target = factor === null ? 1 : engine.get().scale * factor
         engine.zoomAtAnimated(centerX, centerY, target)
+        showScale()
+      },
+      [engine, isContentVisible, showScale]
+    )
+
+    /** 滑块拖拽缩放：以画布中心为锚点 1:1 立即缩放，并刷新滑块/提示的可见窗口。 */
+    const handleSliderZoom = useCallback(
+      (nextScale: number) => {
+        const container = containerRef.current
+        if (!container || !isContentVisible) {
+          return
+        }
+        engine.zoomAtInstant(container.clientWidth / 2, container.clientHeight / 2, nextScale)
         showScale()
       },
       [engine, isContentVisible, showScale]
@@ -380,6 +397,8 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
           </div>
 
           {!hasTemplate && <CanvasEmptyState />}
+
+          <CanvasZoomSlider scale={scale} visible={isContentVisible && showScaleIndicator} onZoomByScale={handleSliderZoom} />
 
           <CanvasToolbar
             capturing={isCapturing}

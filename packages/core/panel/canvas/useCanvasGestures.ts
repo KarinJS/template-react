@@ -67,6 +67,11 @@ export const useCanvasGestures = ({ containerRef, engine, enabled, onFit, onFlas
       if (!enabledRef.current) {
         return
       }
+      // 画布悬浮 UI（HUD 按钮、缩放滑块）上的双击不触发适应：
+      // 快速连点缩放按钮时，两次 click 会合成 dblclick，把用户的快速缩放劫持成重置。
+      if (event.target instanceof Element && event.target.closest('[data-canvas-ui]')) {
+        return
+      }
       event.preventDefault()
       onFitRef.current()
     }
@@ -75,9 +80,13 @@ export const useCanvasGestures = ({ containerRef, engine, enabled, onFit, onFlas
       if (!enabledRef.current || (event.button !== 0 && event.button !== 1)) {
         return
       }
-      // 从交互元素（如画布 HUD 按钮）冒泡上来的按下不启动平移：
-      // 一旦 setPointerCapture 到容器，后续 pointerup 会重定向到容器，吃掉按钮的 press。
-      if (event.target instanceof Element && event.target.closest('button, a, input, select, textarea, [role="button"]')) {
+      // 画布悬浮 UI（带 data-canvas-ui 标记）和交互元素冒泡上来的按下不启动平移：
+      // 一旦 setPointerCapture 到容器，后续 pointerup 会重定向到容器，吃掉按钮的 press
+      // 和滑块的拖拽。
+      if (
+        event.target instanceof Element &&
+        event.target.closest('[data-canvas-ui], button, a, input, select, textarea, [role="button"]')
+      ) {
         return
       }
       event.preventDefault()

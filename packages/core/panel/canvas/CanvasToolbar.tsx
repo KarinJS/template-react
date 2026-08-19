@@ -4,6 +4,7 @@ import { Camera, Maximize2, Minus, Plus } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
 import { duration, ease, motionDuration } from '../animation/tokens'
+import { frostedSurfaceClass } from './frosted'
 
 /** 画布浮动工具栏的属性。 */
 interface CanvasToolbarProps {
@@ -46,77 +47,76 @@ export const CanvasToolbar = ({ scale, visible, capturing, onZoomIn, onZoomOut, 
   }
 
   return (
-    <div
-      ref={rootRef}
-      className="absolute right-4 bottom-4 z-50 flex items-center gap-0.5 rounded-2xl border border-border bg-surface/90 p-1 shadow-sm backdrop-blur-sm"
-    >
-      <Tooltip closeDelay={80} delay={300}>
-        <Tooltip.Trigger>
-          <Button isIconOnly aria-label="缩小" size="sm" variant="ghost" onPress={onZoomOut}>
-            <Minus size={14} />
-          </Button>
-        </Tooltip.Trigger>
-        <Tooltip.Content showArrow>
-          <Tooltip.Arrow />
-          <p className="text-xs">缩小（-）</p>
-        </Tooltip.Content>
-      </Tooltip>
+    <div ref={rootRef} className={`absolute right-4 bottom-4 z-50 rounded-2xl p-1 ${frostedSurfaceClass}`} data-canvas-ui>
+      <div className="relative flex items-center gap-0.5">
+        <Tooltip closeDelay={80} delay={300}>
+          <Tooltip.Trigger>
+            <Button isIconOnly aria-label="缩小" size="sm" variant="ghost" onPress={onZoomOut}>
+              <Minus size={14} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>
+            <Tooltip.Arrow />
+            <p className="text-xs">缩小（-）</p>
+          </Tooltip.Content>
+        </Tooltip>
 
-      <Tooltip closeDelay={80} delay={300}>
-        <Tooltip.Trigger>
-          <Button
-            aria-label="重置为 100%"
-            className="min-w-11 px-1 text-xs font-medium tabular-nums"
-            size="sm"
-            variant="ghost"
-            onPress={onZoomReset}
-          >
-            {Math.round(scale * 100)}%
-          </Button>
-        </Tooltip.Trigger>
-        <Tooltip.Content showArrow>
-          <Tooltip.Arrow />
-          <p className="text-xs">重置为 100%（0）</p>
-        </Tooltip.Content>
-      </Tooltip>
+        <Tooltip closeDelay={80} delay={300}>
+          <Tooltip.Trigger>
+            <Button
+              aria-label="重置为 100%"
+              className="min-w-11 px-1 text-xs font-medium tabular-nums"
+              size="sm"
+              variant="ghost"
+              onPress={onZoomReset}
+            >
+              {Math.round(scale * 100)}%
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>
+            <Tooltip.Arrow />
+            <p className="text-xs">重置为 100%（0）</p>
+          </Tooltip.Content>
+        </Tooltip>
 
-      <Tooltip closeDelay={80} delay={300}>
-        <Tooltip.Trigger>
-          <Button isIconOnly aria-label="放大" size="sm" variant="ghost" onPress={onZoomIn}>
-            <Plus size={14} />
-          </Button>
-        </Tooltip.Trigger>
-        <Tooltip.Content showArrow>
-          <Tooltip.Arrow />
-          <p className="text-xs">放大（+）</p>
-        </Tooltip.Content>
-      </Tooltip>
+        <Tooltip closeDelay={80} delay={300}>
+          <Tooltip.Trigger>
+            <Button isIconOnly aria-label="放大" size="sm" variant="ghost" onPress={onZoomIn}>
+              <Plus size={14} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>
+            <Tooltip.Arrow />
+            <p className="text-xs">放大（+）</p>
+          </Tooltip.Content>
+        </Tooltip>
 
-      <div className="mx-0.5 h-4 w-px bg-border" />
+        <div className="mx-0.5 h-4 w-px bg-border" />
 
-      <Tooltip closeDelay={80} delay={300}>
-        <Tooltip.Trigger>
-          <Button isIconOnly aria-label="适应画布" size="sm" variant="ghost" onPress={onFit}>
-            <Maximize2 size={14} />
-          </Button>
-        </Tooltip.Trigger>
-        <Tooltip.Content showArrow>
-          <Tooltip.Arrow />
-          <p className="text-xs">适应画布（F）</p>
-        </Tooltip.Content>
-      </Tooltip>
+        <Tooltip closeDelay={80} delay={300}>
+          <Tooltip.Trigger>
+            <Button isIconOnly aria-label="适应画布" size="sm" variant="ghost" onPress={onFit}>
+              <Maximize2 size={14} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>
+            <Tooltip.Arrow />
+            <p className="text-xs">适应画布（F）</p>
+          </Tooltip.Content>
+        </Tooltip>
 
-      <Tooltip closeDelay={80} delay={300}>
-        <Tooltip.Trigger>
-          <Button isIconOnly aria-label="截图" isPending={capturing} size="sm" variant="ghost" onPress={onCapture}>
-            <Camera size={14} />
-          </Button>
-        </Tooltip.Trigger>
-        <Tooltip.Content showArrow>
-          <Tooltip.Arrow />
-          <p className="text-xs">截图</p>
-        </Tooltip.Content>
-      </Tooltip>
+        <Tooltip closeDelay={80} delay={300}>
+          <Tooltip.Trigger>
+            <Button isIconOnly aria-label="截图" isPending={capturing} size="sm" variant="ghost" onPress={onCapture}>
+              <Camera size={14} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content showArrow>
+            <Tooltip.Arrow />
+            <p className="text-xs">截图</p>
+          </Tooltip.Content>
+        </Tooltip>
+      </div>
     </div>
   )
 }
