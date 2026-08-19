@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.0](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.6...template-react-v0.1.0) (2026-08-19)
+
+
+### ✨ 新特性
+
+* 开发面板支持渲染嵌套模板的列表；添加更多的官方示例模板 ([aab8f64](https://github.com/KarinJS/template-react/commit/aab8f64bca7c6a3f4c4294526f619762830600c9))
+* 添加数据文件操作弹窗，支持另存为和删除确认功能 ([840a3a8](https://github.com/KarinJS/template-react/commit/840a3a8b0047347a0a264111f01f0b4cca579b97))
+
+
+### 🐛 修复
+
+* 优化前端页面开发体验 ([934a394](https://github.com/KarinJS/template-react/commit/934a394452e388f57bfe4c973c2f5d7a549d49f1))
+
+
+### 📚 文档
+
+* upate ([0d3292f](https://github.com/KarinJS/template-react/commit/0d3292f5d8dc2ec0e3b81add4b5dee9677c92998))
+
 ## [0.0.1-beta.6](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.5...template-react-v0.0.1-beta.6) (2026-08-17)
 
 
