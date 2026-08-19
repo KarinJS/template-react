@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/KarinJS/template-react/compare/template-react-v0.1.0...template-react-v0.1.1) (2026-08-19)
+
+
+### 🐛 修复
+
+* 优化开发面板交互逻辑 ([3687ec9](https://github.com/KarinJS/template-react/commit/3687ec9878bcc0ad9ffedcfea0abbcedb16a4c23))
+
 ## [0.1.0](https://github.com/KarinJS/template-react/compare/template-react-v0.0.1-beta.6...template-react-v0.1.0) (2026-08-19)
 
 
