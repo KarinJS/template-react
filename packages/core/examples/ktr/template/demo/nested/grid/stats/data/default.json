@@ -1,0 +1,29 @@
+{
+  "title": "本周关键指标",
+  "metrics": [
+    {
+      "label": "活跃用户",
+      "value": "12,480",
+      "delta": "+8.2%",
+      "trend": "up"
+    },
+    {
+      "label": "消息总量",
+      "value": "86.4k",
+      "delta": "+15.6%",
+      "trend": "up"
+    },
+    {
+      "label": "平均响应",
+      "value": "1.2s",
+      "delta": "-12.5%",
+      "trend": "down"
+    },
+    {
+      "label": "报错次数",
+      "value": "23",
+      "delta": "+4 次",
+      "trend": "down"
+    }
+  ]
+}

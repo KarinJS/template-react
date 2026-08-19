@@ -1,10 +1,11 @@
-import { Description, Label, ListBox, ProgressBar, ScrollShadow, Skeleton, Tabs } from '@heroui/react'
+import { Description, Label, ProgressBar, ScrollShadow, Skeleton, Tabs } from '@heroui/react'
 import gsap from 'gsap'
 import { Flip } from 'gsap/Flip'
 import { useEffect, useLayoutEffect, useMemo, useRef, type Key } from 'react'
 
 import { duration, ease, motionDuration } from '../animation/tokens'
 import type { RegisterProgress, TemplateMeta } from '../types'
+import { TemplateTree } from './TemplateTree'
 
 gsap.registerPlugin(Flip)
 
@@ -70,7 +71,7 @@ export const PlatformSelector = ({ templates, selectedPath, registerProgress, on
       return
     }
     entrancePlayedRef.current = true
-    const items = listScopeRef.current.querySelectorAll('[data-slot="list-box-item"]')
+    const items = listScopeRef.current.querySelectorAll('[data-template-leaf]')
     const tween = gsap.fromTo(
       items,
       { opacity: 0, y: 6 },
@@ -125,45 +126,22 @@ export const PlatformSelector = ({ templates, selectedPath, registerProgress, on
 
           {groupEntries.map(([group, items]) => (
             <Tabs.Panel key={group} className="pt-2" id={group}>
-              <ScrollShadow className="max-h-[calc(100vh-24rem)]" hideScrollBar size={48}>
-                <ListBox
-                  aria-label={`${group} 模板列表`}
-                  selectedKeys={selectedPath ? new Set([selectedPath]) : new Set()}
-                  selectionMode="single"
-                  onSelectionChange={(keys) => {
-                    const key = Array.from(keys as Set<Key>)[0]
-                    if (typeof key === 'string') {
-                      captureIndicatorState(key)
-                      onSelect(key)
-                    }
-                  }}
-                >
-                  {items.map((template) => (
-                    <ListBox.Item
-                      key={template.path}
-                      className="rounded-xl px-2.5 py-2"
-                      id={template.path}
-                      textValue={template.name ?? template.path}
-                    >
-                      {/* 共享激活指示：只有选中项渲染这个底色块，选中变化时由 Flip 迁移过去。 */}
-                      {template.path === selectedPath && (
-                        <span
-                          aria-hidden
-                          className="pointer-events-none absolute inset-0 rounded-xl bg-default"
-                          data-flip-id={activeIndicatorFlipId}
-                        />
-                      )}
-                      <div className="relative flex min-w-0 flex-1 flex-col">
-                        <Label className="truncate text-sm font-medium text-foreground">
-                          {template.name ?? template.path.split('/').at(-1)}
-                        </Label>
-                        <Description className="truncate text-xs text-muted">{template.description ?? template.path}</Description>
-                      </div>
-                      <ListBox.ItemIndicator />
-                    </ListBox.Item>
-                  ))}
-                </ListBox>
-              </ScrollShadow>
+              {/* 只渲染激活板块的内容：非激活 Panel 只是隐藏而不卸载，里面的 ScrollShadow
+                  会在 display:none 时测量（容器高度为 0），误判为溢出并留下底部渐变遮罩，
+                  切回短列表时遮罩残留遮挡列表项。按激活态挂载可强制重新测量。 */}
+              {group === activeGroup && (
+                <ScrollShadow className="max-h-[calc(100vh-24rem)]" hideScrollBar size={48}>
+                  <TemplateTree
+                    group={group}
+                    items={items}
+                    selectedPath={selectedPath}
+                    onLeafSelect={(path) => {
+                      captureIndicatorState(path)
+                      onSelect(path)
+                    }}
+                  />
+                </ScrollShadow>
+              )}
             </Tabs.Panel>
           ))}
         </Tabs>

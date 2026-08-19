@@ -47,7 +47,7 @@ export const askScaffoldOptions = async (defaults: { pluginName: string }): Prom
     })
   ) as ScaffoldStyle
 
-  const withExample = guard(await confirm({ message: '生成示例模板？（来自官方 examples 的 7 个模板，可参照改写）' }))
+  const withExample = guard(await confirm({ message: '生成示例模板？（来自官方 examples 的 12 个模板，可参照改写）' }))
   const withGlue = guard(await confirm({ message: '生成 src/utils/render.ts（把模板渲染接到 Karin 截图的辅助函数）？' }))
 
   const port = guard(
