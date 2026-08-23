@@ -25,12 +25,15 @@ interface StatsGridData {
 /** 指标按序轮转的图标，避免数据里写组件引用。 */
 const METRIC_ICONS = [Users, MessagesSquare, Activity, TriangleAlert]
 
+/** 取轮转图标；带兜底是为了在 noUncheckedIndexedAccess 下也不出现 undefined。 */
+const metricIconAt = (index: number) => METRIC_ICONS[index % METRIC_ICONS.length] ?? Users
+
 const StatsGrid = ({ data }: TemplateProps<StatsGridData>) => (
   <div className="w-140 overflow-hidden rounded-2xl border border-border bg-background p-8 text-foreground">
     <h1 className="text-2xl font-bold tracking-normal">{data.title}</h1>
     <div className="mt-6 grid grid-cols-2 gap-4">
       {data.metrics.map((metric, index) => {
-        const Icon = METRIC_ICONS[index % METRIC_ICONS.length]
+        const Icon = metricIconAt(index)
         return (
           <div key={metric.label} className="rounded-xl border border-border bg-surface p-5">
             <div className="flex items-center gap-2 text-sm font-medium text-muted">
