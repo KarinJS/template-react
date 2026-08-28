@@ -24,13 +24,16 @@ interface SaveDataAsModalProps extends DataModalBaseProps {
   onSave: (filename: string) => void
 }
 
-/** 规范化文件名：去空格、补 .json 后缀；含路径分隔符时返回 null 表示非法。 */
+/**
+ * 规范化文件名主名并拼回固定的 .json 后缀：去空格、剥掉用户多输入的尾部 .json。
+ * 空主名、含路径分隔符或 Windows 非法字符时返回 null 表示非法。
+ */
 const normalizeFilename = (raw: string): string | null => {
-  const trimmed = raw.trim()
-  if (!trimmed || /[/\\]/.test(trimmed)) {
+  const basename = raw.trim().replace(/\.json$/i, '')
+  if (!basename || /[/\\<>:"|?*]/.test(basename)) {
     return null
   }
-  return trimmed.endsWith('.json') ? trimmed : `${trimmed}.json`
+  return `${basename}.json`
 }
 
 /** 另存为弹窗：把当前正在渲染的数据以新文件名保存到同级目录，替代浏览器原生 prompt。 */
@@ -43,13 +46,13 @@ export const SaveDataAsModal = ({
   onClose,
   onSave
 }: SaveDataAsModalProps) => {
-  const [name, setName] = useState(currentName)
+  const [name, setName] = useState(currentName.replace(/\.json$/i, ''))
   const [error, setError] = useState('')
 
-  // 每次打开时用当前文件名回填输入框，并清掉上次的错误。
+  // 每次打开时用当前文件名（剥掉固定 .json 后缀，输入框只编辑主名）回填输入框，并清掉上次的错误。
   useEffect(() => {
     if (isOpen) {
-      setName(currentName)
+      setName(currentName.replace(/\.json$/i, ''))
       setError('')
     }
   }, [isOpen, currentName])
@@ -58,7 +61,7 @@ export const SaveDataAsModal = ({
     event.preventDefault()
     const filename = normalizeFilename(name)
     if (!filename) {
-      setError('请输入合法的文件名（不能含路径分隔符）')
+      setError('请输入合法的文件名（不能含路径分隔符或 <>:"|?* 等特殊字符）')
       return
     }
     if (filename === currentName) {
@@ -103,7 +106,8 @@ export const SaveDataAsModal = ({
               <TextField autoFocus isInvalid={Boolean(error)} onKeyDown={(event) => event.stopPropagation()}>
                 <Label className="mb-1.5 text-xs font-medium text-foreground">新文件名</Label>
                 <InputGroup fullWidth variant="secondary">
-                  <InputGroup.Input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如 dark.json" />
+                  <InputGroup.Input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如 dark" />
+                  <InputGroup.Suffix className="pr-3 text-xs text-muted select-none">.json</InputGroup.Suffix>
                 </InputGroup>
                 {error && <FieldError className="mt-1.5">{error}</FieldError>}
               </TextField>

@@ -104,6 +104,40 @@ describe('mock API', () => {
     expect(deleted.ok).toBe(true)
   })
 
+  it('unwraps { data, ctx } capture snapshots by shape regardless of file name', async () => {
+    const mockDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-api-snapshot-'))
+    const jsonDataDir = path.join(mockDataDir, 'hello/card', 'data')
+    fs.mkdirSync(jsonDataDir, { recursive: true })
+    const snapshot = { data: { title: 'Captured', items: [] }, ctx: { theme: { mode: 'dark' } } }
+    // 另存为出去的副本：名字不再是 captured.json，但内容仍是快照信封，必须同样解包下发。
+    fs.writeFileSync(path.join(jsonDataDir, 'captured.json'), JSON.stringify(snapshot), 'utf-8')
+    fs.writeFileSync(path.join(jsonDataDir, '4K+HDR.json'), JSON.stringify(snapshot), 'utf-8')
+    // 普通 mock：非快照形状，原样返回。
+    fs.writeFileSync(path.join(jsonDataDir, 'plain.json'), JSON.stringify({ title: 'Plain', items: [] }), 'utf-8')
+    const config = configFor(mockDataDir)
+    const server = await createServer({ root: packageRoot, appType: 'custom', server: { host: '127.0.0.1', port: 0 } })
+    servers.push(server)
+    registerMockApi(server, config)
+    await server.listen()
+    const base = server.resolvedUrls?.local[0]?.replace(/\/$/, '') ?? ''
+
+    const captured = await fetch(`${base}/__ktr/api/data?path=hello%2Fcard&name=captured.json`).then((res) =>
+      readJson<{ data: { title: string }; ctx?: Record<string, unknown> }>(res)
+    )
+    expect(captured).toMatchObject({ data: { title: 'Captured' }, ctx: { theme: { mode: 'dark' } } })
+
+    const renamed = await fetch(`${base}/__ktr/api/data?path=hello%2Fcard&name=${encodeURIComponent('4K+HDR.json')}`).then((res) =>
+      readJson<{ data: { title: string }; ctx?: Record<string, unknown> }>(res)
+    )
+    expect(renamed).toMatchObject({ data: { title: 'Captured' }, ctx: { theme: { mode: 'dark' } } })
+
+    const plain = await fetch(`${base}/__ktr/api/data?path=hello%2Fcard&name=plain.json`).then((res) =>
+      readJson<{ data: { title: string }; ctx?: Record<string, unknown> }>(res)
+    )
+    expect(plain).toMatchObject({ data: { title: 'Plain' } })
+    expect(plain.ctx).toBeUndefined()
+  })
+
   it('loads colocated JSON and TS mocks from the template directory', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-api-colocated-'))
     const templateDir = path.join(root, 'template')

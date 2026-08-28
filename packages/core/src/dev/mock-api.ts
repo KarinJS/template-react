@@ -5,7 +5,6 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ViteDevServer } from 'vite'
 
 import { ensureTemplateRegistry, templateRegistryPath } from '../conventions/registry'
-import { capturedDataFileName } from '../runtime/capture'
 import type { ResolvedKtrConfig } from '../types'
 import { handleDataStream } from './data-watch'
 
@@ -254,8 +253,9 @@ const handleMockApiRequest = async (
     if (method === 'GET') {
       if (hasJsonFile) {
         const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-        // captured.json 是 { data, ctx } 完整渲染快照：解包下发，面板回放时连同 ctx 一起传给沙盒。
-        if (name === capturedDataFileName && isCaptureSnapshot(parsed)) {
+        // { data, ctx } 完整快照按形状解包（captured.json 及其另存为副本都走这里），
+        // 面板回放时连同 ctx 一起传给沙盒；若按文件名判断，另存为副本会把信封当数据下发。
+        if (isCaptureSnapshot(parsed)) {
           json(res, 200, { name, source: 'json', readonly: false, data: parsed.data, ctx: parsed.ctx })
           return
         }
