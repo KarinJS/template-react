@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/KarinJS/template-react/compare/template-react-v0.1.1...template-react-v0.1.2) (2026-08-29)
+
+
+### 🐛 修复
+
+* example ([4c8c2ca](https://github.com/KarinJS/template-react/commit/4c8c2ca85691592cb491d3c596142c4d67ed5d94))
+* 规范化文件名处理，支持去除 .json 后缀并增强错误提示；新增测试用例验证快照解包逻辑 ([a2be16c](https://github.com/KarinJS/template-react/commit/a2be16c451d08c46501abd29a0a798054fc1e257))
+
 ## [0.1.1](https://github.com/KarinJS/template-react/compare/template-react-v0.1.0...template-react-v0.1.1) (2026-08-19)
 
 
