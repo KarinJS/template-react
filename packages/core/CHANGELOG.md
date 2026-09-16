@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/KarinJS/template-react/compare/template-react-v0.1.2...template-react-v0.2.0) (2026-09-16)
+
+
+### ✨ 新特性
+
+* 支持依赖包里的 CSS 与字体（含 pnpm 的 .pnpm 布局） ([#13](https://github.com/KarinJS/template-react/issues/13)) ([708f41e](https://github.com/KarinJS/template-react/commit/708f41e88e6c8e720fcc90928d95700fbe18dae9))
+
 ## [0.1.2](https://github.com/KarinJS/template-react/compare/template-react-v0.1.1...template-react-v0.1.2) (2026-08-29)
 
 
