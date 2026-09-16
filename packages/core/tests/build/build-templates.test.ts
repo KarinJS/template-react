@@ -7,6 +7,7 @@ import fg from 'fast-glob'
 import { describe, expect, it, vi } from 'vitest'
 
 import { buildTemplates } from '../../src/build'
+import { HtmlWrapper } from '../../src/runtime'
 
 const testDir = path.dirname(fileURLToPath(import.meta.url))
 const fixtureRoot = path.resolve(testDir, '../fixtures/mini-project')
@@ -67,6 +68,51 @@ describe('buildTemplates', () => {
     )
     await buildTemplates({ root: skipped })
     expect(fs.existsSync(path.join(skipped, 'dist/template/assets'))).toBe(false)
+  })
+
+  it('依赖包里的 CSS 与字体：pnpm 的 .pnpm 布局能解析，大字体不进 HTML 的 base64', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-dep-css-'))
+    fs.cpSync(fixtureRoot, root, { recursive: true })
+    fs.unlinkSync(path.join(root, 'templates/index.ts'))
+    fs.writeFileSync(
+      path.join(root, 'karin.template.ts'),
+      "export default { dir: { template: 'templates', cssEntry: 'templates/style.css' } }\n",
+      'utf-8'
+    )
+
+    // 伪造 pnpm 布局：根 node_modules 下只有软链，真实文件在 .pnpm/<包名>@<版本>/node_modules/<包名>。
+    const packageDir = path.join(root, 'node_modules/.pnpm/dep-font@1.0.0/node_modules/dep-font')
+    fs.mkdirSync(path.join(packageDir, 'fonts'), { recursive: true })
+    fs.writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name: 'dep-font', version: '1.0.0' }), 'utf-8')
+    fs.writeFileSync(
+      path.join(packageDir, 'index.css'),
+      "@font-face{font-family:DepSmall;src:url('./fonts/small.woff2') format('woff2')}\n" +
+        "@font-face{font-family:DepBig;src:url('./fonts/big.woff2') format('woff2')}\n",
+      'utf-8'
+    )
+    fs.writeFileSync(path.join(packageDir, 'fonts/small.woff2'), 'tiny-font', 'utf-8')
+    fs.writeFileSync(path.join(packageDir, 'fonts/big.woff2'), 'x'.repeat(6000), 'utf-8')
+    fs.symlinkSync(packageDir, path.join(root, 'node_modules/dep-font'), 'junction')
+
+    fs.writeFileSync(
+      path.join(root, 'templates/style.css'),
+      "@import 'tailwindcss';\n@source './**/*.{ts,tsx}';\n@import 'dep-font/index.css';\n",
+      'utf-8'
+    )
+
+    const result = await buildTemplates({ root })
+    const css = fs.readFileSync(result.cssPath, 'utf-8')
+    // 依赖包 CSS 被内联进来：小字体由构建期内联，大字体落到产物 assets/ 并按 /assets/ 引用。
+    expect(css).toContain('@font-face')
+    expect(css).toContain('data:font/woff2;base64,')
+    expect(css).toContain('/assets/')
+    expect(await fg('assets/*.woff2', { cwd: path.join(root, 'dist/template') })).toHaveLength(1)
+
+    // 渲染期把 /assets/* 解析到产物里的真实文件：截图页是 file://，留着根路径就是静默回退到系统字体。
+    const html = new HtmlWrapper({ cssPath: result.cssPath }).wrapContent('<p>hi</p>', { scale: 1 })
+    expect(html).toContain('data:font/woff2;base64,')
+    expect(html).toMatch(/url\(["']?file:\/\/\/[^"']*big-[^"']*\.woff2["']?\)/)
+    expect(html).not.toContain('url("/assets/')
   })
 
   it('write: false 时不落盘、不打印日志，产物以内存形式返回', async () => {

@@ -84,6 +84,88 @@ describe('HtmlWrapper', () => {
     expect(html).not.toContain('border-radius: 5rem')
   })
 
+  it('CSS 相对引用与标记资源同一套阈值：小的内联，大的转 file:// 不进 base64', () => {
+    const dir = tempDir()
+    fs.writeFileSync(path.join(dir, 'small.png'), 'tiny', 'utf-8')
+    fs.writeFileSync(path.join(dir, 'big.woff2'), 'x'.repeat(5000), 'utf-8')
+    const cssPath = path.join(dir, 'style.css')
+    fs.writeFileSync(cssPath, ".a{background:url('./small.png')}\n@font-face{src:url(big.woff2) format('woff2')}", 'utf-8')
+
+    const html = new HtmlWrapper({ cssPath }).wrapContent('<p>hi</p>', { scale: 1 })
+
+    // 大字体走 file:// 绝对路径：截图引擎按 file:// 打开 HTML，字体照样加载，但不占 HTML 体积。
+    expect(html).toContain('data:image/png;base64,')
+    expect(html).not.toContain("url('./small.png')")
+    expect(html).toMatch(/url\(['"]?file:\/\/\/[^'"]*big\.woff2['"]?\)/)
+    expect(html).not.toContain('data:font/woff2;base64,')
+  })
+
+  it('CSS 引用的文件名带空格时按原文找盘上文件；目录引用不算命中', () => {
+    const dir = tempDir()
+    fs.writeFileSync(path.join(dir, 'My Font.woff2'), 'x'.repeat(5000), 'utf-8')
+    fs.mkdirSync(path.join(dir, 'fonts'))
+    const cssPath = path.join(dir, 'style.css')
+    // Vite 输出的资源地址会对空格做百分号编码，磁盘上的文件名是原文。
+    fs.writeFileSync(cssPath, "@font-face{src:url('./My%20Font.woff2')}\n.b{background:url(./fonts)}", 'utf-8')
+
+    const html = new HtmlWrapper({ cssPath }).wrapContent('<p>hi</p>', { scale: 1 })
+
+    expect(html).toMatch(/url\(['"]?file:\/\/\/[^'"]*My%20Font\.woff2['"]?\)/)
+    expect(html).toContain('url(./fonts)')
+  })
+
+  it('CSS 里的 / 开头引用：先按构建产物目录解析，再退到 assetsDir', () => {
+    const dir = tempDir()
+    const buildDir = path.join(dir, 'lib')
+    const assetsDir = path.join(dir, 'ktr/public')
+    fs.mkdirSync(path.join(buildDir, 'assets'), { recursive: true })
+    fs.mkdirSync(path.join(assetsDir, 'image'), { recursive: true })
+    // 构建期 Vite 把依赖包 CSS 引用的字体输出成 <产物目录>/assets/<名字>-<hash>.woff2。
+    fs.writeFileSync(path.join(buildDir, 'assets/dep-font-C9sBJCER.woff2'), 'x'.repeat(5000), 'utf-8')
+    // 随包发布的资源目录：模板按 /image/logo.png 引用，产物目录下没有这份文件。
+    fs.writeFileSync(path.join(assetsDir, 'image/logo.png'), 'tiny', 'utf-8')
+
+    const cssPath = path.join(buildDir, 'style.css')
+    fs.writeFileSync(cssPath, "@font-face{src:url('/assets/dep-font-C9sBJCER.woff2')}\n.logo{background:url('/image/logo.png')}", 'utf-8')
+
+    const html = new HtmlWrapper({ cssPath, assetsDir }).wrapContent('<div class="logo"></div>', { scale: 1 })
+
+    // 两种解释都不能留成 /assets/...、/image/...：截图页是 file://，根路径解析成 file:///assets/... 必然 404。
+    expect(html).toMatch(/url\('file:\/\/\/[^']*dep-font-C9sBJCER\.woff2'\)/)
+    expect(html).toContain("url('data:image/png;base64,")
+    expect(html).not.toContain("url('/assets/")
+    expect(html).not.toContain("url('/image/")
+  })
+
+  it('CSS 里的外部引用、CSS 函数和缺失文件保持原样', () => {
+    const dir = tempDir()
+    const cssPath = path.join(dir, 'style.css')
+    fs.writeFileSync(
+      cssPath,
+      [
+        '.a{background:url(https://cdn.com/a.png)}',
+        '.b{background:url(data:image/gif;base64,AAA)}',
+        '.c{background:url(#gradient)}',
+        '.d{background:url(var(--logo))}',
+        '.e{background:url("//cdn.com/b.png")}',
+        '.f{background:url(/missing.png)}',
+        '.g{background:url(./missing-too.png?rev=2)}'
+      ].join('\n'),
+      'utf-8'
+    )
+
+    const html = new HtmlWrapper({ cssPath, assetsDir: dir }).wrapContent('<p>hi</p>', { scale: 1 })
+
+    expect(html).toContain('url(https://cdn.com/a.png)')
+    expect(html).toContain('url(data:image/gif;base64,AAA)')
+    expect(html).toContain('url(#gradient)')
+    expect(html).toContain('url(var(--logo))')
+    expect(html).toContain('url("//cdn.com/b.png")')
+    // 找不到的文件保持原样，方便在产物里一眼看出是哪条引用没落地。
+    expect(html).toContain('url(/missing.png)')
+    expect(html).toContain('url(./missing-too.png?rev=2)')
+  })
+
   it('标记资源：不超过阈值内联为 base64，超过的转为 file:// 绝对路径', () => {
     const dir = tempDir()
     fs.writeFileSync(path.join(dir, 'small.png'), 'tiny', 'utf-8')

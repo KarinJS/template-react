@@ -164,9 +164,12 @@ export interface HtmlWrapperOptions {
    */
   assetsDir?: string
   /**
-   * 标记资源内联阈值（字节），语义同 Vite 的 assetsInlineLimit：
+   * 资源内联阈值（字节），语义同 Vite 的 assetsInlineLimit：
    * 不超过阈值的资源改写为 base64 data URI，超过的改写为 file:// 绝对路径；
    * 函数形式按文件自行决定是否内联。
+   *
+   * 同时作用于标记资源（`<img src="/...">`）和 CSS 里 `url()` 引用的资源
+   * （含依赖包 CSS 带进来的字体），大字体因此不会 base64 进每一份 HTML。
    * @default 4096
    */
   assetsInlineLimit?: number | ((filePath: string) => boolean)
@@ -201,8 +204,9 @@ export interface RendererOptions {
    */
   assetsDir?: string
   /**
-   * 标记资源内联阈值（字节），语义同 Vite 的 assetsInlineLimit：
-   * 不超过阈值的内联为 base64 data URI，超过的转为 file:// 绝对路径；函数形式按文件决定。
+   * 资源内联阈值（字节），语义同 Vite 的 assetsInlineLimit：
+   * 标记资源和 CSS `url()` 引用的资源都按它决定形态——不超过阈值的内联为 base64 data URI，
+   * 超过的转为 file:// 绝对路径；函数形式按文件决定。大字体走 file://，不会 base64 进每份 HTML。
    * @default 4096
    */
   assetsInlineLimit?: number | ((filePath: string) => boolean)
@@ -304,8 +308,10 @@ export interface KtrConfig {
    */
   standalone?: KtrStandaloneConfig
   /**
-   * 额外注入 SSR HTML 的样式文件列表（相对项目根目录），
-   * 内容会被内联进渲染产物的 `<style>` 标签，CSS 里相对路径的 `url()` 资源会转成 data URI。
+   * 额外注入 SSR HTML 的样式文件列表（相对项目根目录，也可以直接写依赖包里的文件，
+   * 如 `'some-font-pkg/index.css'`——按 Node 解析，pnpm 的 `.pnpm` 真实路径同样命中）。
+   * 内容会被内联进渲染产物的 `<style>` 标签，CSS 里引用到的资源按 `html.assetsInlineLimit`
+   * 决定内联为 data URI 还是转成 file:// 绝对路径。
    * @example extraStylePaths: ['ktr/template/print.css']
    */
   extraStylePaths?: string[]
@@ -336,9 +342,10 @@ export interface KtrConfig {
      */
     headExtra?: string
     /**
-     * 标记资源内联阈值（字节），语义同 Vite 的 assetsInlineLimit：
-     * 模板里 `/` 开头的资源引用（对应 `<dir.assets>/` 下的文件）在 SSR 产出 HTML 时，
-     * 不超过阈值的内联为 base64，超过的转为 file:// 绝对路径；函数形式按文件决定。
+     * 资源内联阈值（字节），语义同 Vite 的 assetsInlineLimit：SSR 产出 HTML 时，
+     * 标记里 `/` 开头的资源引用（对应 `<dir.assets>/` 下的文件）和 CSS `url()` 引用的资源
+     * （含依赖包 CSS 带进来的字体）都按它决定形态——不超过阈值内联为 base64，
+     * 超过的转为 file:// 绝对路径；函数形式按文件决定。
      * @default 4096
      */
     assetsInlineLimit?: number | ((filePath: string) => boolean)

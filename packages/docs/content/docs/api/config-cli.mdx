@@ -123,11 +123,13 @@ export default defineConfig({
 import { defineConfig } from '@karinjs/template-react'
 // ---cut---
 export default defineConfig({
+  // 相对项目根的路径，或依赖包里的文件（按 Node 解析，pnpm 的 .pnpm 真实路径也能命中）
   extraStylePaths: ['ktr/public/fonts.css', 'ktr/public/icons.css']
 })
 ```
 
-这些文件会在渲染时**内联到 HTML** 的 `<style>` 标签中，确保截图包含完整样式。
+这些文件会在渲染时**内联到 HTML** 的 `<style>` 标签中，确保截图包含完整样式。文件里 `url()` 引用的资源（字体、图片）按
+[`html.assetsInlineLimit`](#htmlassetsinlinelimit) 决定内联为 data URI 还是转成 `file://` 绝对路径。
 
 #### dev.port
 
@@ -207,7 +209,12 @@ export default defineConfig({
 
 **类型**：`number | ((filePath: string) => boolean)`，**默认**：`4096`
 
-模板标记里本地资源引用（`<img src="/...">` 等，对应 `<dir.assets>/` 下的文件）的内联阈值，语义同 Vite 的 `assetsInlineLimit`：SSR 产出 HTML 时，不超过阈值（字节）的资源内联为 base64 data URI，超过的转为 `file://` 绝对路径；函数形式按文件自行决定是否内联。
+本地资源引用的内联阈值，语义同 Vite 的 `assetsInlineLimit`：SSR 产出 HTML 时，不超过阈值（字节）的资源内联为 base64 data URI，超过的转为 `file://` 绝对路径；函数形式按文件自行决定是否内联。
+
+两种引用都走这套规则：
+
+- 模板标记里的引用（`<img src="/...">` 等，对应 `<dir.assets>/` 下的文件）；
+- CSS 里 `url()` 引用的资源，包括依赖包 CSS 带进来的字体——它们由构建期输出成产物里的 `/assets/*`，渲染时按同一阈值处理，大字体因此不会 base64 进每一份 HTML。
 
 ```ts twoslash
 import { defineConfig } from '@karinjs/template-react'

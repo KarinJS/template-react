@@ -55,6 +55,18 @@ describe('createTemplateRenderer', () => {
     expect(fs.existsSync(captured)).toBe(true)
   })
 
+  it('karin.template.ts 的 extraStylePaths 会注入 SSR HTML', async () => {
+    const { root, callerUrl } = setupPlugin()
+    fs.writeFileSync(path.join(root, 'karin.template.ts'), "export default { extraStylePaths: ['styles/fonts.css'] }\n", 'utf-8')
+    fs.mkdirSync(path.join(root, 'styles'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'styles/fonts.css'), ".dep-font{font-family:'Dep'}", 'utf-8')
+
+    const result = await createLooseRenderer(callerUrl)('x/y', {})
+
+    expect(result.success).toBe(true)
+    expect(fs.readFileSync(result.htmlPath, 'utf-8')).toContain(".dep-font{font-family:'Dep'}")
+  })
+
   it('lets renderer options override the conventional outputDir', async () => {
     const { root, callerUrl } = setupPlugin()
     const outputDir = path.join(root, 'custom-html')

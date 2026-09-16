@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 
 import { defu } from 'defu'
@@ -79,6 +80,61 @@ const loadUserConfig = async (cwd: string, configFile?: string): Promise<KtrConf
 const resolvePath = (root: string, value: string): string => (path.isAbsolute(value) ? value : path.resolve(root, value))
 
 /**
+ * 把 `包名/子路径` 这类写法解析成真实文件路径。
+ * 走 Node 自己的解析规则，而不是硬拼 `node_modules/<包名>`：pnpm 只把直接依赖软链到根
+ * `node_modules`，真实文件在 `.pnpm/<包名>@<版本>/node_modules/<包名>` 下，
+ * 而且包一旦声明了 exports 映射，拼路径和真实解析结果也会分叉。
+ * @param root 项目根目录，解析起点。
+ * @param specifier 包名加子路径，如 `some-font-pkg/index.css`。
+ * @returns 文件绝对路径；解析不到时返回 undefined。
+ */
+const resolvePackageFile = (root: string, specifier: string): string | undefined => {
+  try {
+    // createRequire 只需要一个解析基准，package.json 本身可以不存在。
+    return createRequire(path.join(root, 'package.json')).resolve(specifier)
+  } catch {
+    // 包没给这个子路径声明 exports 时 require.resolve 会抛错，继续按目录结构找。
+  }
+
+  let dir = root
+  for (;;) {
+    const candidate = path.join(dir, 'node_modules', specifier)
+    // 只认文件：`extraStylePaths: ['some-pkg']` 这种写法不应该解析成包目录。
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate
+    }
+
+    const parent = path.dirname(dir)
+    if (parent === dir) {
+      return undefined
+    }
+    dir = parent
+  }
+}
+
+/**
+ * 解析样式文件路径（`dir.cssEntry` 与 `extraStylePaths`）。
+ * 先按项目根解析；文件不存在时再按包名解析，于是可以直接引用依赖包里的样式，
+ * 例如 `extraStylePaths: ['@lobehub/webfont-harmony-sans-sc/index-full.css']`。
+ * 都解析不到时保留项目根相对路径，让后续的「文件不存在」提示指向用户写的那个值。
+ * @param root 项目根目录。
+ * @param value 用户配置里的路径或包名。
+ * @returns 绝对路径。
+ */
+const resolveStylePath = (root: string, value: string): string => {
+  if (path.isAbsolute(value)) {
+    return value
+  }
+
+  const local = path.resolve(root, value)
+  if (fs.existsSync(local)) {
+    return local
+  }
+
+  return resolvePackageFile(root, value) ?? local
+}
+
+/**
  * 自动探测 CSS 入口，优先使用 template/style.css，再退回任意 CSS 文件。
  * @param root 项目根目录。
  * @param templatesDir 已解析的模板目录。
@@ -87,7 +143,7 @@ const resolvePath = (root: string, value: string): string => (path.isAbsolute(va
  */
 const detectCssEntry = (root: string, templatesDir: string, cssEntry?: string): string => {
   if (cssEntry) {
-    return resolvePath(root, cssEntry)
+    return resolveStylePath(root, cssEntry)
   }
 
   const commonEntry = path.join(templatesDir, 'style.css')
@@ -144,7 +200,7 @@ export const resolveConfig = async (options: ResolveConfigOptions = {}): Promise
   const copyAssets = mergedDir.copyAssets ?? true
   // 构建产物目录只服务内部约定（SSR HTML 默认落盘等）；打包时的产物目录由构建插件跟随打包器 outDir。
   const outDir = resolvePath(root, 'dist/template')
-  const extraStylePaths = (merged.extraStylePaths ?? []).map((item) => resolvePath(root, item))
+  const extraStylePaths = (merged.extraStylePaths ?? []).map((item) => resolveStylePath(root, item))
   const cssEntry = detectCssEntry(root, templateDir, mergedDir.cssEntry)
   const standaloneOutDir = resolvePath(root, merged.standalone?.outDir ?? 'dist/ktr')
 

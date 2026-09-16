@@ -63,7 +63,7 @@ export default defineConfig({
 **类型**：`string`  
 **默认值**：`'ktr/public'`
 
-静态资源目录（字体、图标、背景图）。`/xxx` 引用始终等于 `<dir.assets>/xxx`：dev server 当 publicDir 服务（开发态直接可访问），构建时复制到 `<产物>/assets`，SSR 产出 HTML 时再按 [`html.assetsInlineLimit`](/docs/api/config-cli#htmlassetsinlinelimit) 内联为 base64 或转为 `file://` 绝对路径——开发、构建、生产三态下位置始终正确。
+静态资源目录（字体、图标、背景图）。`/xxx` 引用始终等于 `<dir.assets>/xxx`：dev server 当 publicDir 服务（开发态直接可访问），构建时复制到 `<产物>/assets`，SSR 产出 HTML 时再按 [`html.assetsInlineLimit`](/docs/api/config-cli#htmlassetsinlinelimit) 内联为 base64 或转为 `file://` 绝对路径——开发、构建、生产三态下位置始终正确。CSS 里 `url('/xxx')` 的引用按同一套规则落地。
 
 ```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
@@ -150,7 +150,9 @@ export default defineConfig({
 **类型**：`string[]`  
 **默认值**：`[]`
 
-额外注入 SSR HTML 的样式文件，内容会内联进 `<style>` 标签。
+额外注入 SSR HTML 的样式文件，内容会内联进 `<style>` 标签，其中 `url()` 引用的资源按 `html.assetsInlineLimit` 决定内联为 data URI 还是转成 `file://` 绝对路径。
+
+路径相对项目根解析；写依赖包里的文件时会按 Node 的解析规则定位（`'some-font-pkg/index.css'`），pnpm 把真实文件放在 `.pnpm` 下也能命中，不用手写 `node_modules/...`。
 
 ```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
@@ -162,7 +164,7 @@ export default defineConfig({
 
 **使用场景**：
 
-1. **内联字体定义**：确保截图包含 `@font-face`
+1. **内联字体定义**：确保截图包含 `@font-face`；字体包很大时直接写包名，让大字体走 `file://` 而不是 base64
 2. **图标库样式**：Material Icons、Font Awesome
 3. **打印样式**：`@media print` 规则
 4. **第三方组件库样式**：确保 SSR HTML 自包含
