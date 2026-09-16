@@ -435,17 +435,20 @@ find ~/.karin/temp/html -name "*.html" -type f | head -1 | xargs head -50
 
 **3. 检查 extraStylePaths 配置**
 
-如果自定义了额外样式路径，确保文件存在：
+如果自定义了额外样式路径，确保文件存在；也可以直接写依赖包里的样式（按 Node 解析，pnpm 把真实文件放在 `.pnpm` 下同样能命中）：
 
 ```ts title="karin.template.ts" twoslash
 import { defineConfig } from '@karinjs/template-react'
 
 export default defineConfig({
   extraStylePaths: [
-    'ktr/template/custom.css' // ← 确保文件存在
+    'ktr/template/custom.css', // ← 确保文件存在
+    '@lobehub/webfont-harmony-sans-sc/index-full.css' // 或依赖包里的样式
   ]
 })
 ```
+
+样式里 `url()` 引用的资源（字体、图片）超过 [`html.assetsInlineLimit`](/docs/api/config-cli#htmlassetsinlinelimit)（默认 4KB）时会转成 `file://` 绝对路径而不是 base64——字体"看起来没被内联"是预期行为，只要截图进程能读到那个文件就行；想连大字体一起内联就把阈值调大。
 
 **4. 清理缓存重新构建**
 

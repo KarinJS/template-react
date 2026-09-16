@@ -251,8 +251,14 @@ const typecheckStandaloneEntry = async (root: string, entryPath: string): Promis
   }
 }
 
+/**
+ * 独立运行包的 CSS 文本在构建期就烘进入口，必须完全自洽：
+ * 这里解析出的 file:// 绝对路径指向的是构建机（临时的 CSS 构建目录随后会被删掉），
+ * 换台机器渲染就全部失效，所以强制内联全部资源（不受 html.assetsInlineLimit 影响）。
+ * 大字体因此会进产物——体积敏感时用普通打包（ktrBuildPlugin）而不是独立运行包。
+ */
 const inlineCss = (cssPath: string, extraStylePaths: string[]): string => {
-  const wrapper = new HtmlWrapper({})
+  const wrapper = new HtmlWrapper({ assetsInlineLimit: () => true })
   return [cssPath, ...extraStylePaths]
     .map((filePath) => wrapper.loadInlineCss(filePath))
     .filter(Boolean)

@@ -60,7 +60,7 @@ description: ktr 的核心设计：目录即路由，模板、mock、样式、�
 | `.../data/captured.json`    | 真实渲染时自动写入的本次数据（滚动覆盖单文件），面板收到推送自动刷新并选中                                      |
 | `.../components/`           | 模板内部子组件和逻辑文件的固定目录（可选），不会被扫成路由                                                      |
 | `ktr/template/style.css`    | 所有模板共用的 Tailwind 入口，固定三行，见 [样式与主题](./styling)                                              |
-| `ktr/public/`               | 静态资源：dev 时按根路径引用（`/logo.png`），构建时复制到产物 `assets/`                                         |
+| `ktr/public/`               | 静态资源：标记和 CSS 里都按根路径引用（`/logo.png`），dev 时由 publicDir 服务，构建时复制到产物 `assets/`       |
 
 三条硬规则：
 

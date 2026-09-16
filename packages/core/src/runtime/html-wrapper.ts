@@ -39,6 +39,24 @@ body {
 const attr = (value: string): string => value.replace(/"/g, '&quot;')
 
 /**
+ * CSS 里的 url() 引用。值里不含引号和右括号，因此 image-set() 这类外层函数里的 url() 也能逐个命中。
+ * 与旧实现保持同一限制：`url("a)b.png")` 这种值里带右括号的写法不支持。
+ */
+const cssUrlPattern = /url\(\s*(['"]?)([^'")]*)\1\s*\)/g
+
+/**
+ * url() 的值是否由浏览器自己处理，不需要框架解析成本地文件：
+ * - 带协议的（`data:`、`http(s):`、`blob:`、Windows 盘符 `C:`）；
+ * - 协议相对的（`//cdn.example.com/a.png`）；
+ * - 纯片段（`#gradient`）；
+ * - CSS 函数（`var(--logo)`、`image()`），它们不是路径。
+ * @param value url() 里的原始值（已 trim）。
+ * @returns 保持原样时返回 true。
+ */
+const isExternalCssReference = (value: string): boolean =>
+  value.startsWith('//') || value.startsWith('#') || value.includes('(') || /^[a-z][a-z0-9+.-]*:/i.test(value)
+
+/**
  * 把显式提供的主题字段转换成 CSS 变量；未提供的字段一律不输出，让组件库自身主题生效。
  * @param theme 调用方显式提供的主题变量，可能为空或部分字段。
  * @returns 可直接写进 style 属性的内联样式字符串。
@@ -215,7 +233,17 @@ export class HtmlWrapper {
   }
 
   /**
-   * 内联 CSS，并把相对资源路径转成 data URI，保证生产环境文件自洽。
+   * 内联 CSS，并把资源引用解析成本地可用的形式。
+   *
+   * 两类引用都会解析，依赖包（含 pnpm 的 `.pnpm` 真实路径）里的 CSS 与字体一视同仁——
+   * 解析只依赖 CSS 文件自身的位置，不假设任何 node_modules 布局：
+   * - 相对路径（`./x`、`../x`）：相对 CSS 所在目录。构建时 Vite 把 CSS 引用的资源输出到产物目录，
+   *   依赖包里的 CSS 被 @import 内联后，它的字体引用也已经被改写成产物内的相对/根路径；
+   * - `/` 开头：先按 CSS 所在目录解析（构建产物里的 `/assets/*` 就是这一种），
+   *   再退到 assetsDir（`ktr/public` 里的资源按 `/xxx` 引用，与标记资源同一套约定）。
+   *
+   * 两种都按 assetsInlineLimit 决定形态，与标记资源一致：不超过阈值内联为 data URI（HTML 自洽），
+   * 超过的转成 file:// 绝对路径——字体这类大文件不再 base64 进每一份 HTML。
    * @param cssFilePath 待内联的 CSS 文件路径。
    * @returns 处理后的 CSS 文本；文件缺失时返回空字符串。
    */
@@ -225,24 +253,89 @@ export class HtmlWrapper {
       return ''
     }
 
-    const cssDir = path.dirname(cssFilePath)
     const cssContent = fs.readFileSync(cssFilePath, 'utf-8')
+    return cssContent.replace(cssUrlPattern, (match, quote: string, rawValue: string) => {
+      const rewritten = this.resolveCssReference(cssFilePath, rawValue)
+      return rewritten === undefined ? match : `url(${quote}${rewritten}${quote})`
+    })
+  }
 
-    // 只重写相对路径的 url()，data:、http(s):、file:、# 和绝对路径保持原样。
-    return cssContent.replace(
-      /url\(\s*(['"]?)(?!data:|https?:|file:|#|\/)([^'")]+)\1\s*\)/g,
-      (_match, quote: string, rawAssetPath: string) => {
-        const normalizedAssetPath = rawAssetPath.trim()
-        const assetFilePath = normalizedAssetPath.split(/[?#]/)[0]
-        if (!assetFilePath) {
-          return `url(${quote}${normalizedAssetPath}${quote})`
-        }
+  /**
+   * 把单个 url() 的值解析成 data URI 或 file:// 绝对路径。
+   * 外部引用、CSS 函数和找不到的文件保持原样（后者打一条警告，方便定位写错的路径）。
+   * @param cssFilePath CSS 文件绝对路径，相对引用以它为基准。
+   * @param rawValue url() 里的原始值。
+   * @returns 改写后的 URL；无需改写时返回 undefined。
+   */
+  private resolveCssReference(cssFilePath: string, rawValue: string): string | undefined {
+    const value = rawValue.trim()
+    if (!value || isExternalCssReference(value)) {
+      return undefined
+    }
 
-        const absoluteAssetPath = path.resolve(cssDir, assetFilePath)
-        const dataUri = this.toDataUri(absoluteAssetPath)
-        return dataUri ? `url(${quote}${dataUri}${quote})` : `url(${quote}${normalizedAssetPath}${quote})`
+    // 查询串和哈希只影响浏览器缓存，定位文件时去掉；改写后的 data URI / file:// 不再带它们
+    //（file:// 带查询串在部分平台直接解析不到文件）。
+    const reference = value.split(/[?#]/)[0]
+    if (!reference) {
+      return undefined
+    }
+
+    const assetPath = this.findCssAsset(cssFilePath, reference)
+    if (!assetPath) {
+      console.warn(`[ktr] CSS 引用的资源不存在，保持原路径：${value}`)
+      return undefined
+    }
+
+    if (this.shouldInlineAsset(assetPath)) {
+      return this.toDataUri(assetPath) ?? undefined
+    }
+
+    return pathToFileURL(assetPath).href
+  }
+
+  /**
+   * 按约定定位 CSS 引用的本地文件。
+   * `/` 开头的引用两种解释都试：构建产物根（CSS 同级，Vite 输出的 `assets/*`）和 assetsDir
+   * （随包发布的资源目录，`ktr/public` 里的文件按 `/xxx` 引用），命中即用。
+   * @param cssFilePath CSS 文件绝对路径。
+   * @param reference url() 里的引用路径（已去掉查询串与哈希）。
+   * @returns 命中的文件绝对路径；都找不到时返回 undefined。
+   */
+  private findCssAsset(cssFilePath: string, reference: string): string | undefined {
+    const rooted = reference.startsWith('/')
+    // `/` 开头时两个基准都试：CSS 同级（构建产物根）和 assetsDir（随包发布的资源目录）。
+    const bases = rooted ? [path.dirname(cssFilePath), this.assetsDir] : [path.dirname(cssFilePath)]
+
+    for (const base of bases) {
+      if (!base) {
+        continue
       }
-    )
+
+      for (const item of this.cssReferenceCandidates(reference)) {
+        const candidate = rooted ? path.join(base, item) : path.resolve(base, item)
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+          return candidate
+        }
+      }
+    }
+
+    return undefined
+  }
+
+  /**
+   * url() 的值的候选写法：CSS 里的 URL 可能对空格等字符做了百分号编码
+   * （Vite 输出的资源地址就会编码，磁盘上的文件名是原文），两种都试一次。
+   * @param reference url() 里的引用路径。
+   * @returns 去重后的候选路径列表。
+   */
+  private cssReferenceCandidates(reference: string): string[] {
+    try {
+      const decoded = decodeURIComponent(reference)
+      return decoded === reference ? [reference] : [reference, decoded]
+    } catch {
+      // 非法百分号序列（如文件名里真的有 % ）按原文找。
+      return [reference]
+    }
   }
 
   /**

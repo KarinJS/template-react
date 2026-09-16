@@ -28,6 +28,44 @@ ktr 会在内部把 Tailwind 扫描范围收紧到显式 `@source`，避免 Vite
 
 加字体、自定义 token 时，在这三行之后继续写即可。
 
+## 用依赖包里的 CSS 与字体
+
+字体包（`@lobehub/webfont-harmony-sans-sc` 这类）把 `@font-face` 和字体文件一起发布，直接在样式入口里 `@import` 即可。构建期由 Tailwind/Vite 解析并展平，包内 `url('./fonts/x.woff2')` 这样的相对引用也会一并处理：
+
+```css title="ktr/template/style.css"
+@import 'tailwindcss';
+@import '@karinjs/template-react/styles';
+@source './**/*.{ts,tsx}';
+@import '@lobehub/webfont-harmony-sans-sc/index-full.css';
+```
+
+字体在三种状态下怎么落地：
+
+- **开发面板**：dev server 直接从 `node_modules` 提供字体文件，pnpm 把真实文件放在 `.pnpm/<包名>@<版本>/node_modules/<包名>` 下也照样能取到，不需要额外配置。
+- **构建产物**：超过 4KB 的字体由 CSS 构建输出到产物 `assets/[name]-[hash].woff2`，CSS 里保留 `/assets/...` 引用。
+- **渲染截图**：渲染期按 [`html.assetsInlineLimit`](/docs/api/config-cli#htmlassetsinlinelimit) 处理这些引用——不超过阈值的内联为 data URI，超过的转成 `file://` 绝对路径。截图引擎用 `file://` 打开 HTML，字体正常加载，几十 MB 的字体不会 base64 进每一份 HTML（这也是引入字体包最容易踩的坑）。
+
+不想让某个依赖的样式进 Tailwind 管线（例如只想按需注入），用 [`extraStylePaths`](/docs/api/config-cli#extrastylepaths) 直接写包名：
+
+```ts title="karin.template.ts"
+import { defineConfig } from '@karinjs/template-react'
+
+export default defineConfig({
+  extraStylePaths: ['@lobehub/webfont-harmony-sans-sc/index-full.css']
+})
+```
+
+包名按 Node 的解析规则定位（含 exports 映射与 pnpm 的真实路径），不要手写 `node_modules/...`：pnpm 只把直接依赖软链到根 `node_modules`，拼路径会漏。
+
+<Callout type="info">
+  生产 bundle 不读 `karin.template.ts`（发布产物里没有配置文件），`extraStylePaths` 在那里取不到值。这种形态下由插件胶水层显式传：`createTemplateRenderer(import.meta.url, { renderer: { extraStylePaths: [...] } })`。
+</Callout>
+
+<Callout type="warn">
+  独立运行包（`ktr build`）的 CSS 在构建期就烘进入口，必须自洽，所以那里的资源一律内联。字体包很大时用普通打包（`ktrBuildPlugin`），走上面的
+  `file://` 路径。
+</Callout>
+
 ## 可用的颜色类
 
 命名规律：**不带后缀的是背景色，带 `-foreground` 的是该背景上的文字色**。

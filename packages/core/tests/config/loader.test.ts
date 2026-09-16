@@ -58,6 +58,36 @@ describe('resolveConfig', () => {
     expect(config.vite).toEqual({ define: { __KTR_TEST__: 'true' } })
   })
 
+  it('样式路径可以直接写依赖包里的文件（pnpm 的 .pnpm 真实路径也能命中）', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-config-'))
+    // 伪造 pnpm 布局：真实文件在 .pnpm 下，根 node_modules 里只有软链。
+    const packageDir = path.join(root, 'node_modules/.pnpm/dep-font@1.0.0/node_modules/dep-font')
+    fs.mkdirSync(path.join(packageDir, 'fonts'), { recursive: true })
+    fs.writeFileSync(path.join(packageDir, 'index.css'), '.dep{}', 'utf-8')
+    fs.writeFileSync(path.join(packageDir, 'fonts/big.woff2'), 'font', 'utf-8')
+    // 有 exports 映射、且没为字体声明子路径：走文件系统兜底，而不是被 exports 拦下。
+    fs.writeFileSync(
+      path.join(packageDir, 'package.json'),
+      JSON.stringify({ name: 'dep-font', version: '1.0.0', exports: { '.': './index.css' } }),
+      'utf-8'
+    )
+    fs.symlinkSync(packageDir, path.join(root, 'node_modules/dep-font'), 'junction')
+
+    const config = await resolveConfig({
+      cwd: root,
+      overrides: {
+        dir: { cssEntry: 'dep-font/index.css' },
+        extraStylePaths: ['dep-font/fonts/big.woff2', 'local/print.css']
+      }
+    })
+
+    // 只有真实存在的包内文件才解析过去；解析不到的保持项目根相对路径，错误提示才指向用户写的值。
+    // 路径本身可能带 node_modules 软链（.pnpm 布局就是这样），比较时按真实文件比对。
+    expect(fs.realpathSync(config.cssEntry!)).toBe(fs.realpathSync(path.join(packageDir, 'index.css')))
+    expect(fs.realpathSync(config.extraStylePaths[0]!)).toBe(fs.realpathSync(path.join(packageDir, 'fonts/big.woff2')))
+    expect(config.extraStylePaths[1]).toBe(path.join(root, 'local', 'print.css'))
+  })
+
   it('mockDataDir 固定等于 dir.template，不单独可配', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ktr-config-'))
     fs.writeFileSync(path.join(root, 'karin.template.ts'), "export default { dir: { template: 'templates' } }\n", 'utf-8')

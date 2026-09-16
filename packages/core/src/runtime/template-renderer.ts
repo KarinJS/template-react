@@ -190,6 +190,10 @@ export const createTemplateRenderer = (callerUrl: string, options?: TemplateRend
         // 标记资源根目录：开发态是 dir.assets 源码目录，生产态是产物里的 assets/，与 chunk 位置无关。
         ...(assetsDir ? { assetsDir } : {}),
         assetsInlineLimit: config.html.assetsInlineLimit,
+        // karin.template.ts 里配置的额外样式（字体包 CSS 等）在这里注入，否则配置项只在手动
+        // createRenderer 时生效。生产 bundle 走 skipUserConfig，拿到的是默认空数组——发布产物
+        // 里没有配置文件，需要额外样式时由下游胶水层经 options.renderer 显式传入。
+        extraStylePaths: config.extraStylePaths,
         ...(ssrRuntime ? { ssrRuntime } : {}),
         outputDir: path.join(config.outDir, 'html'),
         captureDir: config.templateDir,

@@ -65,6 +65,10 @@ CSS 想走别的管线时传 `ktrBuildPlugin({ css: false })`。
 行为（比如加大内联阈值、追加 PostCSS 插件），在 `karin.template.ts` 的 [`vite` 字段](/docs/api/config-cli#vite-扩展配置)里扩展内层
 构建配置，而不是改外层的打包配置；外层 `vite.config.ts` 只决定 CSS 产物的落盘位置（`build.outDir`）和它在输出列表里的展示。
 
+依赖包（字体包等）里的 CSS 用 `@import '包名/样式.css'` 引入即可，构建期会连同它引用的字体一起展平、输出。渲染期这些
+`/assets/*` 引用按 [`html.assetsInlineLimit`](/docs/api/config-cli#htmlassetsinlinelimit) 落地：小文件内联为 data URI，大字体
+转成 `file://` 绝对路径（截图页是 `file://`，不会静默回退到系统字体，也不会把几十 MB 的 base64 塞进每份 HTML）。
+
 ## 方式二：tsdown（备选）
 
 ```bash
